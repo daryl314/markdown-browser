@@ -121,7 +121,7 @@
              .replace(/\$\$[^]*?\$\$/g,     function(m){ return '<latex>' + escape(m) + '</latex>' });
 
         // convert [TOC] to something jQuery can find
-        x = x.replace('[TOC]', '<table-of-contents></table-of-contents>');
+        x = x.replace(/\[TOC\]/gi, '<table-of-contents></table-of-contents>');
 
         // populate page
         $('main').html(marked(x));
