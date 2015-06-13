@@ -8,6 +8,7 @@
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.2/marked.min.js"></script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.4/js/bootstrap.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.9.3/lodash.min.js"></script>
   <script type="text/x-mathjax-config">
     MathJax.Hub.Config({ tex2jax: {
       displayMath: [["$$","$$"],["\\[","\\]"]],
@@ -32,16 +33,7 @@
           <a class="navbar-brand" href="#">Markdown Wiki</a>
         </div>
         <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
-          <ul class="nav navbar-nav">
-            <li class="dropdown">
-              <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">Dropdown <span class="caret"></span></a>
-              <ul class="dropdown-menu" role="menu">
-                <li><a href="index.html?Algebra.md">Linear Algebra</a></li>
-                <li><a href="index.html?tmux.md">Tmux</a></li>
-                <li><a href="index.html?Python.md">Python</a></li>
-              </ul>
-            </li>
-          </ul>
+          <ul class="nav navbar-nav"></ul>
         </div>
       </div>
     </nav>
@@ -89,6 +81,30 @@
         .replace( /&#13;/g,  '\n' ) // unescape newlines
     }
 
+    ///////////////////////
+    // PROCESS FILE MENU //
+    ///////////////////////
+
+    jQuery(function(){$.ajax('files').success(function(x) {
+
+      // convert into grouped lists
+      x = _.chain(x.replace(/^\.\//mg,'').split('\n')) // clear ./ and split on newlines
+        .filter(function(a){return a.length>0})        // remove empty entries
+        .groupBy(function(a){return a.split('/')[0]})  // group by top-level directory
+        .value()
+
+      // process each group
+      _.each(x, function(v,k){
+        $('nav.navbar ul.nav').append(
+          '<li class="dropdown">' +
+                  '<a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">' + k + ' <span class="caret"></span></a>' +
+                  '<ul class="dropdown-menu" role="menu">' +
+                    _.map(v, function(a){return '<li><a href="index.html?'+a+'">'+a.replace(/.*?\/(.*?)(\.md?)$/,'$1')+'</a></li>'}).join('\n') +
+                  '</ul></li>'
+        )
+      });
+    })});
+
     /////////////////////
     // PROCESS CONTENT //
     /////////////////////
@@ -102,18 +118,28 @@
       x = x.replace(/\\\\\([^]*?\\\\\)/g, function(m){ return '<latex>' + escape(m) + '</latex>' })
            .replace(/\$\$[^]*?\$\$/g,     function(m){ return '<latex>' + escape(m) + '</latex>' });
 
+      // convert [TOC] to something jQuery can find
+      x = x.replace('[TOC]', '<table-of-contents></table-of-contents>');
+
       // populate page
       $('main').html(marked(x));
 
       // create table of contents if applicable
-      if (x.match('[TOC]')) {
-        $('#content').prepend('<ul>' + $('h2').map(function(){ return "<li><a href='#" + $(this).attr('id') + "'>" + $(this).html() + "</a></li>" }).toArray().join('') + '</ul>')
-      }
+      $('#content table-of-contents').html(marked(
+        $(':header').map(function(){
+          var level = parseInt($(this).prop("tagName").slice(1));
+          return Array(1+2*(level-1)).join(' ') + "* [#"+$(this).attr('id')+"]("+$(this).html()+")";
+        }).toArray().join('\n')
+      ));
 
       // add latex processor if applicable
       if (x.match(/\$\$.*?\$\$/g) || x.match(/\\\\\(.*?\\\\\)/g)) {
         $.getScript('https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML');
       }
+
+      // style tables
+      $('main#content table').addClass('table table-striped table-hover');
+      $('main#content thead').addClass('btn-primary');
 
       // perform syntax highlighting
       $('pre code').each(function(i, block) { hljs.highlightBlock(block); });
