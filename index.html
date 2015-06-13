@@ -109,41 +109,44 @@
     // PROCESS CONTENT //
     /////////////////////
 
-    jQuery(function(){$.ajax(document.URL.split('?')[1]).success(function(x) {
+    jQuery(function(){
+      var mdFile = document.URL.split('?')[1];
+      if (mdFile){$.ajax(mdFile).success(function(x) {
 
-      // standardize line breaks to \n
-      x = x.replace(/\r?\n/g, '\n')
+        // standardize line breaks to \n
+        x = x.replace(/\r?\n/g, '\n')
 
-      // escape latex blocks
-      x = x.replace(/\\\\\([^]*?\\\\\)/g, function(m){ return '<latex>' + escape(m) + '</latex>' })
-           .replace(/\$\$[^]*?\$\$/g,     function(m){ return '<latex>' + escape(m) + '</latex>' });
+        // escape latex blocks
+        x = x.replace(/\\\\\([^]*?\\\\\)/g, function(m){ return '<latex>' + escape(m) + '</latex>' })
+             .replace(/\$\$[^]*?\$\$/g,     function(m){ return '<latex>' + escape(m) + '</latex>' });
 
-      // convert [TOC] to something jQuery can find
-      x = x.replace('[TOC]', '<table-of-contents></table-of-contents>');
+        // convert [TOC] to something jQuery can find
+        x = x.replace('[TOC]', '<table-of-contents></table-of-contents>');
 
-      // populate page
-      $('main').html(marked(x));
+        // populate page
+        $('main').html(marked(x));
 
-      // create table of contents if applicable
-      $('#content table-of-contents').html(marked(
-        $(':header').map(function(){
-          var level = parseInt($(this).prop("tagName").slice(1));
-          return Array(1+2*(level-1)).join(' ') + "* [#"+$(this).attr('id')+"]("+$(this).html()+")";
-        }).toArray().join('\n')
-      ));
+        // create table of contents if applicable
+        $('#content table-of-contents').html(marked(
+          $(':header').map(function(){
+            var level = parseInt($(this).prop("tagName").slice(1));
+            return Array(1+2*(level-1)).join(' ') + "* [#"+$(this).attr('id')+"]("+$(this).html()+")";
+          }).toArray().join('\n')
+        ));
 
-      // add latex processor if applicable
-      if (x.match(/\$\$.*?\$\$/g) || x.match(/\\\\\(.*?\\\\\)/g)) {
-        $.getScript('https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML');
-      }
+        // add latex processor if applicable
+        if (x.match(/\$\$.*?\$\$/g) || x.match(/\\\\\(.*?\\\\\)/g)) {
+          $.getScript('https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML');
+        }
 
-      // style tables
-      $('main#content table').addClass('table table-striped table-hover');
-      $('main#content thead').addClass('btn-primary');
+        // style tables
+        $('main#content table').addClass('table table-striped table-hover');
+        $('main#content thead').addClass('btn-primary');
 
-      // perform syntax highlighting
-      $('pre code').each(function(i, block) { hljs.highlightBlock(block); });
-    })});
+        // perform syntax highlighting
+        $('pre code').each(function(i, block) { hljs.highlightBlock(block); });
+      })}
+    });
 
   </script>
 </body>
