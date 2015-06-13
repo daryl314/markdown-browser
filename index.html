@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Markdown viewer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.2/marked.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.4/js/bootstrap.min.js"></script>
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({ tex2jax: {
+      displayMath: [["$$","$$"],["\\[","\\]"]],
+      inlineMath: [['\\\\(','\\\\)']],
+      processEscapes: true
+    }});
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.6/styles/sunburst.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.6/highlight.min.js"></script>
+  <style>
+    main#content {
+      padding-left:1em;
+      padding-right:1em;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="navbar navbar-default">
+      <div class="container-fluid">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="#">Markdown Wiki</a>
+        </div>
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+          <ul class="nav navbar-nav">
+            <li class="dropdown">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">Dropdown <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="index.html?Algebra.md">Linear Algebra</a></li>
+                <li><a href="index.html?tmux.md">Tmux</a></li>
+                <li><a href="index.html?Python.md">Python</a></li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  </header>
+  <main id="content"></main>
+  <script type="text/javascript">
+
+    // functions to escape and unescape character codes
+    // used to prevent additional processing in preformatted text blocks
+    // http://www.ascii.cl/htmlcodes.htm
+    escape = function(txt) {
+      return txt
+        .replace( /&/g,   '&amp;'  )   // escape & (must be first)
+        .replace( /#/g,   '&#35;'  )   // escape # (must be second)
+        .replace( /`/g,   '&#96'   )   // escape `
+        .replace( /\|/g,  '&#124;' )   // escape |
+        .replace( /\*/g,  '&#42;'  )   // escape *
+        .replace( /\[/g,  '&#91;'  )   // escape [
+        .replace( /\]/g,  '&#93;'  )   // escape ]
+        .replace( /\-/g,  '&#45;'  )   // escape -
+        .replace( /'/g,   '&#39;'  )   // escape '
+        .replace( /\//g,  '&#47;'  )   // escape /
+        .replace( /\\/g,  '&#92;'  )   // escape \
+        .replace( /</g,   '&lt;'   )   // escape <
+        .replace( />/g,   '&gt;'   )   // escape >
+        .replace( /[ ]/g, '&nbsp;' )   // escape spaces
+        .replace( /\n/g , '&#13;'  )   // escape newlines
+    }
+    unescape = function(txt) {
+      return txt
+        .replace( /&amp;/g,  '&'  ) // unescape &
+        .replace( /&#35;/g,  '#'  ) // unescape #
+        .replace( /&#96;/g,  '`'  ) // unescape `
+        .replace( /&#124;/g, '|'  ) // unescape |
+        .replace( /&#42;/g,  '*'  ) // unescape *
+        .replace( /&#91;/g,  '['  ) // unescape [
+        .replace( /&#93;/g,  ']'  ) // unescape ]
+        .replace( /&#45;/g,  '-'  ) // unescape -
+        .replace( /&#39;/g,  "'"  ) // unescape '
+        .replace( /&#47;/g,  '/'  ) // unescape /
+        .replace( /&#92;/g,  '\\' ) // unescape \
+        .replace( /&lt;/g,   '<'  ) // unescape <
+        .replace( /&gt;/g,   '>'  ) // unescape >
+        .replace( /&nbsp;/g, ' '  ) // unescape spaces
+        .replace( /&#13;/g,  '\n' ) // unescape newlines
+    }
+
+    /////////////////////
+    // PROCESS CONTENT //
+    /////////////////////
+
+    jQuery(function(){$.ajax(document.URL.split('?')[1]).success(function(x) {
+
+      // standardize line breaks to \n
+      x = x.replace(/\r?\n/g, '\n')
+
+      // escape latex blocks
+      x = x.replace(/\\\\\([^]*?\\\\\)/g, function(m){ return '<latex>' + escape(m) + '</latex>' })
+           .replace(/\$\$[^]*?\$\$/g,     function(m){ return '<latex>' + escape(m) + '</latex>' });
+
+      // populate page
+      $('main').html(marked(x));
+
+      // create table of contents if applicable
+      if (x.match('[TOC]')) {
+        $('#content').prepend('<ul>' + $('h2').map(function(){ return "<li><a href='#" + $(this).attr('id') + "'>" + $(this).html() + "</a></li>" }).toArray().join('') + '</ul>')
+      }
+
+      // add latex processor if applicable
+      if (x.match(/\$\$.*?\$\$/g) || x.match(/\\\\\(.*?\\\\\)/g)) {
+        $.getScript('https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML');
+      }
+
+      // perform syntax highlighting
+      $('pre code').each(function(i, block) { hljs.highlightBlock(block); });
+    })});
+
+  </script>
+</body>
+</html>
