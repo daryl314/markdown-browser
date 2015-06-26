@@ -84,20 +84,36 @@
       // convert into grouped lists
       x = _.chain(x.replace(/^\.\//mg,'').split('\n')) // clear ./ and split on newlines
         .filter(function(a){return a.length>0})        // remove empty entries
-        .groupBy(function(a){return a.split('/')[0]})  // group by top-level directory
-        .value()
+        .groupBy(function(a){                          // group by top-level directory
+          return a.match('/') ? a.split('/')[0] : 'Unsorted'
+        }).value()
 
-      // process each group
+      // convert into HTML unordered list
+      var ul = '';
       _.each(x, function(v,k){
-        $('nav.navbar ul.nav').append(
-          '<li class="dropdown">' +
-                  '<a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">' + k + ' <span class="caret"></span></a>' +
-                  '<ul class="dropdown-menu" role="menu">' +
-                    _.map(v, function(a){return '<li><a href="index.html?'+a+'">'+a.replace(/.*?\/(.*?)(\.md?)$/,'$1')+'</a></li>'}).join('\n') +
-                  '</ul></li>'
-        )
-      });
+        ul += '<li><a href="#">'+k+'</a><ul>\n'+_.map(v, function(a){
+          return '  <li><a href="index.html?'+a+'">'+a.replace(/.*?\/(.*?)(\.md?)$/,'$1')+'</a></li>\n'
+        }).join('') + "</ul></li>";
+      })
+
+      // create menu bar
+      $el = $('nav.navbar ul.nav').html(ul);
+      $el.children('li')
+        .addClass('dropdown')
+        .children('ul')
+          .addClass('dropdown-menu')
+          .attr({role:'menu'});
+      $el.children('li').children('a')
+        .addClass('dropdown-toggle')
+        .attr({'data-toggle':'dropdown','role':'button','aria-expanded':'false'})
+        .each(function(){ $(this).html( $(this).html() + ' <span class="caret"></span>' )});
+
+      // create navigation page (if no page has been loaded)
+      if(!document.URL.split('?')[1]){
+        $('main').html(ul);
+      }
     })});
+
 
     /////////////////////
     // PROCESS CONTENT //
