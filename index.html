@@ -27,6 +27,9 @@
       padding-left:1em;
       padding-right:1em;
     }
+    table.table {
+      width: initial; /* over-ride bootstrap 100% width */
+    }
     nav#toc ul ul {
       padding-left:1em;
     }
@@ -154,11 +157,15 @@
         }
 
         // style tables
-        $('main#content table').addClass('table table-striped table-hover');
+        $('main#content table').addClass('table table-striped table-hover table-condensed');
         $('main#content thead').addClass('btn-primary');
 
         // perform syntax highlighting
         $('pre code').each(function(i, block) { hljs.highlightBlock(block); });
+
+        // create bootstrap alert boxes
+        $('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
+        $('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
       })}
     });
 
