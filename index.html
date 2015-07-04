@@ -18,6 +18,8 @@
       processEscapes: true
     }});
   </script>
+  <!-- <link rel="stylesheet" href="https://khan.github.io/KaTeX/bower_components/katex/dist/katex.min.css"> -->
+  <!-- <script src="https://khan.github.io/KaTeX/bower_components/katex/dist/katex.min.js"></script> -->
   <style>
     body {
       position:relative; /*for scrollspy*/
@@ -138,6 +140,15 @@
 
         // return latex to page
         $('main latex').each(function(){ $(this).text(latex.shift()) });
+        /*$('main latex').each(function(){
+          var tex = latex.shift().replace(/^\\\\\(/, '').replace(/\\\\\)$/, '').replace(/^\$\$/, '').replace(/\$\$$/, '');
+          try {
+            tex = katex.renderToString(tex);
+          } catch(err) {
+            console.log("Error processing latex: \n\n" + tex + "\n\n" + err);
+          }
+          $(this).html(tex);
+        });*/
 
         // create table of contents if applicable
         var toc = marked(
