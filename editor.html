@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Markdown Editor</title>
+
+  <!-- JAVASCRIPT RESOURCES -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.6/styles/sunburst.min.css" />
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.2/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.9.3/lodash.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.6/highlight.min.js"></script>
+
+  <!-- CODEMIRROR RESOURCES -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/theme/solarized.min.css" />
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/codemirror.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/edit/continuelist.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/markdown-fold.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/xml/xml.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/markdown/markdown.min.js"></script>
+
+  <!-- APPLICATION RESOURCES -->
+  <script type="text/javascript" src="application.js"></script>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <main id="content" class="col-md-6" role="main">
+        <textarea id="editor"></textarea>
+      </main>
+      <div id="viewer" class="col-md-6" role="complementary"></div>
+    </div>
+  </div>
+  <script>
+    $('textarea#editor').text("# Markdown Document #\n\n* Item 1\n* Item 2\n");
+    var cm = CodeMirror.fromTextArea($('#editor')[0], {
+      mode:        "markdown",
+      theme:       "solarized",
+      lineNumbers: true
+    });
+    var render = function(){ renderMarkdown(cm.getValue(),$('#viewer')); }
+    cm.on('change', _.throttle(render, 1000)); // update at most once every second
+    render();
+  </script>
+</body>
+</html>
