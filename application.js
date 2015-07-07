@@ -1,9 +1,46 @@
+// regex to match latex blocks
+var LATEX_REGEX = /(?:\\\\\(([^]*?)\\\\\))|(?:\$\$([^]*?)\$\$)/g;
+
+
+////////////////////////////
+// CACHED LATEX RENDERING //
+////////////////////////////
+
+// hash table of processed latex
+var latexMap = {};
+
+// capture previously rendered latex in specified element
+captureLatex = function($el) {
+  if ($el.find('div.MathJax_Display').length > 0){
+    var latex = $el.find('script').first().text().replace(/^\s*(.*?)\s*$/,'$1');
+    var html = $el.find('div.MathJax_Display')[0].outerHTML;
+    latexMap[latex] = html;
+  }
+}
+
+// render latex in the specified element
+renderLatex = function(el) {
+  var latex = $(el).text().replace(LATEX_REGEX, "$1$2").replace(/^\s*(.*?)\s*$/,'$1');
+  if (latexMap[latex]) {
+    var idx = $.inArray($(el)[0], $('latex'));
+    $(el).html( latexMap[latex] ).append(
+      '<script type="math/tex; mode=display">' + latex + '</script>'
+    );
+  } else {
+    MathJax.Hub.Queue(["Typeset", MathJax.Hub, el]);
+  }
+};
+
+
+////////////////////////
+// MARKDOWN RENDERING //
+////////////////////////
+
+// has the latex processing script been loaded yet?
 var latexLoaded = false;
 
+// function to render markdown into the specified element
 renderMarkdown = function(x, $el) {
-
-  // regex to match latex blocks
-  var LATEX_REGEX = /(\\\\\([^]*?\\\\\))|(\$\$[^]*?\$\$)/g;
 
   // capture latex blocks
   var latex = x.match(LATEX_REGEX);
@@ -40,9 +77,7 @@ renderMarkdown = function(x, $el) {
   // add latex processor if applicable
   if (latex) {
     if (latexLoaded) {
-      $el.find('latex').each(function(){
-        MathJax.Hub.Queue(["Typeset", MathJax.Hub, this]);
-      });
+      $el.find('latex').each(function(){ renderLatex(this) });
     } else {
       $.getScript('https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML');
       latexLoaded = true;
