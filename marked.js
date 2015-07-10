@@ -10,10 +10,12 @@
  * Block-Level Grammar
  */
 
+// assign regexes to a variable to precompile them
 var block = {
   newline: /^\n+/,
   code: /^( {4}[^\n]+\n*)+/,
   fences: noop,
+  latex: /^ *\$\$\s*([^]+?)\s*\$\$/,
   hr: /^( *[-*_]){3,} *(?:\n+|$)/,
   heading: /^ *(#{1,6}) *([^\n]+?) *#* *(?:\n+|$)/,
   nptable: noop,
@@ -135,10 +137,10 @@ Lexer.lex = function(src, options) {
 
 Lexer.prototype.lex = function(src) {
   src = src
-    .replace(/\r\n|\r/g, '\n')
-    .replace(/\t/g, '    ')
-    .replace(/\u00a0/g, ' ')
-    .replace(/\u2424/g, '\n');
+    .replace(/\r\n|\r/g, '\n')   // use consistent newline format
+    .replace(/\t/g, '    ')      // replace tabs with spaces
+    .replace(/\u00a0/g, ' ')     // replace non-breaking space with space
+    .replace(/\u2424/g, '\n');   // replace unicode newline with newline
 
   return this.token(src, true);
 };
@@ -190,6 +192,16 @@ Lexer.prototype.token = function(src, top, bq) {
         type: 'code',
         lang: cap[2],
         text: cap[3]
+      });
+      continue;
+    }
+
+    // block latex
+    if (cap = this.rules.latex.exec(src)) {
+      src = src.substring(cap[0].length);
+      this.tokens.push({
+        type: 'latex',
+        text: cap[1]
       });
       continue;
     }
@@ -458,6 +470,7 @@ var inline = {
   strong: /^__([\s\S]+?)__(?!_)|^\*\*([\s\S]+?)\*\*(?!\*)/,
   em: /^\b_((?:__|[\s\S])+?)_\b|^\*((?:\*\*|[\s\S])+?)\*(?!\*)/,
   code: /^(`+)\s*([\s\S]*?[^`])\s*\1(?!`)/,
+  latex: /^\\\\\(\s*([^]+?)\s*\\\\\)/,
   br: /^ {2,}\n(?!\s*$)/,
   del: noop,
   text: /^[\s\S]+?(?=[\\<!\[_*`]| {2,}\n|$)/
@@ -567,6 +580,14 @@ InlineLexer.prototype.output = function(src) {
     , cap;
 
   while (src) {
+
+    // latex
+    if (cap = this.rules.latex.exec(src)) {
+      src = src.substring(cap[0].length);
+      out += this.renderer.latexspan(escape(cap[1], true));
+      continue;
+    }
+
     // escape
     if (cap = this.rules.escape.exec(src)) {
       src = src.substring(cap[0].length);
@@ -784,6 +805,10 @@ Renderer.prototype.code = function(code, lang, escaped) {
     + '\n</code></pre>\n';
 };
 
+Renderer.prototype.latex = function(tex) {
+  return '<latex>\n' + tex + '</latex>\n';
+};
+
 Renderer.prototype.blockquote = function(quote) {
   return '<blockquote>\n' + quote + '</blockquote>\n';
 };
@@ -856,6 +881,10 @@ Renderer.prototype.em = function(text) {
 
 Renderer.prototype.codespan = function(text) {
   return '<code>' + text + '</code>';
+};
+
+Renderer.prototype.latexspan = function(tex) {
+  return '<latex>' + tex + '</latex>';
 };
 
 Renderer.prototype.br = function() {
@@ -990,6 +1019,9 @@ Parser.prototype.tok = function() {
       return this.renderer.code(this.token.text,
         this.token.lang,
         this.token.escaped);
+    }
+    case 'latex': {
+      return this.renderer.latex(this.token.text);
     }
     case 'table': {
       var header = ''
