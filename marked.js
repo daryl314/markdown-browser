@@ -149,6 +149,9 @@ Lexer.prototype.lex = function(src) {
  * Lexing
  */
 
+// current line
+var lineCount = 1;
+
 Lexer.prototype.token = function(src, top, bq) {
   var src = src.replace(/^ +$/gm, '')
     , next
@@ -165,7 +168,9 @@ Lexer.prototype.token = function(src, top, bq) {
     // newline
     if (cap = this.rules.newline.exec(src)) {
       src = src.substring(cap[0].length);
+      lineCount += cap[0].length;
       if (cap[0].length > 1) {
+        this.tokens.push({type:'line',n:lineCount}); // only log if there is a paragraph break
         this.tokens.push({
           type: 'space'
         });
@@ -175,6 +180,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // code
     if (cap = this.rules.code.exec(src)) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       cap = cap[0].replace(/^ {4}/gm, '');
       this.tokens.push({
         type: 'code',
@@ -188,6 +195,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // fences (gfm)
     if (cap = this.rules.fences.exec(src)) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       this.tokens.push({
         type: 'code',
         lang: cap[2],
@@ -199,6 +208,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // block latex
     if (cap = this.rules.latex.exec(src)) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       this.tokens.push({
         type: 'latex',
         text: cap[1]
@@ -209,6 +220,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // heading
     if (cap = this.rules.heading.exec(src)) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       this.tokens.push({
         type: 'heading',
         depth: cap[1].length,
@@ -220,6 +233,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // table no leading pipe (gfm)
     if (top && (cap = this.rules.nptable.exec(src))) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
 
       item = {
         type: 'table',
@@ -252,6 +267,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // lheading
     if (cap = this.rules.lheading.exec(src)) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       this.tokens.push({
         type: 'heading',
         depth: cap[2] === '=' ? 1 : 2,
@@ -263,6 +280,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // hr
     if (cap = this.rules.hr.exec(src)) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       this.tokens.push({
         type: 'hr'
       });
@@ -272,6 +291,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // blockquote
     if (cap = this.rules.blockquote.exec(src)) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
 
       this.tokens.push({
         type: 'blockquote_start'
@@ -335,6 +356,9 @@ Lexer.prototype.token = function(src, top, bq) {
           }
         }
 
+        // Add line number marker.  Incrementing handled by recursion.
+        this.tokens.push({type:'line',n:lineCount});
+
         // Determine whether item is loose or not.
         // Use: /(^|\n)(?! )[^\n]+\n\n(?!\s*$)/
         // for discount behavior.
@@ -352,6 +376,9 @@ Lexer.prototype.token = function(src, top, bq) {
 
         // Recurse.
         this.token(item, false, bq);
+        if (i < l-1) {
+          lineCount += 1; // account for newlines between items
+        }
 
         this.tokens.push({
           type: 'list_item_end'
@@ -368,6 +395,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // html
     if (cap = this.rules.html.exec(src)) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       this.tokens.push({
         type: this.options.sanitize
           ? 'paragraph'
@@ -382,6 +411,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // def
     if ((!bq && top) && (cap = this.rules.def.exec(src))) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       this.tokens.links[cap[1].toLowerCase()] = {
         href: cap[2],
         title: cap[3]
@@ -392,6 +423,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // table (gfm)
     if (top && (cap = this.rules.table.exec(src))) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
 
       item = {
         type: 'table',
@@ -426,6 +459,8 @@ Lexer.prototype.token = function(src, top, bq) {
     // top-level paragraph
     if (top && (cap = this.rules.paragraph.exec(src))) {
       src = src.substring(cap[0].length);
+      this.tokens.push({type:'line',n:lineCount});
+      lineCount += cap[0].split('\n').length-1;
       this.tokens.push({
         type: 'paragraph',
         text: cap[1].charAt(cap[1].length - 1) === '\n'
@@ -809,6 +844,10 @@ Renderer.prototype.latex = function(tex) {
   return '<latex>\n' + tex + '</latex>\n';
 };
 
+Renderer.prototype.line = function(n) {
+  return '<linemarker id="' + n + '" />';
+}
+
 Renderer.prototype.blockquote = function(quote) {
   return '<blockquote>\n' + quote + '</blockquote>\n';
 };
@@ -1022,6 +1061,9 @@ Parser.prototype.tok = function() {
     }
     case 'latex': {
       return this.renderer.latex(this.token.text);
+    }
+    case 'line': {
+      return this.renderer.line(this.token.n);
     }
     case 'table': {
       var header = ''
