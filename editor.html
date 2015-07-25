@@ -14,14 +14,20 @@
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.9.3/lodash.min.js"></script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.6/highlight.min.js"></script>
 
-  <!-- CODEMIRROR RESOURCES -->
+  <!-- CODEMIRROR CSS -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/codemirror.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/theme/solarized.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/foldgutter.min.css" />
+
+  <!-- CODEMIRROR JS -->
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/codemirror.min.js"></script>
+  <!-- <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/mode/overlay.min.js"></script> -->
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/edit/continuelist.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/markdown-fold.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/foldcode.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/foldgutter.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/markdown-fold.js"></script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/xml/xml.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/markdown/markdown.min.js"></script>
+  <!-- <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/markdown/markdown.min.js"></script> -->
+  <!-- <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/gfm/gfm.min.js"></script> -->
 
   <!-- MATHJAX CONFIGURATION -->
   <script type="text/x-mathjax-config">
@@ -33,7 +39,39 @@
   </script>
 
   <!-- APPLICATION RESOURCES -->
+  <script type="text/javascript" src="marked.js"></script>
+  <script type="text/javascript" src="sample-markdown.js"></script>
   <script type="text/javascript" src="application.js"></script>
+  <style>
+    .CodeMirror {
+      border: 1px solid #eee;
+      height: 100vh;
+    }
+    span.linemarker {
+      background-color: yellow;
+    }
+  </style>
+
+  <!-- EDITOR STYLESHEET (adapted from CodeMirror elegant style)-->
+  <style>
+    span.cm-header {color:blue;}
+
+    .cm-s-elegant span.cm-number, .cm-s-elegant span.cm-string, .cm-s-elegant span.cm-atom {color: #762;}
+    .cm-s-elegant span.cm-comment {color: #262; font-style: italic; line-height: 1em;}
+    .cm-s-elegant span.cm-meta {color: #555; font-style: italic; line-height: 1em;}
+    .cm-s-elegant span.cm-variable {color: black;}
+    .cm-s-elegant span.cm-variable-2 {color: #b11;}
+    .cm-s-elegant span.cm-qualifier {color: #555;}
+    .cm-s-elegant span.cm-keyword {color: #730;}
+    .cm-s-elegant span.cm-builtin {color: #30a;}
+    .cm-s-elegant span.cm-link {color: #762;}
+    .cm-s-elegant span.cm-error {background-color: #fdd;}
+
+    .cm-s-elegant span.cm-tag {color: steelblue;}
+
+    .cm-s-elegant .CodeMirror-activeline-background {background: #e8f2ff !important;}
+    .cm-s-elegant .CodeMirror-matchingbracket {outline:1px solid grey; color:black !important;}
+  </style>
 </head>
 <body>
   <div class="container-fluid">
@@ -41,35 +79,10 @@
       <main id="content" class="col-md-6" role="main">
         <textarea id="editor"></textarea>
       </main>
-      <div id="viewer" class="col-md-6" role="complementary"></div>
+      <section id="viewer-container" class="col-md-6" style="overflow-y: scroll; height:100vh;" role="complementary">
+        <div id="viewer"></div>
+      </section>
     </div>
   </div>
-  <script>
-
-    // starter text for editor
-    $('textarea#editor').text("# Markdown Document #\n\n* Item 1\n* Item 2: \\\\(\\vec{blah}\\\\)\n\n$$\\vec{x}$$");
-
-    // convert textarea to CodeMirror editor
-    var cm = CodeMirror.fromTextArea($('#editor')[0], {
-      mode:        "markdown",
-      theme:       "solarized",
-      lineNumbers: true
-    });
-
-    // function to render markdown
-    var render = function(){
-
-      // capture any existing rendered latex
-      $('#viewer latex').each(function(){ captureLatex($(this)); });
-
-      // execute rendering
-      renderMarkdown(cm.getValue(),$('#viewer'));
-    }
-
-    // render starter text and re-render on text change
-    render();
-    cm.on('change', _.throttle(render, 1000)); // update at most once every second
-
-  </script>
 </body>
 </html>
