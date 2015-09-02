@@ -217,37 +217,191 @@
 });
 
 
-/////////////////////////////////////
-// REGEX HANDLING WORK IN PROGRESS //
-/////////////////////////////////////
+///////////////////////////////
+// REGEX PROCESSING FUNCTION //
+///////////////////////////////
 
-var regexCombine = function(){ // merge a list of regexes into a single regex
-  return new RegExp( _.map(arguments,function(x){return x.source}).join('') );
-}
-var regexReplace = function(r, obj){
-  var src = r.source;
-  _.each(obj, function(v,k){
-    src = src.replace(new RegExp(k,'g'), v.source);
-  });
-  return new RegExp(src);
-}
-var regexNonCapture = function(){
-  return new RegExp( '(?:' + _.map(arguments,function(x){return x.source}).join('') + ')');
-}
-var listRegex = regexReplace(regexCombine(
-  /^( *)/               ,// Initial space
-  /(bull) /             ,// Bullet character
-  /[\s\S]+?/            ,// Minimal multi-line wildcard
-  regexNonCapture(
-    /hr|def|\n{2,}/     ,//
-    /(?! )/             ,//
-    /(?!\1bull )/       ,//
-    /\n*|\s*$/           //
+// initialize a regex container with a function to merge a list of regexes
+// or strings into a single regex including token substituation
+var regex = {
+  Combine: function(){
+
+    // is a set of replacements specified in the last argument?
+    var lastArg = _.last(arguments);
+    var hasReplacements = _.isObject(lastArg) && !(lastArg instanceof RegExp);
+
+    // collection of regexes to combine (excluding replacements)
+    var args = hasReplacements ? _.dropRight(arguments) : arguments;
+
+    // combine inputs into a single regex
+    var out = new RegExp(
+      _.map(args,
+        function(x){ return x.source || x }
+      ).join('')
+    );
+
+    // replace tokens in the assembled regex using the lookup map
+    if (hasReplacements) {
+      out = out.source;
+      _.each(_.last(arguments), function(v,k){
+        out = out.replace(new RegExp(k,'g'), v.source||v);
+      });
+      out = new RegExp(out);
+    }
+
+    // return the assembled regex
+    return out;
+  }
+};
+
+
+////////// HYPERLINK REGEX //////////
+
+regex.link = regex.Combine(
+  /^!?/,         // optional !
+  /\[INSIDE\]/,  // link text in square brackets
+  /\(HREF\)/,    // link hyperlink in parentheses
+{
+  INSIDE: regex.Combine(
+    '((?:',               // capture zero or more ...
+        /\[/,             //   [
+          /[^\]]*/,       //     ... (not [)
+        /\]/,             //   ]
+      /|/,                // OR
+        /[^\[\]]/,        //   something other than [ or ]
+      /|/,                // OR
+        /\]/,             //   ]
+        /(?=[^\[]*\])/,   //   followed by ... (not [) and [
+    ')*)'
+  ),
+  HREF: regex.Combine(
+    /\s*/,            // optional padding whitespace
+    /<?/,             // optional <
+    /([\s\S]*?)/,     // captured href (minimal wildcard)
+    />?/,             // optional >
+    '(?:',            // optional non-captured link title ...
+      /\s+/,          //     whitespace padding
+      /['"]/,         //     opening quote (' or ")
+        /([\s\S]*?)/, //       captured text (minimal wildcard)
+      /['"]/,         //     closing quote (' or ")
+    ')?',             //
+    /\s*/             // optional padding whitespace
   )
-), {
-  bull:  /(?:[*+-]|\d+\.)/  // *, +, -, or xx. (non-capture)
+}
+);
+
+////////// DEFINITION REGEX //////////
+
+regex.def = regex.Combine(
+  /^ */,            //   leading whitespace
+  /\[/,             //   [
+    /([^\]]+)/,     //     capture one or more non-] character
+  /\]:/,            //   ]:
+  / */,             //   trailing whitespace
+  /<?/,             //   optional <
+    /([^\s>]+)/,    //     capture one or more non-space non-> characters
+  />?/,             //   optional >
+  '(?:',            //   optional non-capturing group
+    / +/,           //     leading whitespace
+    /["(]/,         //     " or (
+      /([^\n]+)/,   //       capture one or more non-newline characters
+    /[")]/,         //     " or )
+  ')?',             //   end of non-capturing group
+  / */,             //   trailing whitespace
+  /(?:\n+|$)/       //   positive lookahead for 1+ newline or end of string
+);
+
+////////// LIST REGEX //////////
+/*
+Regex starts with a bullet (possibly indented) and captures everything including
+newlines until one of the following:
+  1:  There is a horizontal rule on the next line (non-matching lookahead)
+  2:  There is a definition on the next line (non-matching lookahead)
+  3a: There are 2+ newlines not followed by a space
+  3b: There are 2+ newlines not followed by a bullet with captured indentation
+  4:  The string ends
+*/
+
+regex.list = regex.Combine(
+  /^( *)/,              // capture the bullet indentation level ($1)
+  /(BULLET)/,           // capture a bullet ($2)
+  / [\s\S]+?/,          // leading space and minimal multi-line wildcard
+  '(?:',                // followed by one of (non-captured)...
+      /\n+/,            //   newlines
+      /(?=HR)/,         //   followed by a horizontal rule (lookahead)
+    /|/,                // OR
+      /\n+/,            //   newlines
+      /(?=DEF)/,        //   followed by a definition (lookahead)
+    /|/,                // OR
+      /\n{2,}/,         //   2 or more newlines
+      /(?! )/,          //   not followed by a space
+      /(?!\1BULLET )/,  //   not followed by a bullet with the captured indentation level
+      /\n*/,            //   0 or more newlines
+    /|/,                // OR
+      /\s*$/,           //   trailing whitespace until the end of string
+  ')'
+,{ // Substitution definitions below
+  BULLET: /(?:[*+-]|\d+\.)/, // non-captured *, +, -, or xx.
+  DEF: regex.def.source.slice(1), // def w/o leading ^
+  HR: regex.Combine(
+      /\1?/,              // match previously captured indentation
+      /(?:[-*_] *){3,}/,  // 3 or more non-captured -, *, or _ w/ optional padding
+      /(?:\n+|$)/         // non-captured newlines or end of line
+  )
 });
-console.log(listRegex);
+
+
+////////// BOLD REGEX //////////
+
+regex.strong = regex.Combine(
+    /^__/,
+    /([\s\S]+?)/,
+    /__/,
+    /(?!_)/,
+  /|/,
+    /^\*\*/,
+    /([\s\S]+?)/,
+    /\*\*/,
+    /(?!\*)/
+)
+
+////////// ITALICS REGEX //////////
+
+regex.em = regex.Combine(
+  
+)
+
+
+////////// REGEX VALIDATION CHECKS //////////
+
+if(window.marked){
+  doValidate = function(rules) {
+    var result = {pass:[], fail:[], na:[]};
+    _.each(rules, function(v,k){
+      if (!regex[k]) {
+        result.na.push(k);
+      } else if (regex[k].source == v.source) {
+        result.pass.push(k);
+      } else {
+        result.fail.push(k);
+      }
+    });
+    _.each(_.sortBy(result.pass), function(x){ console.log("PASS: "+x) });
+    _.each(_.sortBy(result.fail), function(x){ console.log("FAIL: "+x) });
+    _.each(_.sortBy(result.na  ), function(x){ console.log("N/A: " +x) });
+  }
+  console.log("=== Validating block grammar ===");
+  doValidate(marked.Lexer.rules.tables);
+  console.log("=== Validating inline grammar ===");
+  doValidate(marked.InlineLexer.rules.gfm);
+}
+
+
+////////// BASIC REGEXES //////////
+
+var headerRegex = /^\s*#+.*/;
+var boldRegex1 = /^__([\s\S]+?)__(?!_)/
+var boldRegex2 = /^\*\*([\s\S]+?)\*\*(?!\*)/;
 
 
 ///////////////////////////////////////
@@ -267,6 +421,7 @@ console.log(listRegex);
 // Define a CodeMirror mode for markdown editor
 CodeMirror.defineSimpleMode("gfm", {
   start: [
+    { regex:/!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\(\s*<?([\s\S]*?)>?(?:\s+['"]([\s\S]*?)['"])?\s*\)/, token:['link','string']},
     { regex:/```/, token: 'comment', next:'code' },
     { regex:/   .+/, token:'comment', sol:true },
     { regex:/`.+`/, token:'comment'},
@@ -276,9 +431,8 @@ CodeMirror.defineSimpleMode("gfm", {
     { regex:/\*{2}.+?\*{2}/, token:'strong'},
     { regex:/\b_.+?_\b/, token:'em'},
     { regex:/\\\\\(.+?\\\\\)/, token:'error'},
-    { regex:/(=|\-)+/, token:'header', sol:true},
+    { regex:/(=|\-)+/, token:'header', sol:true}
 
-    { regex:/!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\(\s*<?([\s\S]*?)>?(?:\s+['"]([\s\S]*?)['"])?\s*\)/, token:['link','string']}
 
     //{ regex:/\b_(?:__|[\s\S])+?_\b/, token:'em' },
     //{ regex:/\b\*\*/, token:'strong', push:'strong' }
@@ -292,6 +446,193 @@ CodeMirror.defineSimpleMode("gfm", {
     { regex:/.*/, token:'string'}
   ]
 });
+
+// Define a CodeMirror mode for markdown editor
+CodeMirror.defineMode('gfm-expanded', function(){
+
+  // mode-scope variables go here
+
+  // list of inline tokens
+  var inlineTokens = [
+    [ /^\*\*/,      'strong',   /.*?\*\*(?!\*)/ ],
+    [ /^\\\\\(\s*/, 'error',    /.*?\s*\\\\\)/     ]
+  ];
+
+  // list of block tokens that don't delegate to inline grammar
+  var blockTokens = [
+    [ /^```/,       'comment',  /.*?```/           ]
+  ]
+
+  // list of blck tokens that do delegate to inline grammar
+  // (call to this.inline in Parser.prototype.tok)
+
+  /*
+  NOTES:
+  If there are multiple captured groups with non-captured content, need to use one of the
+  following approaches:
+  - search for substring matches
+  - add parentheses around the non-captured content with no associated styling
+  */
+
+  return {
+
+    // function to initialize mode state
+    startState: function(basecolumn) {
+      return {
+        inline: null,
+        queue: []
+      };
+    },
+
+    // function to copy current state
+    copyState: function(state) {
+      return {
+        inline: state.inline,
+        queue: state.queue.slice(0) // copy array
+      }
+    },
+
+    // function to process a regex match
+    processMatch: function(stream, state, matches, css) {
+      if (matches.length > 2 || matches[0] != matches[1]) { // regex output doesn't match token exactly
+        var str = matches[0];         // full string that matches the regex
+        var tok = matches.slice(1);   // captured tokens
+        while (str.length > 0) {
+          idx = str.indexOf(tok[0]);
+          if (idx > 0) {                // non-captured text at start of token
+            state.queue.push([ str.slice(0,idx), '' ]);
+            str = str.slice(idx);
+          } else if (tok.length == 0) { // non-captured text at end of token
+            state.queue.push([ str, '' ]);
+            str = '';
+          } else {                      // token starting at position 0
+            var n = (tok[0] || '').length;
+            state.queue.push([ tok.shift() || '', css.shift() ]);
+            str = str.slice(n);
+          }
+        }
+        stream.backUp(matches[0].length); // reverse match operation
+        return this.token(stream, state); // recurse to pop off first token
+      } else { // regex output is an exact match, so return css
+        return css;
+      }
+    },
+
+    // main token processing function
+    token: function(stream, state) {
+
+      // pop token off queue if non-empty
+      if (state.queue.length > 0) {
+        var pend = state.queue.shift();
+        if (pend[0].length > 0) {
+          stream.pos += pend[0].length;
+          return pend[1];
+        } else {
+          return this.token(stream,state);
+        }
+      }
+
+      // process data if in an inline mode
+      if (state.inline != null) {
+        if (stream.match(state.inline.term)) { // token ends on this line
+          var css = state.inline.css;
+          state.inline = null;
+          return css;
+        } else { // token extends beyond this line
+          stream.skipToEnd();
+          return state.inline.css;
+        }
+      }
+
+      // check list of inline tokens for a match
+      for (var i = 0; i < inlineTokens.length; i++) {
+        var tok = inlineTokens[i];
+        if (stream.match(tok[0])) {
+          state.inline = {term:tok[2], css:tok[1]};
+          return state.inline.css;
+        }
+      }
+
+      var matches; // placeholder for current match
+      if (matches = stream.match(/```/)) {
+        state.inlineToken = 'comment';
+        state.inlineTerm = /.*?```/;
+        return 'comment';
+      } else if (matches = stream.match(linkRegex)) {
+        return this.processMatch(stream, state, matches, ['link','variable-2','comment']); // link text, link href, link title
+      } else if (matches = stream.match(headerRegex)) {
+        return this.processMatch(stream, state, matches, 'header');
+      } else if (matches = stream.match(/^\*\*/)) {
+        state.inlineToken = 'strong';
+        state.inlineTerm = /.*?\*\*(?!\*)/;
+        return 'strong';
+      }
+
+      stream.next();
+      return null;
+
+      /*
+      if (state.pending) {
+        var pend = state.pending.shift();
+        if (state.pending.length == 0) state.pending = null;
+        stream.pos += pend.text.length;
+        return pend.token;
+      }
+
+      if (state.local) {
+        if (state.local.end && stream.match(state.local.end)) {
+          var tok = state.local.endToken || null;
+          state.local = state.localState = null;
+          return tok;
+        } else {
+          var tok = state.local.mode.token(stream, state.localState), m;
+          if (state.local.endScan && (m = state.local.endScan.exec(stream.current())))
+            stream.pos = stream.start + m.index;
+          return tok;
+        }
+      }
+
+      var curState = states[state.state];
+
+      for (var i = 0; i < curState.length; i++) {
+        var rule = curState[i];
+        var matches = (!rule.data.sol || stream.sol()) && stream.match(rule.regex);
+        if (matches) {
+          if (rule.data.next) {
+            state.state = rule.data.next;
+          } else if (rule.data.push) {
+            (state.stack || (state.stack = [])).push(state.state);
+            state.state = rule.data.push;
+          } else if (rule.data.pop && state.stack && state.stack.length) {
+            state.state = state.stack.pop();
+          }
+
+          if (rule.data.mode)
+            enterLocalMode(config, state, rule.data.mode, rule.token);
+          if (rule.data.indent)
+            state.indent.push(stream.indentation() + config.indentUnit);
+          if (rule.data.dedent)
+            state.indent.pop();
+          if (matches.length > 2) {
+            state.pending = [];
+            for (var j = 2; j < matches.length; j++)
+              if (matches[j])
+                state.pending.push({text: matches[j], token: rule.token[j - 1]});
+            stream.backUp(matches[0].length - (matches[1] ? matches[1].length : 0));
+            return rule.token[0];
+          } else if (rule.token && rule.token.join) {
+            return rule.token[0];
+          } else {
+            return rule.token;
+          }
+        }
+      }
+      stream.next();
+      return null;
+      */
+    }
+  }
+})
 
 
 ////////////////////////////
@@ -499,7 +840,7 @@ $(function(){
 
   // convert textarea to CodeMirror editor
   window.cm = CodeMirror.fromTextArea($('#editor')[0], {
-    mode:         "gfm",
+    mode:         "gfm-expanded",
     theme:        "elegant",
     lineNumbers:  true,
     lineWrapping: true,
