@@ -24,6 +24,13 @@
     body {
       position:relative; /*for scrollspy*/
       padding-top: 70px; /*to keep nav bar from overlapping*/
+    } /* Configure hyperlink offset for navbar jumps */
+    *[id]:before { 
+      display: block; 
+      content: " "; 
+      margin-top: -70px; 
+      height: 70px; 
+      visibility: hidden; 
     }
     main#content {
       padding-left:1em;
