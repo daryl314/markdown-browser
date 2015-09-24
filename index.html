@@ -163,7 +163,7 @@
       var toc = marked(
         $(':header').not('h1').map(function(){
           var level = parseInt($(this).prop("tagName").slice(1));
-          return Array(1+2*(level-1)).join(' ') + "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
+          return Array(1+2*(level-1)).join(' ') + "* ["+$(this).text()+"](#"+$(this).attr('id')+")";
         }).toArray().join('\n'));
 
       // fill TOC elements
