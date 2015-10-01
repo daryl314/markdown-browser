@@ -486,18 +486,6 @@ var regex = function(){
 
   ////////// PARAGRAPH REGEX //////////
 
-  // patch marked.js paragraph grammar
-  // AS DEFINED: only first \3 back reference is replaced with \1
-  // SHOULD BE: all \3 back references are replaced with \1
-  if(window.marked){
-    marked.Lexer.rules.tables.paragraph = new RegExp(
-      marked.Lexer.rules.tables.paragraph.source.replace(
-        regex.list.source.replace(/^\^/,'').replace(/\\1/ , '\\3'),
-        regex.list.source.replace(/^\^/,'').replace(/\\1/g, '\\3')
-      )
-    );
-  }
-
   // define paragraph regex
   regex.paragraph = regex.Combine(
     /^/,                  // anchor to start of string
@@ -874,6 +862,55 @@ var regex = function(){
   // REGEX VALIDATION CHECKS //
   /////////////////////////////
 
+  // block grammar from marked.js 0.3.3 (marked.Lexer.rules.tables)
+  var marked_block = {
+    blockquote: /^( *>[^\n]+(\n(?! *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))[^\n]+)*\n*)+/,
+    bullet: /(?:[*+-]|\d+\.)/,
+    code: /^( {4}[^\n]+\n*)+/,
+    def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)/,
+    fences: /^ *(`{3,}|~{3,})[ \.]*(\S+)? *\n([\s\S]+?)\s*\1 *(?:\n+|$)/,
+    heading: /^ *(#{1,6}) +([^\n]+?) *#* *(?:\n+|$)/,
+    hr: /^( *[-*_]){3,} *(?:\n+|$)/,
+    html: /^ *(?:<!--[\s\S]*?--> *(?:\n|\s*$)|<((?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b)[\s\S]+?<\/\1> *(?:\n{2,}|\s*$)|<(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b(?:"[^"]*"|'[^']*'|[^'">])*?> *(?:\n{2,}|\s*$))/,
+    item: /^( *)((?:[*+-]|\d+\.)) [^\n]*(?:\n(?!\1(?:[*+-]|\d+\.) )[^\n]*)*/gm,
+    latex: /^ *\$\$\s*([^]+?)\s*\$\$/,
+    lheading: /^([^\n]+)\n *(=|-){2,} *(?:\n+|$)/,
+    list: /^( *)((?:[*+-]|\d+\.)) [\s\S]+?(?:\n+(?=\1?(?:[-*_] *){3,}(?:\n+|$))|\n+(?= *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))|\n{2,}(?! )(?!\1(?:[*+-]|\d+\.) )\n*|\s*$)/,
+    newline: /^\n+/,
+    nptable: /^ *(\S.*\|.*)\n *([-:]+ *\|[-| :]*)\n((?:.*\|.*(?:\n|$))*)\n*/,
+    paragraph: /^((?:[^\n]+\n?(?! *(`{3,}|~{3,})[ \.]*(\S+)? *\n([\s\S]+?)\s*\2 *(?:\n+|$)|( *)((?:[*+-]|\d+\.)) [\s\S]+?(?:\n+(?=\3?(?:[-*_] *){3,}(?:\n+|$))|\n+(?= *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))|\n{2,}(?! )(?!\1(?:[*+-]|\d+\.) )\n*|\s*$)|( *[-*_]){3,} *(?:\n+|$)| *(#{1,6}) *([^\n]+?) *#* *(?:\n+|$)|([^\n]+)\n *(=|-){2,} *(?:\n+|$)|( *>[^\n]+(\n(?! *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))[^\n]+)*\n*)+|<(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b| *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)))+)\n*/,
+    table: /^ *\|(.+)\n *\|( *[-:]+[-| :]*)\n((?: *\|.*(?:\n|$))*)\n*/,
+    text: /^[^\n]+/
+  };
+
+  // inline grammar from marked.js 0.3.3 (marked.InlineLexer.rules.gfm)
+  var marked_inline = {
+    autolink: /^<([^ >]+(@|:\/)[^ >]+)>/,
+    br: /^ {2,}\n(?!\s*$)/,
+    code: /^(`+)\s*([\s\S]*?[^`])\s*\1(?!`)/,
+    del: /^~~(?=\S)([\s\S]*?\S)~~/,
+    em: /^\b_((?:__|[\s\S])+?)_\b|^\*((?:\*\*|[\s\S])+?)\*(?!\*)/,
+    escape: /^\\([\\`*{}\[\]()#+\-.!_>~|])/,
+    latex: /^\\\\\(\s*([^]+?)\s*\\\\\)/,
+    link: /^!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\(\s*<?([\s\S]*?)>?(?:\s+['"]([\s\S]*?)['"])?\s*\)/,
+    nolink: /^!?\[((?:\[[^\]]*\]|[^\[\]])*)\]/,
+    reflink: /^!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\s*\[([^\]]*)\]/,
+    strong: /^__([\s\S]+?)__(?!_)|^\*\*([\s\S]+?)\*\*(?!\*)/,
+    tag: /^<!--[\s\S]*?-->|^<\/?\w+(?:"[^"]*"|'[^']*'|[^'">])*?>/,
+    text: /^[\s\S]+?(?=[\\<!\[_*`~]|https?:\/\/| {2,}\n|$)/,
+    url: /^(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/
+  };
+
+  // patch marked.js paragraph grammar
+  // AS DEFINED: only first \3 back reference is replaced with \1
+  // SHOULD BE: all \3 back references are replaced with \1
+  marked_block.paragraph = new RegExp(
+    marked_block.paragraph.source.replace(
+      regex.list.source.replace(/^\^/,'').replace(/\\1/ , '\\3'),
+      regex.list.source.replace(/^\^/,'').replace(/\\1/g, '\\3')
+    )
+  );
+
   // return the character where two strings stop matching
   var matchesThrough = function(a,b){
     var len = Math.min(a.length, b.length);
@@ -882,33 +919,32 @@ var regex = function(){
     return i - 1;
   }
 
-  if(window.marked){
-    doValidate = function(rules, prefix) {
-      var result = {pass:[], fail:[], na:[]};
-      _.each(rules, function(v,k){
-        if (k[0] == '_'){ return; }
-        k = regex[prefix+k] ? prefix+k : k;
-        if (!regex[k]) {
-          result.na.push(["NA: "+k]);
-        } else if (regex[k].source == v.source) {
-          result.pass.push(["PASS: "+k]);
-        } else {
-          var a = regex[k].source, b = v.source, idx = matchesThrough(a,b);
-          result.fail.push(["FAIL: " + k + "\n" +
-            "%c   APP: " + a.slice(0,idx) + "%c" + a.slice(idx) + "\n" +
-            "%cMARKED: " + b.slice(0,idx) + "%c" + b.slice(idx),
-            'color:black', 'color:red', 'color:black', 'color:red']);
-        }
-      });
-      _.each(_.sortBy(result.pass), function(x){ console.log.apply(console, x) });
-      _.each(_.sortBy(result.fail), function(x){ console.log.apply(console, x) });
-      _.each(_.sortBy(result.na  ), function(x){ console.log.apply(console, x) });
-    }
-    console.log("=== Validating block grammar ===");
-    doValidate(marked.Lexer.rules.tables, 'b_');
-    console.log("=== Validating inline grammar ===");
-    doValidate(marked.InlineLexer.rules.gfm, 'i_');
+  // run validation checks
+  var doValidate = function(rules, prefix) {
+    var result = {pass:[], fail:[], na:[]};
+    _.each(rules, function(v,k){
+      if (k[0] == '_'){ return; }
+      k = regex[prefix+k] ? prefix+k : k;
+      if (!regex[k]) {
+        result.na.push(["NA: "+k]);
+      } else if (regex[k].source == v.source) {
+        result.pass.push(["PASS: "+k]);
+      } else {
+        var a = regex[k].source, b = v.source, idx = matchesThrough(a,b);
+        result.fail.push(["FAIL: " + k + "\n" +
+          "%c   APP: " + a.slice(0,idx) + "%c" + a.slice(idx) + "\n" +
+          "%cMARKED: " + b.slice(0,idx) + "%c" + b.slice(idx),
+          'color:black', 'color:red', 'color:black', 'color:red']);
+      }
+    });
+    _.each(_.sortBy(result.pass), function(x){ console.log.apply(console, x) });
+    _.each(_.sortBy(result.fail), function(x){ console.log.apply(console, x) });
+    _.each(_.sortBy(result.na  ), function(x){ console.log.apply(console, x) });
   }
+  console.log("=== Validating block grammar ===");
+  doValidate(marked_block, 'b_');
+  console.log("=== Validating inline grammar ===");
+  doValidate(marked_inline, 'i_');
 
   ////////// RETURN REGEX GRAMMAR //////////
   return regex;
