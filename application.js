@@ -1111,7 +1111,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
         state.inlineToken = 'comment';
         state.inlineTerm = /.*?```/;
         return 'comment';
-      } else if (matches = stream.match(linkRegex)) {
+      } else if (matches = stream.match(regex.link)) {
         return this.processMatch(stream, state, matches, ['link','variable-2','comment']); // link text, link href, link title
       } else if (matches = stream.match(headerRegex)) {
         return this.processMatch(stream, state, matches, 'header');
