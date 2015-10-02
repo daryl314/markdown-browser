@@ -476,7 +476,7 @@ var regex = function(){
     /[ \.]*/,         // zero or more space or . characters
     /(\S+)?/,         // capture optional sequence of non-whitespace characters
     / *\n/,           // optional whitespace followed by a newline
-    /([\s\S]+?)/,     // minimal multi-line capture
+    /([\s\S]*?)/,     // minimal multi-line capture
     /\s*/,            // optional whitespace
     /\1/,             // match captured opening fences
     / */,             // optional whitespace
@@ -712,9 +712,9 @@ var regex = function(){
       /\b_/,            // word boundary followed by _
       '(',              // captured text
         '(?:',          //   one or more (minimal) ...
-            /__/,       //       __ (double underscore)
+            /[^_]/,     //       non-underscore character
           /|/,          //     OR
-            /[\s\S]/,   //       minimal multi-line wildcard
+            /__/,       //       double underscore
         ')+?',          //   end grouping
       ')',              // end captured text
       /_\b/             // _ followed by word bounary
@@ -862,36 +862,34 @@ var regex = function(){
   // REGEX VALIDATION CHECKS //
   /////////////////////////////
 
-  // block grammar from marked.js 0.3.3 (marked.Lexer.rules.tables)
+  // block grammar from marked.js 0.3.5 (marked.Lexer.rules.tables)
   var marked_block = {
     blockquote: /^( *>[^\n]+(\n(?! *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))[^\n]+)*\n*)+/,
     bullet: /(?:[*+-]|\d+\.)/,
     code: /^( {4}[^\n]+\n*)+/,
     def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)/,
-    fences: /^ *(`{3,}|~{3,})[ \.]*(\S+)? *\n([\s\S]+?)\s*\1 *(?:\n+|$)/,
+    fences: /^ *(`{3,}|~{3,})[ \.]*(\S+)? *\n([\s\S]*?)\s*\1 *(?:\n+|$)/,
     heading: /^ *(#{1,6}) +([^\n]+?) *#* *(?:\n+|$)/,
     hr: /^( *[-*_]){3,} *(?:\n+|$)/,
     html: /^ *(?:<!--[\s\S]*?--> *(?:\n|\s*$)|<((?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b)[\s\S]+?<\/\1> *(?:\n{2,}|\s*$)|<(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b(?:"[^"]*"|'[^']*'|[^'">])*?> *(?:\n{2,}|\s*$))/,
     item: /^( *)((?:[*+-]|\d+\.)) [^\n]*(?:\n(?!\1(?:[*+-]|\d+\.) )[^\n]*)*/gm,
-    latex: /^ *\$\$\s*([^]+?)\s*\$\$/,
     lheading: /^([^\n]+)\n *(=|-){2,} *(?:\n+|$)/,
     list: /^( *)((?:[*+-]|\d+\.)) [\s\S]+?(?:\n+(?=\1?(?:[-*_] *){3,}(?:\n+|$))|\n+(?= *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))|\n{2,}(?! )(?!\1(?:[*+-]|\d+\.) )\n*|\s*$)/,
     newline: /^\n+/,
     nptable: /^ *(\S.*\|.*)\n *([-:]+ *\|[-| :]*)\n((?:.*\|.*(?:\n|$))*)\n*/,
-    paragraph: /^((?:[^\n]+\n?(?! *(`{3,}|~{3,})[ \.]*(\S+)? *\n([\s\S]+?)\s*\2 *(?:\n+|$)|( *)((?:[*+-]|\d+\.)) [\s\S]+?(?:\n+(?=\3?(?:[-*_] *){3,}(?:\n+|$))|\n+(?= *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))|\n{2,}(?! )(?!\1(?:[*+-]|\d+\.) )\n*|\s*$)|( *[-*_]){3,} *(?:\n+|$)| *(#{1,6}) *([^\n]+?) *#* *(?:\n+|$)|([^\n]+)\n *(=|-){2,} *(?:\n+|$)|( *>[^\n]+(\n(?! *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))[^\n]+)*\n*)+|<(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b| *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)))+)\n*/,
+    paragraph: /^((?:[^\n]+\n?(?! *(`{3,}|~{3,})[ \.]*(\S+)? *\n([\s\S]*?)\s*\2 *(?:\n+|$)|( *)((?:[*+-]|\d+\.)) [\s\S]+?(?:\n+(?=\3?(?:[-*_] *){3,}(?:\n+|$))|\n+(?= *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))|\n{2,}(?! )(?!\1(?:[*+-]|\d+\.) )\n*|\s*$)|( *[-*_]){3,} *(?:\n+|$)| *(#{1,6}) *([^\n]+?) *#* *(?:\n+|$)|([^\n]+)\n *(=|-){2,} *(?:\n+|$)|( *>[^\n]+(\n(?! *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))[^\n]+)*\n*)+|<(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b| *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)))+)\n*/,
     table: /^ *\|(.+)\n *\|( *[-:]+[-| :]*)\n((?: *\|.*(?:\n|$))*)\n*/,
     text: /^[^\n]+/
   };
 
-  // inline grammar from marked.js 0.3.3 (marked.InlineLexer.rules.gfm)
+  // inline grammar from marked.js 0.3.5 (marked.InlineLexer.rules.gfm)
   var marked_inline = {
     autolink: /^<([^ >]+(@|:\/)[^ >]+)>/,
     br: /^ {2,}\n(?!\s*$)/,
     code: /^(`+)\s*([\s\S]*?[^`])\s*\1(?!`)/,
     del: /^~~(?=\S)([\s\S]*?\S)~~/,
-    em: /^\b_((?:__|[\s\S])+?)_\b|^\*((?:\*\*|[\s\S])+?)\*(?!\*)/,
+    em: /^\b_((?:[^_]|__)+?)_\b|^\*((?:\*\*|[\s\S])+?)\*(?!\*)/,
     escape: /^\\([\\`*{}\[\]()#+\-.!_>~|])/,
-    latex: /^\\\\\(\s*([^]+?)\s*\\\\\)/,
     link: /^!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\(\s*<?([\s\S]*?)>?(?:\s+['"]([\s\S]*?)['"])?\s*\)/,
     nolink: /^!?\[((?:\[[^\]]*\]|[^\[\]])*)\]/,
     reflink: /^!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\s*\[([^\]]*)\]/,
