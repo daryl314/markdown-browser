@@ -216,9 +216,14 @@
   }
 });
 
-//////////////////////////
-// DEFINE REGEX GRAMMAR //
-//////////////////////////
+
+//////////////////////////////
+//////////////////////////////
+////                      ////
+//// DEFINE REGEX GRAMMAR ////
+////                      ////
+//////////////////////////////
+//////////////////////////////
 
 var regex = function(){
 
@@ -350,6 +355,7 @@ var regex = function(){
   ,{ // Substitution definitions below
     BULLET: /(?:[*+-]|\d+\.)/, // non-captured *, +, -, or xx.
   });
+  regex.item = new RegExp(regex.item.source, 'gm');
 
 
   ////////// BLOCKQUOTE REGEX //////////
@@ -923,10 +929,18 @@ var regex = function(){
     _.each(rules, function(v,k){
       if (k[0] == '_'){ return; }
       k = regex[prefix+k] ? prefix+k : k;
+      var sourceMatch = regex[k].source == v.source;
+      var attrMatch =   regex[k].global     == v.global
+                    &&  regex[k].ignoreCase == v.ignoreCase
+                    &&  regex[k].multiline  == v.multiline
       if (!regex[k]) {
         result.na.push(["NA: "+k]);
-      } else if (regex[k].source == v.source) {
+      } else if (sourceMatch && attrMatch) {
         result.pass.push(["PASS: "+k]);
+      } else if (sourceMatch && !attrMatch) {
+        result.fail.push(["FAIL: " + k + "\n" +
+          "   APP: " + regex[k] + "\n" +
+          "MARKED: " + v ]);
       } else {
         var a = regex[k].source, b = v.source, idx = matchesThrough(a,b);
         result.fail.push(["FAIL: " + k + "\n" +
@@ -953,6 +967,274 @@ var regex = function(){
 var headerRegex = /^\s*#+.*/;
 var boldRegex1 = /^__([\s\S]+?)__(?!_)/
 var boldRegex2 = /^\*\*([\s\S]+?)\*\*(?!\*)/;
+
+
+/////////////////////////////
+/////////////////////////////
+////                     ////
+//// MARKDOWN CONVERSION ////
+////                     ////
+/////////////////////////////
+/////////////////////////////
+
+var mdToHTML = function(src, regex) {
+
+  // preprosess source string by replacing blank lines with ''
+  src = src.replace(/^ +$/gm, '')
+
+  // initialize list of tokens
+  var tok = [];
+  tok.state = { isList:false, isBlockQuote:false };
+
+  ///////////
+  // LEXER //
+  ///////////
+
+
+  ////////// HANDLER FUNCTION FOR MARKDOWN TABLES //////////
+
+  var processTable = function(t) {
+
+    // split up table components
+    t.header = t.header.replace(/^ *| *\| *$/g, '').split(/ *\| */);
+    t.align = t.align.replace(/^ *|\| *$/g, '').split(/ *\| */);
+    //if (t.type == 'nptable'){
+    //  t.cells = t.cells.replace(/\n$/, '').split('\n');
+    //} else {
+      t.cells = t.cells.replace(/(?: *\| *)?\n$/, '').split('\n');
+    //}
+
+    // process column alignment
+    for (i = 0; i < t.align.length; i++) {
+      if      (/^ *-+: *$/ .test(t.align[i])) { t.align[i] = 'right';  }
+      else if (/^ *:-+: *$/.test(t.align[i])) { t.align[i] = 'center'; }
+      else if (/^ *:-+ *$/ .test(t.align[i])) { t.align[i] = 'left';   }
+      else                                    { t.align[i] = null;     }
+    }
+
+    // split rows into individual cells
+//    if (t.type == 'nptable') {
+//      for (i = 0; i < item.cells.length; i++) {
+//        item.cells[i] = item.cells[i].split(/ *\| */);
+//      }
+//    } else {
+      for (i = 0; i < item.cells.length; i++) {
+        item.cells[i] = item.cells[i]
+          .replace(/^ *\| *| *\| *$/g, '')
+          .split(/ *\| */);
+      }
+//    }
+
+  };
+
+
+  ////////// HANDLER FUNCTION FOR MARKDOWN BLOCKQUOTES //////////
+
+  var processBlockQuote = function(t) {
+
+    // remove captured token
+    tok.pop();
+
+    // add a blockquote start token
+    tok.push({ type: 'blockquote_start' });
+
+    // change processing state
+    var oldState = tok.state;
+    tok.state.isBlockQuote = true;
+
+    // recursively process captured text without leading blockquote markup
+    tokenize(t.replace(/^ *> ?/gm, ''));
+
+    // add a blockquote end token
+    tok.push({ type: 'blockquote_end' });
+
+    // restore processing state
+    tok.state = oldState;
+  };
+
+
+  ////////// HANDLER FUNCTION FOR MARKDOWN LISTS //////////
+
+  var processList = function(t) {
+
+    // remove captured token
+    tok.pop();
+
+    // add a token to indicate start of list
+    tok.push({
+      type: 'list_start',
+      ordered: t.bull.length > 1 // is this an ordered list?
+    });
+
+    // capture top-level items
+    var cap = t.cap.match(regex.item);
+
+    // iterate over captured items
+    var previousNewline = false;
+    for (var i = 0; i < cap.length; i++) {
+      var item = cap[i];
+
+      // remove bullet from current item for recursive processing
+      var matchLength = item.match(/^ *([*+-]|\d+\.) +/)[0].length;
+      item = item.slice(matchLength); // slice off bullet
+
+      // if there are multiple lines in the item, remove leading spaces up to
+      // the first row indentation level on other lines
+      item = item.replace(new RegExp('^ {1,' + matchLength + '}', 'gm'), '');
+
+      // this is a loose item if the previous item ended in a newline or...
+      // item has a double newline not followed by whitespace to the end of it
+      var loose = previousNewline ||
+        /\n\n(?!\s*$)/.test(item); // double newline not followed by whitespace to end of item
+
+      // if this isn't the last item...
+      //   * remember if this item ended in a newline
+      //   * this is a loose item if it ends in a newline and isn't already loose
+      if (i !== cap.length - 1) {
+        previousNewline = /\n$/.test(item);
+        if (!loose) loose = previousNewline;
+      }
+
+      // push token to start list item
+      tok.push({ type: loose?'loose_item_start':'list_item_start'});
+
+      // recursively process list item and close out token
+      var oldState = tok.state;             // save current state
+      tok.state.isList = true;              // in list processing state
+      tokenize(item);                       // process item
+      tok.state = oldState;                 // restore state
+      tok.push({ type: 'list_item_end' });  // close token (end list item)
+    }
+
+    // add token to indicate end of list
+    tok.push({ type: 'list_end' });
+  };
+
+
+  ////////// BLOCK GRAMMAR RULE SEQUENCES //////////
+
+  // block grammar rules
+  var block_rules = {
+    b_code: {
+      handler: function(x){ x.text = x.cap.replace(/\n+$/, ''); } // trim trailing newlines
+    }, fences: {
+      tokens: ['lang', 'text'],
+      handler: function(x){ x.text = x.text || ''; } // use empty string for text if undefined
+    }, heading: {
+      tokens: ['depth', 'text'],
+      handler: function(x){ x.depth = x.depth.length; } // convert captured depth to a number
+    }, nptable: {
+      tokens: ['header', 'align', 'cells'],
+      handler: processTable
+    }, lheading: {
+      tokens: ['text', 'depth'],
+      handler: function(x){ x.depth = x.depth === '=' ? 1 : 2; } // depth of 1 for =, 2 for -
+    }, hr: {
+      // don't do special processing for HR
+    }, blockquote: {
+      handler: processBlockQuote
+    }, list: {
+      tokens: ['', 'bull'],
+      handler: processList
+    }, html: {
+      tokens: ['pre'],
+      handler: function(x){ x.pre  = x.pre === 'pre' || x.pre === 'script' || x.pre === 'style'; }
+    }, def: {
+      tokens: ['link', 'href', 'title'],
+      handler: function(x){ tok.links[x.link.toLowerCase()] = { href:x.href, title:x.title }; }
+    }, table: {
+      handler: processTable
+    }, paragraph: {
+      tokens: ['text'],
+      handler: function(x){ x.text = x.text.replace(/\n$/,''); } // trim trailing newline
+    }, b_text: {
+      handler: function(x){ x.text = x.cap; } // assign entire captured string
+    }
+  };
+
+  // block grammar rule sequence for default mode
+  var block_sequence = [
+    'b_code','fences','heading','nptable','lheading','hr','blockquote',
+    'list','html','def','table','paragraph'
+  ];
+
+  // block grammar rule sequence for list (or list and blockquote) state
+  var block_sequence_list = _.chain(block_sequence)
+    .without('nptable').without('def').without('table').without('paragraph')
+    .concat('b_text')
+    .value()
+
+  // block grammar rule sequence for blockquote-only state
+  var block_sequence_bq = _.without(block_sequence, 'def');
+
+
+  ////////// FUNCTION TO TOKENIZE WITH BLOCK GRAMMAR //////////
+
+  var tokenize = function(src) {
+
+    // define variables for use in function
+    var cap, rules;
+
+    // function to try processing a rule
+    var processToken = function(src, rule, names) {
+      var cap = regex[rule].exec(src);  // try to match rule
+      if (cap) {                        // if rule matches...
+        names = names || [];  // default to empty list of token names
+        var myTok = {         // initialize output token...
+          type: rule,         //   rule name that matched
+          cap:  cap[0],       //   matching text
+          n:    cap[0].length //   number of characters matched
+        };
+        for (var i = 0; i < names.length; i++){ // iterate over named fields
+          if (names[i] != '') {
+            myTok[names[i]] = cap[i+1]; // assign token to named fields
+          }
+        }
+        tok.push(myTok); // push token to stack
+        return myTok;    // return a reference to the current token
+      } else {
+        return false; // return false if the rule didn't match
+      }
+    };
+
+    // consume markdown in source string and convert to tokens
+    eat_tokens: while (src) {
+
+      // determine list of block rules to use
+      if (tok.state.isList) {
+        rules = block_sequence_list;
+      } else if (tok.state.isBlockQuote) {
+        rules = block_sequence_bq;
+      } else {
+        rules = block_sequence;
+      }
+
+      // process leading newlines
+      // ignore singles and push a newline token for more than one
+      if (cap = processToken(src, 'newline')) {
+        if (cap.n == 1) {
+          tok.pop();
+        }
+      }
+
+      // run through list of regex rules
+      for (var i = 0; i < rules.length; i++) {
+        var r = rules[i], rule = block_rules[r];
+        if (cap = processToken(src, r, rule.tokens)) {
+          if (rule.handler) { rule.handler(cap); } // excecute callback
+          src = src.substring(cap.n); // remove captured text from string
+          continue eat_tokens; // continue consumption while loop
+        }
+      }
+
+      // throw an error if none of the rules matched
+      throw new Error('Failed to match a markdown rule: ' + src.charCodeAt(0));
+    }
+  }
+
+  var tok = tokenize(src);
+
+}
 
 
 ///////////////////////////////////////
