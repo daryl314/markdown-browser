@@ -1043,7 +1043,7 @@ var mdToHTML = function(src, regex) {
     tok.state.isBlockQuote = true;
 
     // recursively process captured text without leading blockquote markup
-    tokenize(t.replace(/^ *> ?/gm, ''));
+    tokenize(t.cap.replace(/^ *> ?/gm, ''));
 
     // add a blockquote end token
     tok.push({ type: 'blockquote_end' });
@@ -1210,11 +1210,9 @@ var mdToHTML = function(src, regex) {
       }
 
       // process leading newlines
-      // ignore singles and push a newline token for more than one
       if (cap = processToken(src, 'newline')) {
-        if (cap.n == 1) {
-          tok.pop();
-        }
+        if (cap.n == 1) tok.pop();  // ignore single newlines
+        src = src.substring(cap.n); // removed captured newline(s)
       }
 
       // run through list of regex rules
@@ -1228,11 +1226,14 @@ var mdToHTML = function(src, regex) {
       }
 
       // throw an error if none of the rules matched
-      throw new Error('Failed to match a markdown rule: ' + src.charCodeAt(0));
+      if (src) { // nothing matched and a string remains
+        throw new Error('Failed to match a markdown rule: ' + src.charCodeAt(0));
+      }
     }
   }
 
-  var tok = tokenize(src);
+  // convert source string to block grammar tokens
+  tokenize(src);
 
 }
 
