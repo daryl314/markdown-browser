@@ -299,6 +299,8 @@ var regex = function(){
     / */,             //   trailing whitespace
     /(?:\n+|$)/       //   positive lookahead for 1+ newline or end of string
   );
+  regex.def.tokens = ['link', 'href', 'title'];
+
 
   ////////// LIST REGEX //////////
   /*
@@ -339,6 +341,7 @@ var regex = function(){
         /(?:\n+|$)/             // non-captured newlines or end of line
     )
   });
+  regex.list.tokens = ['indent', 'bull'];
 
   // regex to capture all the individual list items in a captured list
   // g: global match
@@ -432,6 +435,8 @@ var regex = function(){
       />/                   // closing >
     )
   });
+  regex.html.tokens = ['pre'];
+
 
   ////////// HR REGEX //////////
 
@@ -459,6 +464,7 @@ var regex = function(){
     / */,         // zero or more spaces
     /(?:\n+|$)/   // non-captured newlines or end of line
   );
+  regex.heading.tokens = ['depth', 'text'];
 
 
   ////////// LHEADING REGEX //////////
@@ -472,6 +478,7 @@ var regex = function(){
     / */,         // zero or more spaces
     /(?:\n+|$)/   // non-captured newlines or end of line
   );
+  regex.lheading.tokens = ['depth', 'text'];
 
 
   ////////// FENCED CODE REGEX //////////
@@ -488,6 +495,7 @@ var regex = function(){
     / */,             // optional whitespace
     /(?:\n+|$)/       // non-captured newlines or end of line
   );
+  regex.fences.tokens = ['lang', 'text'];
 
 
   ////////// PARAGRAPH REGEX //////////
@@ -522,6 +530,7 @@ var regex = function(){
     TAG:        regex.Combine('<',regex_tag), // <TAG
     DEF:        regex.def
   });
+  regex.paragraph.tokens = ['text'];
 
 
   ////////// BULLET REGEX //////////
@@ -594,6 +603,7 @@ var regex = function(){
     ')',            // end capture
     /\n*/           // zero or more newlines
   );
+  regex.nptable.tokens = ['header', 'align', 'cells'];
 
   // table (table with pipes bracketing rows)
   regex.table = regex.Combine(
@@ -619,6 +629,7 @@ var regex = function(){
     ')',              // end capture
     /\n*/             // zero or more newlines
   );
+  regex.table.tokens = ['header', 'align', 'cells'];
 
 
   ////////// BLOCK TEXT REGEX //////////
@@ -649,7 +660,7 @@ var regex = function(){
 
   // regex for a hyperlink
   regex.link = regex.Combine(
-    /^!?/,         // optional !
+    /^!?/,         // optional ! (for an image)
     /\[INSIDE\]/,  // link text in square brackets
     /\(HREF\)/,    // link hyperlink in parentheses
   {
@@ -668,10 +679,11 @@ var regex = function(){
       /\s*/             // optional padding whitespace
     )
   });
+  regex.link.tokens = ['text','href','title'];
 
   // reflink regex (what is this??)
   regex.reflink = regex.Combine(
-    /^!?/,        // optional leading !
+    /^!?/,        // optional leading ! (for an image)
     /\[INSIDE\]/, // link text in square brackets
     /\s*/,        // optional whitespace
     /\[/,         // opening [
@@ -680,10 +692,11 @@ var regex = function(){
   { // replacement definition
     INSIDE: regex_inside
   });
+  regex.reflink.tokens = ['text', 'href'];
 
   // nolink regex (what is this??)
   regex.nolink = regex.Combine(
-    /^!?/,        // optional leading !
+    /^!?/,        // optional leading ! (for an image)
     /\[INSIDE\]/, // link text in square brackets
   { // replace with modified regex_inside
     INSIDE: regex_inside.source
@@ -692,6 +705,7 @@ var regex = function(){
       .join('|')      // undo split
       .concat(')*)')  // close out regex_inside
   });
+  regex.nolink.tokens = ['text', 'href'];
 
 
   ////////// BOLD REGEX //////////
@@ -707,6 +721,7 @@ var regex = function(){
       /\*\*/,       //   **
       /(?!\*)/      //   not followed by another *
   )
+  regex.strong.tags = ['Option1','Option2'];
 
 
   ////////// ITALICS REGEX //////////
@@ -737,7 +752,8 @@ var regex = function(){
       /\*/,             // *
       /(?!\*)/          // not followed by another *
     )
-  })
+  });
+  regex.em.tags = ['Option1','Option2'];
 
   ////////// STRIKETHROUGH REGEX //////////
 
@@ -750,6 +766,7 @@ var regex = function(){
     ')',          // end capture
     /~~/          // closing ~~
   );
+  regex.del.tags = ['text'];
 
   ////////// AUTOLINK REGEX //////////
 
@@ -762,6 +779,7 @@ var regex = function(){
     ')',          // end capture
     />/           // >
   );
+  regex.autolink.tokens = ['link','type'];
 
 
   ////////// BREAK REGEX //////////
@@ -799,6 +817,7 @@ var regex = function(){
       /[\\`*{}\[\]()#+\-.!_>~|]/, //   one of: \`*{}[]()#+-.!_>~|
     ')'                           // end capture
   );
+  regex.escape.tokens = ['text'];
 
 
   ////////// INLINE LATEX REGEX //////////
@@ -834,6 +853,7 @@ var regex = function(){
       ')*?',          //   end non-capturing group
       />/             //   >
   );
+  regex.tag.tokens = ['text'];
 
 
   ////////// INLINE TEXT REGEX //////////
@@ -854,6 +874,7 @@ var regex = function(){
 
 
   ////////// URL REGEX //////////
+
   regex.url = regex.Combine(
     /^/,                  // anchor to start of string
     '(',                  // capture ...
@@ -862,6 +883,7 @@ var regex = function(){
       /[^<.,:;"')\]\s]/,  //    something other than whitespace or <.,:;"')]
     ')'                   // end capture
   );
+  regex.url.tokens = ['link'];
 
 
   /////////////////////////////
@@ -924,7 +946,7 @@ var regex = function(){
   }
 
   // run validation checks
-  var doValidate = function(rules, prefix) {
+  function doValidate(rules, prefix) {
     var result = {pass:[], fail:[], na:[]};
     _.each(rules, function(v,k){
       if (k[0] == '_'){ return; }
@@ -977,23 +999,115 @@ var boldRegex2 = /^\*\*([\s\S]+?)\*\*(?!\*)/;
 /////////////////////////////
 /////////////////////////////
 
-var mdToHTML = function(src, regex) {
+function mdToHTML(src, regex) {
 
   // preprosess source string by replacing blank lines with ''
   src = src.replace(/^ +$/gm, '')
 
   // initialize list of tokens
   var tok = [];
-  tok.state = { isList:false, isBlockQuote:false };
+  tok.state = {
+    isList:       false,
+    isBlockQuote: false,
+    inLink:       false
+  };
 
-  ///////////
-  // LEXER //
-  ///////////
+
+  //////////////////
+  // INLINE LEXER //
+  //////////////////
+
+  // mangle mailto links (taken from marked.js)
+  function mangle(text) {
+    var out = ''
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charCodeAt(i);
+      if (Math.random() > 0.5) {
+        ch = 'x' + ch.toString(16);
+      }
+      out += '&#' + ch + ';';
+    }
+    return out;
+  };
+
+
+  ////////// HANDLER FUNCTIONS //////////
+
+  inlineHandler = {
+    autolink: function(x){
+      if (x.type === '@') { // email address
+        var email = x.link.replace(/^mailto:/,'');
+        x.text = mangle(email);
+        x.href = mangle('mailto:' + email);
+      } else { // url
+        x.text = escape(x.link);
+        x.href = x.link;
+      }
+    },
+    url: function(x){
+      x.text = escape(x.link);
+      x.href = escape(x.link);
+    },
+    tag: function(x){
+      // toggle inLink state if this is an opening or closing anchor tag
+      if      (  /^<a /i.test(x.cap)) tok.state.inLink = true;
+      else if (/^<\/a /i.test(x.cap)) tok.state.inLink = false;
+    },
+    link: function(x){
+      x.href = escape(x.href);
+      x.title = x.title ? escape(x.title) : null;
+      x.text = x.cap;
+      if (/^!/.test(x.cap)) {
+        x.type = 'image';
+      } else {
+        x.text = this.inlineLexer(x.text, {inLink:true});
+      }
+    }
+    reflink: function(x){
+      var linkLookup = (x.href || x.text).replace(/\s+/g, ' ').toLowerCase();
+      if (!this.links[linkLookup] || !this.links[linkLookup].href){
+        this.tok.pop(); // reverse token if link is undefined
+        this.tok.push({ type:'text', text:x.cap[0] });
+        this.src = x.cap.slice(1);
+      } else {
+        this.link(x);
+      }
+    },
+    nolink: function(x){
+      this.reflink(x);
+    },
+    strong: function(x){
+      x.text = x.Option1 || x.Option2 },
+    em: function(x){
+      x.text = x.Option1 || x.Option2 },
+    i_code: function(x){
+      x.text = escape(x.text, true); },
+    i_text: function(x){
+      x.text = this.escape(x.cap);
+    }
+  }
+
+  // rule sequence
+  inline_rules = [
+    'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
+    'strong', 'em', 'i_code', 'br', 'del', 'i_text'
+  ]
+
+  // rule sequence when in 'inLink' state
+  inline_rules_inLink = _.without(inline_rules, 'url');
+
+  // rules that call the inline lexer recursively
+  inline_recursive_rules = [ 'strong', 'em', 'del', 'link', 'reflink', 'nolink' ];
+
+
+  /////////////////
+  // BLOCK LEXER //
+  /////////////////
 
 
   ////////// HANDLER FUNCTION FOR MARKDOWN TABLES //////////
 
-  var processTable = function(t) {
+  function processTable(t) {
 
     // split up table components
     t.header = t.header.replace(/^ *| *\| *$/g, '').split(/ *\| */);
@@ -1030,7 +1144,7 @@ var mdToHTML = function(src, regex) {
 
   ////////// HANDLER FUNCTION FOR MARKDOWN BLOCKQUOTES //////////
 
-  var processBlockQuote = function(t) {
+  function processBlockQuote(t) {
 
     // remove captured token
     tok.pop();
@@ -1055,7 +1169,7 @@ var mdToHTML = function(src, regex) {
 
   ////////// HANDLER FUNCTION FOR MARKDOWN LISTS //////////
 
-  var processList = function(t) {
+  function processList(t) {
 
     // remove captured token
     tok.pop();
@@ -1113,43 +1227,20 @@ var mdToHTML = function(src, regex) {
 
   ////////// BLOCK GRAMMAR RULE SEQUENCES //////////
 
-  // block grammar rules
-  var block_rules = {
-    b_code: {
-      handler: function(x){ x.text = x.cap.replace(/\n+$/, ''); } // trim trailing newlines
-    }, fences: {
-      tokens: ['lang', 'text'],
-      handler: function(x){ x.text = x.text || ''; } // use empty string for text if undefined
-    }, heading: {
-      tokens: ['depth', 'text'],
-      handler: function(x){ x.depth = x.depth.length; } // convert captured depth to a number
-    }, nptable: {
-      tokens: ['header', 'align', 'cells'],
-      handler: processTable
-    }, lheading: {
-      tokens: ['text', 'depth'],
-      handler: function(x){ x.depth = x.depth === '=' ? 1 : 2; } // depth of 1 for =, 2 for -
-    }, hr: {
-      // don't do special processing for HR
-    }, blockquote: {
-      handler: processBlockQuote
-    }, list: {
-      tokens: ['', 'bull'],
-      handler: processList
-    }, html: {
-      tokens: ['pre'],
-      handler: function(x){ x.pre  = x.pre === 'pre' || x.pre === 'script' || x.pre === 'style'; }
-    }, def: {
-      tokens: ['link', 'href', 'title'],
-      handler: function(x){ tok.links[x.link.toLowerCase()] = { href:x.href, title:x.title }; }
-    }, table: {
-      handler: processTable
-    }, paragraph: {
-      tokens: ['text'],
-      handler: function(x){ x.text = x.text.replace(/\n$/,''); } // trim trailing newline
-    }, b_text: {
-      handler: function(x){ x.text = x.cap; } // assign entire captured string
-    }
+  // block grammar handler functions
+  var block_handlers = {
+    b_code:     function(x){ x.text = x.cap.replace(/\n+$/, ''); }, // trim trailing newlines
+    fences:     function(x){ x.text = x.text || ''; }, // use empty string for text if undefined
+    heading:    function(x){ x.depth = x.depth.length; }, // convert captured depth to a number
+    nptable:    processTable,
+    lheading:   function(x){ x.depth = x.depth === '=' ? 1 : 2; }, // depth of 1 for =, 2 for -
+    blockquote: processBlockQuote,
+    list:       processList,
+    html:       function(x){ x.pre  = x.pre === 'pre' || x.pre === 'script' || x.pre === 'style'; },
+    def:        function(x){ tok.links[x.link.toLowerCase()] = { href:x.href, title:x.title }; tok.pop(); },
+    table:      processTable,
+    paragraph:  function(x){ x.text = x.text.replace(/\n$/,''); }, // trim trailing newline
+    b_text:     function(x){ x.text = x.cap; } // assign entire captured string
   };
 
   // block grammar rule sequence for default mode
@@ -1170,16 +1261,16 @@ var mdToHTML = function(src, regex) {
 
   ////////// FUNCTION TO TOKENIZE WITH BLOCK GRAMMAR //////////
 
-  var tokenize = function(src) {
+  function tokenize(src) {
 
     // define variables for use in function
     var cap, rules;
 
     // function to try processing a rule
-    var processToken = function(src, rule, names) {
+    function processToken(src, rule) {
       var cap = regex[rule].exec(src);  // try to match rule
       if (cap) {                        // if rule matches...
-        names = names || [];  // default to empty list of token names
+        var names = regex[rule].tokens || [];  // default to empty list of token names
         var myTok = {         // initialize output token...
           type: rule,         //   rule name that matched
           cap:  cap[0],       //   matching text
@@ -1218,8 +1309,8 @@ var mdToHTML = function(src, regex) {
       // run through list of regex rules
       for (var i = 0; i < rules.length; i++) {
         var r = rules[i], rule = block_rules[r];
-        if (cap = processToken(src, r, rule.tokens)) {
-          if (rule.handler) { rule.handler(cap); } // excecute callback
+        if (cap = processToken(src, r)) {
+          if (block_handlers[r]) block_handlers[r](cap); // execute callback
           src = src.substring(cap.n); // remove captured text from string
           continue eat_tokens; // continue consumption while loop
         }
@@ -1232,8 +1323,207 @@ var mdToHTML = function(src, regex) {
     }
   }
 
+
+  ///////////////
+  // RENDERING //
+  ///////////////
+
+  // define templates for rendering
+  var render_templates = {
+    space:      '',
+    hr:         '<hr/>\n',
+    heading:    '<h{{level}} id="{{id}}">{{text}}</h{{level}}>',
+    code:       '<pre><code{{IF lang}} class="{{lang}}"{{ENDIF}}>{{code}}\n</code></pre>',
+    blockquote: '<blockquote>\n{{quote}}</blockquote>\n',
+    html:       '{{html}}',
+    list:       '<{{type}}>{{body}}</{{type}}>',
+    listitem:   '<li>{{text}}</li>',
+    paragraph:  '<p>{{text}}</p>',
+    table:      '<table><thead>\n{{header}}\n</thead><tbody>\n{{body}}\n</tbody></table>\n',
+    tablerow:   '<tr>\n{{content}}</tr>\n',
+    tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}>{{content}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>',
+    strong:     '<strong>{{text}}</strong>',
+    em:         '<em>{{text}}</em>',
+    i_code:     '<code>{{text}}</code>',
+    br:         '<br/>',
+    del:        '<del>{{text}}</del>',
+    link:       '<a href="{{href}}"{{IF title}} title="{{title}}"{{ENDIF}}>{{text}}</a>',
+    image:      '<img src="{{href}}" alt="{{text}}"{{IF title}} title="{{title}}"{{ENDIF}}/>',
+    text:       '{{text}}'
+  }
+
+  // convert a template to a processing function
+  function convertTemplate(src) {
+    function processString(src) {
+      var code = [], cap;
+      while(src) {
+        if (src.match(/^{{IF.*?{{ENDIF}}/)) {
+          var sub_src = src.match(/^{{IF.*?{{ENDIF}}/);
+          if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ELSE}}([\s\S]*?){{ENDIF}}/.exec(sub_src)) {
+            code.push('(x.'+cap[1]+'?'+processString(cap[2])+':'+processString(cap[3])+')');
+          } else if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ENDIF}}/.exec(sub_src)) {
+            code.push('(x.'+cap[1]+'?'+processString(cap[2])+":'')");
+          } else {
+            throw new Error('Failed to process template: invalid {{IF}} expression');
+          }
+        } else if (cap = /^{{(.*?)}}/.exec(src)) {
+          code.push('x.'+cap[1]);
+        } else if (cap = /^\n/.exec(src)) {
+          code.push("'\\n'");
+        } else if (cap = /^.+?(?={{|\n|$)/.exec(src)) {
+          code.push("'" + cap[0] + "'");
+        } else {
+          throw new Error('Failed to process template');
+        }
+        if (cap[0].length == 0) {
+          throw new Error('Failed to consume a token');
+        }
+        src = src.slice(cap[0].length);
+      }
+      return code.join('+');
+    }
+    return new Function('x', 'return ' + processString(src.replace(/'/g,"\\'")));
+  }
+
+  // compile rendering templates
+  var keys = _.keys(render_templates);
+  var render = {};
+  for (var i = 0; i < keys.length; i++) {
+    render[keys[i]] = convertTemplate(render_templates[keys[i]]);
+  }
+
+
+  //////////////////
+  // INLINE LEXER //
+  //////////////////
+
+  ////////// INLINE GRAMMAR RULE SEQUENCES //////////
+
+  var inline_rules = {
+    escape: {
+      // ???
+    }, autolink: {
+
+    }
+
+  };
+
+
+  ////////////
+  // PARSER //
+  ////////////
+
+  // from marked.js
+  function escape(html, encode) {
+    return html
+      .replace(!encode ? /&(?!#?\w+;)/g : /&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  ////////// TABLE HANDLER //////////
+
+  function parseTable(x){
+
+    // process header
+    var cell = '';
+    for (var i = 0; i < x.header.length; i++){
+      cell += render.tablecell({
+        header:   true,
+        align:    x.align[i],
+        content:  inline_lexer(x.header[i])
+      })
+    }
+    var header = render.tablerow({ content: cell });
+
+    // process rows
+    var body = '';
+    for (var i = 0; i < x.cells.length; i++) {
+      var row = x.cells[i];
+      var cell = '';
+      for (var j = 0; j < row.length; j++) {
+        cell += render.tablecell({
+          header:   false,
+          align:    x.align[j],
+          content:  inline_lexer(row[j])
+        })
+      }
+      body += render.tablerow({ content: cell });
+    }
+
+    // return assembled output
+    return render.table({ header:header, body:body });
+  }
+
+
+  ////////// BLOCKQUOTE HANDLER //////////
+
+  function parseBlockQuote(tok){
+    var body = '';
+    for (var x = tok.pop(); x.type !== 'blockquote_end'; x = tok.pop()) {
+      body += x;
+    }
+    return render.blockquote({ body:body });
+  }
+
+
+  ////////// LIST HANDLERS //////////
+
+  function parseList(tok){
+
+  }
+
+  function parseListItem(tok){
+
+  }
+
+  function parseListLooseItem(tok){
+
+  }
+
+
+  ////////// PARSER //////////
+
+  // adapted from Parser.prototype.tok (line 975)
+  var parser_data = {
+    space:    {},
+    hr:       {},
+    heading:  function(x){ return {
+      level:  x.depth,
+      id:     x.text.toLowerCase().replace(/[^\w]+/g, '-'),
+      text:   inline_lexer(x.text)
+    }},
+    code:     function(x){ return {
+      text:   escape(x.text,true),
+      lang:   x.lang
+    }},
+    table:            parseTable,
+    blockquote_start:
+    list_start:
+    list_item_start:
+    loose_item_start:
+    html:
+    paragraph:
+    text:
+  };
+
+  var parse = function(tok) {
+    var out = [];
+  }
+
+  ///////////////////
+  // PROCESS INPUT //
+  ///////////////////
+
   // convert source string to block grammar tokens
+  // equivalent to marked.js `marked.lexer(src)` or `Lexer.lex(src)`
   tokenize(src);
+
+  // parse tokens and return results
+  // equvalent to marked.js `marked.parser(tok)` or `Parser.parse(tok)`
+  return parse(tok.reverse);
 
 }
 
