@@ -1005,21 +1005,11 @@ function mdToHTML(src, regex) {
   // create object to handle conversion
   var md = {};
 
-  // initialize list of block tokens
-  md.tok = [];
-
   // preprocess source string by replacing blank lines with ''
   md.src = src.replace(/^ +$/gm, '')
 
-  // initialize state
-  md.state = {
-    isList:       false, // not in a list
-    isBlockQuote: false, // not in a block quote
-    inLink:       false  // not in a hyperlink
-  };
-
   // function to try processing a regex rule
-  md.processToken = function(src,rule,stack){
+  md.processToken = function(src, rule, stack){
     var cap = regex[rule].exec(src);          // try to match rule
     if (cap) {                                // if rule matches...
       var names = regex[rule].tokens || [];   //   default to empty list of token names
@@ -1163,6 +1153,17 @@ function mdToHTML(src, regex) {
   // BLOCK LEXER //
   /////////////////
 
+  // create an object to handle block lexing
+  md.block = {};
+
+  // initialize list of block tokens
+  md.block.tok = [];
+
+  // initialize state (for block grammar processing)
+  md.block.state = {
+    isList:       false, // not in a list
+    isBlockQuote: false  // not in a block quote
+  };
 
   ////////// HANDLER FUNCTION FOR MARKDOWN TABLES //////////
 
@@ -1205,24 +1206,28 @@ function mdToHTML(src, regex) {
 
   function processBlockQuote(t) {
 
-    // remove captured token
-    md.tok.pop();
-
-    // add a blockquote start token
-    md.tok.push({ type: 'blockquote_start' });
+    // save and reset current list of tokens
+    var processedTokens = md.block.tok;
+    md.block.tok = [];
 
     // change processing state
     var oldState = md.state;
     md.state.isBlockQuote = true;
 
+    // initialize a placeholder for blockquote text
+    t.text = [];
+
     // recursively process captured text without leading blockquote markup
     tokenize(t.cap.replace(/^ *> ?/gm, ''));
 
-    // add a blockquote end token
-    md.tok.push({ type: 'blockquote_end' });
+    // perform inline lexing of blockquote content
+    for (var i = 0; i < md.block.tok.length; i++) {
+      t.text = t.text.concat( md.inline.lex(md.block.tok[i]) );
+    }
 
     // restore processing state
     md.state = oldState;
+    md.block.tok = processedTokens;
   };
 
 
@@ -1230,19 +1235,20 @@ function mdToHTML(src, regex) {
 
   function processList(t) {
 
-    // remove captured token
-    md.tok.pop();
+    // augment captured list token
+    t.text = []; // container for list item tokens
+    t.ordered = t.bull.length > 1; // is this an ordered list?
+    t.type = t.ordered ? 'ol' : 'ul';
 
-    // add a token to indicate start of list
-    md.tok.push({
-      type: 'list_start',
-      ordered: t.bull.length > 1 // is this an ordered list?
-    });
+    // save current list of tokens
+    var processedTokens = md.block.tok;
 
-    // capture top-level items
+    // save current state and reset to 'list' state
+    var oldState = md.block.state;
+    md.block.state.isList = true;
+
+    // capture top-level itemns and iterate over them
     var cap = t.cap.match(regex.item);
-
-    // iterate over captured items
     var previousNewline = false;
     for (var i = 0; i < cap.length; i++) {
       var item = cap[i];
@@ -1268,19 +1274,33 @@ function mdToHTML(src, regex) {
         if (!loose) loose = previousNewline;
       }
 
-      // push token to start list item
-      md.tok.push({ type: loose?'loose_item_start':'list_item_start'});
+      // recursively process list item
+      md.block.tok = [];
+      tokenize(item);
 
-      // recursively process list item and close out token
-      var oldState = md.state;                // save current state
-      md.state.isList = true;                 // in list processing state
-      tokenize(item);                         // process item
-      md.state = oldState;                    // restore state
-      md.tok.push({ type: 'list_item_end' }); // close token (end list item)
+      // perform inline lexing of non-loose items
+      if (!loose) {
+        var tok = [];
+        for (var j = 0; j < md.block.tok.length; j++) {
+          if (md.block.tok[j].type === 'text') {
+            tok = tok.concat(md.inline.lex(md.block.tok[j]));
+          } else {
+            tok.push(md.block.tok[j]);
+          }
+        }
+        md.block.tok = tok;
+      }
+
+      // add list item to list
+      t.text.push({
+        type: 'listitem',
+        text: md.block.tok
+      })
     }
 
-    // add token to indicate end of list
-    md.tok.push({ type: 'list_end' });
+    // restore state
+    md.block.tok = processedTokens;
+    md.block.state = oldState;
   };
 
 
@@ -1298,11 +1318,28 @@ function mdToHTML(src, regex) {
     lheading:   function(x){ x.depth = x.depth === '=' ? 1 : 2; }, // depth of 1 for =, 2 for -
     blockquote: processBlockQuote,
     list:       processList,
-    html:       function(x){ x.pre  = x.pre === 'pre' || x.pre === 'script' || x.pre === 'style'; },
-    def:        function(x){ tok.links[x.link.toLowerCase()] = { href:x.href, title:x.title }; tok.pop(); },
+    html:       function(x){
+      if (x.pre === 'pre' || x.pre === 'script' || x.pre === 'style') {
+        x.text = x.cap; // use captured string without further processing
+      } else {
+        x.text = md.inline.lex(cap); // lex captured string
+      }
+    },
+    def:        function(x){ md.tok.links[x.link.toLowerCase()] = { href:x.href, title:x.title }; md.tok.pop(); },
     table:      processTable,
-    paragraph:  function(x){ x.text = x.text.replace(/\n$/,''); }, // trim trailing newline
-    b_text:     function(x){ x.text = x.cap; } // assign entire captured string
+    paragraph:  function(x){
+      x.text = x.text.replace(/\n$/,''); // trim trailing newline
+      x.text = md.inline.lex(x.text); // perform inline lexing of text block
+    },
+    b_text:     function(x){
+      if (md.tok.length > 2 && md.tok[md.tok.length-2].type === 'b_text') {
+        md.tok[md.tok.length-2].text = md.tok[md.tok.length-2].text
+          .concat(md.inline.lex('\n'+x.cap)); // merge with previous token
+        md.tok.pop(); // remove token no longer needed
+      } else {
+        x.text = md.inline.lex(x.cap); // lex entire captured string
+      }
+    }
   };
 
   // block grammar rule sequence for default mode
@@ -1390,131 +1427,142 @@ function mdToHTML(src, regex) {
   // RENDERING //
   ///////////////
 
-  // define templates for rendering
-  // {{myField}} ..................... insert input.myField
-  // {{^myField}} .................... insert escaped html input.myField
-  // {{^^myField}} ................... insert escaped text input.myField
-  // {{@myField}} .................... insert mangled text input.myField
-  // {{IF expr}}A{{ENDIF}} ........... if expr is true, insert "A"
-  // {{IF expr}}A{{ELSE}}B{{ENDIF}} .. if expr is true, insert "A", otherwise insert "B"
-  var render_templates = {
-    space:      '',
-    hr:         '<hr/>\n',
-    heading:    '<h{{level}} id="{{id}}">{{text}}</h{{level}}>',
-    code:       '<pre><code{{IF lang}} class="{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>',
-    blockquote: '<blockquote>\n{{quote}}</blockquote>\n',
-    html:       '{{html}}',
-    list:       '<{{type}}>{{body}}</{{type}}>',
-    listitem:   '<li>{{text}}</li>',
-    paragraph:  '<p>{{text}}</p>',
-    table:      '<table><thead>\n{{header}}\n</thead><tbody>\n{{body}}\n</tbody></table>\n',
-    tablerow:   '<tr>\n{{content}}</tr>\n',
-    tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}>{{content}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>',
-    strong:     '<strong>{{text}}</strong>',
-    em:         '<em>{{text}}</em>',
-    i_code:     '<code>{{^^text}}</code>',
-    i_text:     '{{^text}}'
-    br:         '<br/>',
-    del:        '<del>{{text}}</del>',
-    link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{^text}}</a>',
-    mailto:     '<a href="{{@href}}"}>{{@text}}</a>',
-    image:      '<img src="{{href}}" alt="{{text}}"{{IF title}} title="{{title}}"{{ENDIF}}/>',
-    text:       '{{text}}',
-    tag:        '{{text}}'
-  }
+  // return a set of compiled rendering functions
+  var render = function(){
 
-  // escape HTML (taken from from marked.js)
-  // - escape(html) to escape HTML (respecting already-escaped characters)
-  // - escape(html,true) to escape text inside HTML (like code)
-  function escape(html, encode) {
-    return html
-      .replace(                 // replace ...
-        !encode                 //   not encode? (default behavior) ...
-          ? /&(?!#?\w+;)/g      //     '&' that is not part of an escape sequence
-          : /&/g,               //     raw '&' (if 'encode' is true)
-        '&amp;')                // -> &amp;
-      .replace(/</g, '&lt;')    // replace < -> &lt;
-      .replace(/>/g, '&gt;')    // replace > -> &gt;
-      .replace(/"/g, '&quot;')  // replace " -> &quot;
-      .replace(/'/g, '&#39;');  // replace ' -> &#39;
-  }
-
-  // mangle mailto links (taken from marked.js)
-  function mangle(text) {
-    var out = ''                            // initialize output string
-    for (var i = 0; i < text.length; i++) { // iterate over characters in input...
-      var ch = text.charCodeAt(i);          //   current decimal character code
-      if (Math.random() > 0.5) {            //   with 50% probability...
-        ch = 'x' + ch.toString(16);         //     use hex representation instead
-      }                                     //
-      out += '&#' + ch + ';';               //   append hex/decimal character
-    }                                       //
-    return out;                             // return generated string
-  };
-
-  // convert a template to a processing function
-  function convertTemplate(src) {
-    function processString(src) {
-      var code = [], cap;
-      while(src) {
-        if (src.match(/^{{IF.*?{{ENDIF}}/)) {
-          var sub_src = src.match(/^{{IF.*?{{ENDIF}}/);
-          if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ELSE}}([\s\S]*?){{ENDIF}}/.exec(sub_src)) {
-            code.push('(x.'+cap[1]+'?'+processString(cap[2])+':'+processString(cap[3])+')');
-          } else if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ENDIF}}/.exec(sub_src)) {
-            code.push('(x.'+cap[1]+'?'+processString(cap[2])+":'')");
-          } else {
-            throw new Error('Failed to process template: invalid {{IF}} expression');
-          }
-        } else if (cap = /^{{(?!\^)(?!@)(.*?)}}/.exec(src)) {
-          code.push('x.'+cap[1]);
-        } else if (cap = /^{{\^\^(.*?)}}/.exec(src)) {
-          code.push('escape(x.'+cap[1]+',true)');
-        } else if (cap = /^{{\^(.*?)}}/.exec(src)) {
-          code.push('escape(x.'+cap[1]+')');
-        } else if (cap = /^{{@(.*?)}}/.exec(src)) {
-          code.push('mangle(x.'+cap[1]+')');
-        } else if (cap = /^\n/.exec(src)) {
-          code.push("'\\n'");
-        } else if (cap = /^.+?(?={{|\n|$)/.exec(src)) {
-          code.push("'" + cap[0] + "'");
-        } else {
-          throw new Error('Failed to process template');
-        }
-        if (cap[0].length == 0) {
-          throw new Error('Failed to consume a token');
-        }
-        src = src.slice(cap[0].length);
-      }
-      return code.join('+');
+    // define templates for rendering
+    // {{myField}} ..................... insert input.myField
+    // {{^myField}} .................... insert escaped html input.myField
+    // {{^^myField}} ................... insert escaped text input.myField
+    // {{@myField}} .................... insert mangled text input.myField
+    // {{IF expr}}A{{ENDIF}} ........... if expr is true, insert "A"
+    // {{IF expr}}A{{ELSE}}B{{ENDIF}} .. if expr is true, insert "A", otherwise insert "B"
+    var render_templates = {
+      space:      '',
+      hr:         '<hr/>\n',
+      heading:    '<h{{level}} id="{{id}}">{{text}}</h{{level}}>',
+      code:       '<pre><code{{IF lang}} class="{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>',
+      blockquote: '<blockquote>\n{{text}}</blockquote>\n',
+      html:       '{{text}}',
+      list:       '<{{type}}>{{text}}</{{type}}>',
+      listitem:   '<li>{{text}}</li>',
+      paragraph:  '<p>{{text}}</p>',
+      b_text:     '<p>{{text}}</p>',
+      table:      '<table><thead>\n{{header}}\n</thead><tbody>\n{{body}}\n</tbody></table>\n',
+      tablerow:   '<tr>\n{{content}}</tr>\n',
+      tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}>{{text}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>',
+      strong:     '<strong>{{text}}</strong>',
+      em:         '<em>{{text}}</em>',
+      i_code:     '<code>{{^^text}}</code>',
+      i_text:     '{{^text}}'
+      br:         '<br/>',
+      del:        '<del>{{text}}</del>',
+      link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{^text}}</a>',
+      mailto:     '<a href="{{@href}}"}>{{@text}}</a>',
+      image:      '<img src="{{href}}" alt="{{text}}"{{IF title}} title="{{title}}"{{ENDIF}}/>',
+      text:       '{{text}}',
+      tag:        '{{text}}'
     }
-    return new Function('x', 'return ' + processString(src.replace(/'/g,"\\'")));
-  }
 
-  // compile rendering templates
-  var keys = _.keys(render_templates);
-  var render = {};
-  for (var i = 0; i < keys.length; i++) {
-    render[keys[i]] = convertTemplate(render_templates[keys[i]]);
-  }
+    // escape HTML (taken from from marked.js)
+    // - escape(html) to escape HTML (respecting already-escaped characters)
+    // - escape(html,true) to escape text inside HTML (like code)
+    function escape(html, encode) {
+      return html
+        .replace(                 // replace ...
+          !encode                 //   not encode? (default behavior) ...
+            ? /&(?!#?\w+;)/g      //     '&' that is not part of an escape sequence
+            : /&/g,               //     raw '&' (if 'encode' is true)
+          '&amp;')                // -> &amp;
+        .replace(/</g, '&lt;')    // replace < -> &lt;
+        .replace(/>/g, '&gt;')    // replace > -> &gt;
+        .replace(/"/g, '&quot;')  // replace " -> &quot;
+        .replace(/'/g, '&#39;');  // replace ' -> &#39;
+    }
+
+    // mangle mailto links (taken from marked.js)
+    function mangle(text) {
+      var out = ''                            // initialize output string
+      for (var i = 0; i < text.length; i++) { // iterate over characters in input...
+        var ch = text.charCodeAt(i);          //   current decimal character code
+        if (Math.random() > 0.5) {            //   with 50% probability...
+          ch = 'x' + ch.toString(16);         //     use hex representation instead
+        }                                     //
+        out += '&#' + ch + ';';               //   append hex/decimal character
+      }                                       //
+      return out;                             // return generated string
+    };
+
+    // convert a template to a processing function
+    function convertTemplate(src) {
+      function processString(src) {
+        var code = [], cap;
+        while(src) {
+          if (src.match(/^{{IF.*?{{ENDIF}}/)) {
+            var sub_src = src.match(/^{{IF.*?{{ENDIF}}/);
+            if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ELSE}}([\s\S]*?){{ENDIF}}/.exec(sub_src)) {
+              code.push('(x.'+cap[1]+'?'+processString(cap[2])+':'+processString(cap[3])+')');
+            } else if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ENDIF}}/.exec(sub_src)) {
+              code.push('(x.'+cap[1]+'?'+processString(cap[2])+":'')");
+            } else {
+              throw new Error('Failed to process template: invalid {{IF}} expression');
+            }
+          } else if (cap = /^{{(?!\^)(?!@)(.*?)}}/.exec(src)) {
+            code.push('x.'+cap[1]);
+          } else if (cap = /^{{\^\^(.*?)}}/.exec(src)) {
+            code.push('escape(x.'+cap[1]+',true)');
+          } else if (cap = /^{{\^(.*?)}}/.exec(src)) {
+            code.push('escape(x.'+cap[1]+')');
+          } else if (cap = /^{{@(.*?)}}/.exec(src)) {
+            code.push('mangle(x.'+cap[1]+')');
+          } else if (cap = /^\n/.exec(src)) {
+            code.push("'\\n'");
+          } else if (cap = /^.+?(?={{|\n|$)/.exec(src)) {
+            code.push("'" + cap[0] + "'");
+          } else {
+            throw new Error('Failed to process template');
+          }
+          if (cap[0].length == 0) {
+            throw new Error('Failed to consume a token');
+          }
+          src = src.slice(cap[0].length);
+        }
+        return code.join('+');
+      }
+      return new Function('x', 'return ' + processString(src.replace(/'/g,"\\'")));
+    }
+
+    // compile rendering templates
+    var keys = _.keys(render_templates);
+    var render = {};
+    for (var i = 0; i < keys.length; i++) {
+      render[keys[i]] = convertTemplate(render_templates[keys[i]]);
+    }
+
+    // return the compiled templates
+    return render;
+  }();
 
 
   ////////////
   // PARSER //
   ////////////
 
+  // object to contain token-specific processing code
+  var parser_data = {};
+
 
   ////////// TABLE HANDLER //////////
 
-  function parseTable(x){
+  parser_data.table = function(x){
 
     // process header
     var cell = '';
     for (var i = 0; i < x.header.length; i++){
       cell += render.tablecell({
-        header:   true,
-        align:    x.align[i],
-        content:  inline_lexer(x.header[i])
+        header: true,
+        align:  x.align[i],
+        text:   md.inline.lex(x.header[i])
       })
     }
     var header = render.tablerow({ content: cell });
@@ -1526,9 +1574,9 @@ function mdToHTML(src, regex) {
       var cell = '';
       for (var j = 0; j < row.length; j++) {
         cell += render.tablecell({
-          header:   false,
-          align:    x.align[j],
-          content:  inline_lexer(row[j])
+          header: false,
+          align:  x.align[j],
+          text:   md.inline.lex(row[j])
         })
       }
       body += render.tablerow({ content: cell });
@@ -1539,68 +1587,7 @@ function mdToHTML(src, regex) {
   }
 
 
-  ////////// BLOCKQUOTE HANDLER //////////
-
-  function parseBlockQuote(tok){
-    var body = '';
-    for (var x = tok.pop(); x.type !== 'blockquote_end'; x = tok.pop()) {
-      body += x;
-    }
-    return render.blockquote({ body:body });
-  }
-
-
-  ////////// LIST HANDLERS //////////
-
-  function parseList(tok){
-
-  }
-
-  function parseListItem(tok){
-
-  }
-
-  function parseListLooseItem(tok){
-
-  }
-
-  /*Renderer.prototype.code = function(code, lang, escaped) {
-    Renderer.prototype.blockquote = function(quote) {
-    Renderer.prototype.html = function(html) {
-    Renderer.prototype.heading = function(text, level, raw) {
-    Renderer.prototype.hr = function() {
-    Renderer.prototype.list = function(body, ordered) {
-    Renderer.prototype.listitem = function(text) {
-    Renderer.prototype.paragraph = function(text) {
-    Renderer.prototype.table = function(header, body) {
-    Renderer.prototype.tablerow = function(content) {
-    Renderer.prototype.tablecell = function(content, flags) {
-    Renderer.prototype.strong = function(text) {
-    Renderer.prototype.em = function(text) {
-    Renderer.prototype.codespan = function(text) {
-    Renderer.prototype.br = function() {
-    Renderer.prototype.del = function(text) {
-    Renderer.prototype.link = function(href, title, text) {
-    Renderer.prototype.image = function(href, title, text) {
-    Renderer.prototype.text = function(text) {*/
-
   ////////// PARSER //////////
-
-  // functions to convert tokens to format expected by renderer
-  // adapted from Parser.prototype.tok (line 975)
-  var parser_data = {
-
-    ///// EVERYTHING ABOVE IS PROCESSED /////
-
-    table:            parseTable,
-    blockquote_start: function(){},
-    list_start:       function(){},
-    list_item_start:  function(){},
-    loose_item_start: function(){},
-    html:             function(){},
-    paragraph:        function(){},
-    text:             function(){}
-  };
 
   // render a token
   var renderToken = function(tok){
@@ -1622,7 +1609,7 @@ function mdToHTML(src, regex) {
         }
         tok.text = tok.text.join('');
       }
-      if (parser_data[tok.type]) parser_data[tok.type](tok); // convert token
+      if (parser_data[tok.type]) parser_data[tok.type](tok, tokens); // convert token
       out.push(renderToken(tok)); // render token and add to output
     }
     return out.join(''); // squish together output and return it
