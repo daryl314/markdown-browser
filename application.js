@@ -1035,393 +1035,387 @@ function mdToHTML(src, regex) {
   // INLINE LEXER //
   //////////////////
 
-  // create object to handle inline lexing
-  md.inline = {};
+  md.inline = function(){
 
-  // rule sequence
-  md.inline.rules = [
-    'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
-    'strong', 'em', 'i_code', 'br', 'del', 'i_text'
-  ]
+    // create object to handle inline lexing
+    inline = {};
 
-  // rule sequence when in 'inLink' state
-  md.inline.rules_link = _.without(inline_rules, 'url');
+    // rule sequence
+    inline.rules = [
+      'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
+      'strong', 'em', 'i_code', 'br', 'del', 'i_text'
+    ]
 
-  // function to handle lexing by instantiating Inline Lexer
-  md.inline.lex = function(src, inLink){
-    var myLexer = new md.inline.Lexer(src, inLink);
-    return myLexer.lex();
-  }
+    // rule sequence when in 'inLink' state
+    inline.rules_link = _.without(inline_rules, 'url');
 
-  ////////// LEXER CLASS //////////
+    // function to handle lexing by instantiating Inline Lexer
+    inline.lex = function(src, inLink){
+      var myLexer = new inline.Lexer(src, inLink);
+      return myLexer.lex();
+    }
 
-  // constructor
-  md.inline.Lexer = function(src, inLink){
-    this.src    = src;              // remaining text to process
-    this.tok    = [];               // list of processed tokens
-    this.inLink = inLink || false;  // state flag: inside a hyperlink?
-  }
+    ////////// LEXER CLASS //////////
 
-  // processor: consume markdown in source string and convert to tokens
-  md.inline.Lexer.prototype.lex = function(src){
-    var cap;
-    inline_consumer: while(this.src){
-      var rules = this.inLink ? md.inline.rules_link : md.inline.rules;
-      for (var i = 0; i < rules.length; i++) {
-        var rule = rules[i];                      // current rule in list
-        if (cap = processToken(this.src, r, this.tok)) {
-          if (this[r]) this[r](cap);              // execute handler
-          this.src = this.src.substring(cap.n);   // remove captured text
-          continue inline_consumer;               // continue consumption
+    // constructor
+    inline.Lexer = function(src, inLink){
+      this.src    = src;              // remaining text to process
+      this.tok    = [];               // list of processed tokens
+      this.inLink = inLink || false;  // state flag: inside a hyperlink?
+    }
+
+    // processor: consume markdown in source string and convert to tokens
+    inline.Lexer.prototype.lex = function(src){
+      var cap;
+      inline_consumer: while(this.src){
+        var rules = this.inLink ? inline.rules_link : inline.rules;
+        for (var i = 0; i < rules.length; i++) {
+          var rule = rules[i];                      // current rule in list
+          if (cap = processToken(this.src, r, this.tok)) {
+            if (this[r]) this[r](cap);              // execute handler
+            this.src = this.src.substring(cap.n);   // remove captured text
+            continue inline_consumer;               // continue consumption
+          }
         }
       }
+      return this.tok;
     }
-    return this.tok;
-  }
 
-  // recursively process 'text' field
-  md.inline.Lexer.prototype.recurse = function(txt, inLink){
-    this.text = md.inline.lex(txt||this.text, inLink||this.inLink);
-  }
-
-  // rewind last token capture
-  md.inline.Lexer.prototype.rewind = function(){
-    var tok = this.tok.pop();
-    this.src = this.src + tok.cap;
-  }
-
-  ////////// INLINE TOKEN PROCESSING //////////
-
-  // recursive processing of 'text' field
-  md.inline.Lexer.prototype.strong = function(x){ this.recurse(x.opt1 || x.opt2) };
-  md.inline.Lexer.prototype.em     = function(x){ this.recurse(x.opt1 || x.opt2) };
-  md.inline.Lexer.prototype.del    = function(x){ this.recurse()                 };
-
-  // process an autolink
-  md.inline.Lexer.prototype.autolink = function(x){
-    if (x.symbol === '@') {                       // email address
-      var email = x.link.replace(/^mailto:/,'');  //   email address w/o mailto
-      x.text = email;                             //   hyperlink text: email
-      x.href = 'mailto:' + email;                 //   hyperlink href: mailto:email
-      x.type = 'mailto';                          //   render as a mailto link
-    } else {                                      // url
-      x.text = x.link;                            //   hyperlink text: link
-      x.href = x.link;                            //   hyperlink href: link
-      x.type = 'link';                            //   render as a link
+    // recursively process 'text' field
+    inline.Lexer.prototype.recurse = function(txt, inLink){
+      this.text = inline.lex(txt||this.text, inLink||this.inLink);
     }
-  }
 
-  // process a URL: render as a link
-  md.inline.Lexer.prototype.url = function(x){
-    x.text = x.link;
-    x.href = x.link;
-    x.type = 'link';
-  }
-
-  // process a tag: toggle inLink state if this is an opening or closing anchor
-  md.inline.Lexer.prototype.tag = function(x){
-    if      (  /^<a /i.test(x.cap)) this.inLink = true;
-    else if (/^<\/a /i.test(x.cap)) this.inLink = false;
-  }
-
-  // process a link
-  md.inline.Lexer.prototype.link = function(x){
-    if (/^!/.test(x.cap)) {                       // if captured text starts w/ '!' ...
-      x.type = 'image';                           //   then set type to image
-    } else {                                      // otherwise ...
-      this.recurse(x.text, true);                 //   recursively process link text
+    // rewind last token capture
+    inline.Lexer.prototype.rewind = function(){
+      var tok = this.tok.pop();
+      this.src = this.src + tok.cap;
     }
-  }
 
-  // process a reference link
-  md.inline.Lexer.prototype.reflink = function(x){
-    var linkLookup = (x.href || x.text).replace(/\s+/g, ' ').toLowerCase();
-    if (!this.links[linkLookup] || !this.links[linkLookup].href){ // undefined link
-      this.rewind();                                    // reverse capture
-      this.tok.push({ type:'text', text:this.src[0] }); // push single character token
-      this.src = this.src.slice(1);                     // and chop character off of src
-    } else {
-      this.link(x);
+    ////////// INLINE TOKEN PROCESSING //////////
+
+    // recursive processing of 'text' field
+    inline.Lexer.prototype.strong = function(x){ this.recurse(x.opt1 || x.opt2) };
+    inline.Lexer.prototype.em     = function(x){ this.recurse(x.opt1 || x.opt2) };
+    inline.Lexer.prototype.del    = function(x){ this.recurse()                 };
+
+    // process an autolink
+    inline.Lexer.prototype.autolink = function(x){
+      if (x.symbol === '@') {                       // email address
+        var email = x.link.replace(/^mailto:/,'');  //   email address w/o mailto
+        x.text = email;                             //   hyperlink text: email
+        x.href = 'mailto:' + email;                 //   hyperlink href: mailto:email
+        x.type = 'mailto';                          //   render as a mailto link
+      } else {                                      // url
+        x.text = x.link;                            //   hyperlink text: link
+        x.href = x.link;                            //   hyperlink href: link
+        x.type = 'link';                            //   render as a link
+      }
     }
-  }
 
-  // process a no-link as a reference link
-  md.inline.nolink = md.inline.reflink;
+    // process a URL: render as a link
+    inline.Lexer.prototype.url = function(x){
+      x.text = x.link;
+      x.href = x.link;
+      x.type = 'link';
+    }
 
+    // process a tag: toggle inLink state if this is an opening or closing anchor
+    inline.Lexer.prototype.tag = function(x){
+      if      (  /^<a /i.test(x.cap)) this.inLink = true;
+      else if (/^<\/a /i.test(x.cap)) this.inLink = false;
+    }
+
+    // process a link
+    inline.Lexer.prototype.link = function(x){
+      if (/^!/.test(x.cap)) {                       // if captured text starts w/ '!' ...
+        x.type = 'image';                           //   then set type to image
+      } else {                                      // otherwise ...
+        this.recurse(x.text, true);                 //   recursively process link text
+      }
+    }
+
+    // process a reference link
+    inline.Lexer.prototype.reflink = function(x){
+      var linkLookup = (x.href || x.text).replace(/\s+/g, ' ').toLowerCase();
+      if (!this.links[linkLookup] || !this.links[linkLookup].href){ // undefined link
+        this.rewind();                                    // reverse capture
+        this.tok.push({ type:'text', text:this.src[0] }); // push single character token
+        this.src = this.src.slice(1);                     // and chop character off of src
+      } else {
+        this.link(x);
+      }
+    }
+
+    // process a no-link as a reference link
+    inline.nolink = inline.reflink;
+
+    // return object
+    return inline;
+  }();
 
   /////////////////
   // BLOCK LEXER //
   /////////////////
 
-  // create an object to handle block lexing
-  md.block = {};
+  md.block = function(){
 
-  // initialize list of block tokens
-  md.block.tok = [];
+    // create an object to handle block lexing
+    block = {};
 
-  // initialize state (for block grammar processing)
-  md.block.state = {
-    isList:       false, // not in a list
-    isBlockQuote: false  // not in a block quote
-  };
+    ////////// HANDLER FUNCTION FOR MARKDOWN TABLES //////////
 
-  ////////// HANDLER FUNCTION FOR MARKDOWN TABLES //////////
+    function processTable(t) {
 
-  function processTable(t) {
+      // split up table components
+      t.header = t.header.replace(/^ *| *\| *$/g, '').split(/ *\| */);
+      t.align = t.align.replace(/^ *|\| *$/g, '').split(/ *\| */);
+      //if (t.type == 'nptable'){
+      //  t.cells = t.cells.replace(/\n$/, '').split('\n');
+      //} else {
+        t.cells = t.cells.replace(/(?: *\| *)?\n$/, '').split('\n');
+      //}
 
-    // split up table components
-    t.header = t.header.replace(/^ *| *\| *$/g, '').split(/ *\| */);
-    t.align = t.align.replace(/^ *|\| *$/g, '').split(/ *\| */);
-    //if (t.type == 'nptable'){
-    //  t.cells = t.cells.replace(/\n$/, '').split('\n');
-    //} else {
-      t.cells = t.cells.replace(/(?: *\| *)?\n$/, '').split('\n');
-    //}
-
-    // process column alignment
-    for (i = 0; i < t.align.length; i++) {
-      if      (/^ *-+: *$/ .test(t.align[i])) { t.align[i] = 'right';  }
-      else if (/^ *:-+: *$/.test(t.align[i])) { t.align[i] = 'center'; }
-      else if (/^ *:-+ *$/ .test(t.align[i])) { t.align[i] = 'left';   }
-      else                                    { t.align[i] = null;     }
-    }
-
-    // split rows into individual cells
-//    if (t.type == 'nptable') {
-//      for (i = 0; i < item.cells.length; i++) {
-//        item.cells[i] = item.cells[i].split(/ *\| */);
-//      }
-//    } else {
-      for (i = 0; i < item.cells.length; i++) {
-        item.cells[i] = item.cells[i]
-          .replace(/^ *\| *| *\| *$/g, '')
-          .split(/ *\| */);
-      }
-//    }
-
-  };
-
-
-  ////////// HANDLER FUNCTION FOR MARKDOWN BLOCKQUOTES //////////
-
-  function processBlockQuote(t) {
-
-    // save and reset current list of tokens
-    var processedTokens = md.block.tok;
-    md.block.tok = [];
-
-    // change processing state
-    var oldState = md.state;
-    md.state.isBlockQuote = true;
-
-    // initialize a placeholder for blockquote text
-    t.text = [];
-
-    // recursively process captured text without leading blockquote markup
-    tokenize(t.cap.replace(/^ *> ?/gm, ''));
-
-    // perform inline lexing of blockquote content
-    for (var i = 0; i < md.block.tok.length; i++) {
-      t.text = t.text.concat( md.inline.lex(md.block.tok[i]) );
-    }
-
-    // restore processing state
-    md.state = oldState;
-    md.block.tok = processedTokens;
-  };
-
-
-  ////////// HANDLER FUNCTION FOR MARKDOWN LISTS //////////
-
-  function processList(t) {
-
-    // augment captured list token
-    t.text = []; // container for list item tokens
-    t.ordered = t.bull.length > 1; // is this an ordered list?
-    t.type = t.ordered ? 'ol' : 'ul';
-
-    // save current list of tokens
-    var processedTokens = md.block.tok;
-
-    // save current state and reset to 'list' state
-    var oldState = md.block.state;
-    md.block.state.isList = true;
-
-    // capture top-level itemns and iterate over them
-    var cap = t.cap.match(regex.item);
-    var previousNewline = false;
-    for (var i = 0; i < cap.length; i++) {
-      var item = cap[i];
-
-      // remove bullet from current item for recursive processing
-      var matchLength = item.match(/^ *([*+-]|\d+\.) +/)[0].length;
-      item = item.slice(matchLength); // slice off bullet
-
-      // if there are multiple lines in the item, remove leading spaces up to
-      // the first row indentation level on other lines
-      item = item.replace(new RegExp('^ {1,' + matchLength + '}', 'gm'), '');
-
-      // this is a loose item if the previous item ended in a newline or...
-      // item has a double newline not followed by whitespace to the end of it
-      var loose = previousNewline ||
-        /\n\n(?!\s*$)/.test(item); // double newline not followed by whitespace to end of item
-
-      // if this isn't the last item...
-      //   * remember if this item ended in a newline
-      //   * this is a loose item if it ends in a newline and isn't already loose
-      if (i !== cap.length - 1) {
-        previousNewline = /\n$/.test(item);
-        if (!loose) loose = previousNewline;
+      // process column alignment
+      for (i = 0; i < t.align.length; i++) {
+        if      (/^ *-+: *$/ .test(t.align[i])) { t.align[i] = 'right';  }
+        else if (/^ *:-+: *$/.test(t.align[i])) { t.align[i] = 'center'; }
+        else if (/^ *:-+ *$/ .test(t.align[i])) { t.align[i] = 'left';   }
+        else                                    { t.align[i] = null;     }
       }
 
-      // recursively process list item
-      md.block.tok = [];
-      tokenize(item);
-
-      // perform inline lexing of non-loose items
-      if (!loose) {
-        var tok = [];
-        for (var j = 0; j < md.block.tok.length; j++) {
-          if (md.block.tok[j].type === 'text') {
-            tok = tok.concat(md.inline.lex(md.block.tok[j]));
-          } else {
-            tok.push(md.block.tok[j]);
-          }
+      // split rows into individual cells
+      //    if (t.type == 'nptable') {
+      //      for (i = 0; i < item.cells.length; i++) {
+      //        item.cells[i] = item.cells[i].split(/ *\| */);
+      //      }
+      //    } else {
+        for (i = 0; i < item.cells.length; i++) {
+          item.cells[i] = item.cells[i]
+            .replace(/^ *\| *| *\| *$/g, '')
+            .split(/ *\| */);
         }
-        md.block.tok = tok;
+        //    }
+    };
+
+
+    ////////// HANDLER FUNCTION FOR MARKDOWN BLOCKQUOTES //////////
+
+    function processBlockQuote(t, tok, state) {
+
+      // initialize a placeholder for blockquote text
+      t.text = [];
+
+      // recursively process captured text without leading blockquote markup
+      var myTok = block.tokenize(t.cap.replace(/^ *> ?/gm, ''), [],
+        { isList:state.isList, isBlockQuote:true } // set state to inside a blockquote
+      );
+
+      // perform inline lexing of blockquote content
+      for (var i = 0; i < myTok.length; i++) {
+        t.text = t.text.concat( md.inline.lex(myTok[i]) );
       }
 
-      // add list item to list
-      t.text.push({
-        type: 'listitem',
-        text: md.block.tok
-      })
-    }
-
-    // restore state
-    md.block.tok = processedTokens;
-    md.block.state = oldState;
-  };
+    };
 
 
-  ////////// BLOCK GRAMMAR RULE SEQUENCES //////////
+    ////////// HANDLER FUNCTION FOR MARKDOWN LISTS //////////
 
-  // block grammar handler functions
-  var block_handlers = {
-    b_code:     function(x){ x.text = x.cap.replace(/\n+$/, ''); }, // trim trailing newlines
-    fences:     function(x){ x.text = x.text || ''; }, // use empty string for text if undefined
-    heading:    function(x){
-      x.level = x.depth.length;       // convert captured depth to a number
-      x.text = md.inline.lex(x.text); // perform inline lexing of text block
-    },
-    nptable:    processTable,
-    lheading:   function(x){ x.depth = x.depth === '=' ? 1 : 2; }, // depth of 1 for =, 2 for -
-    blockquote: processBlockQuote,
-    list:       processList,
-    html:       function(x){
-      if (x.pre === 'pre' || x.pre === 'script' || x.pre === 'style') {
-        x.text = x.cap; // use captured string without further processing
-      } else {
-        x.text = md.inline.lex(cap); // lex captured string
-      }
-    },
-    def:        function(x){ md.tok.links[x.link.toLowerCase()] = { href:x.href, title:x.title }; md.tok.pop(); },
-    table:      processTable,
-    paragraph:  function(x){
-      x.text = x.text.replace(/\n$/,''); // trim trailing newline
-      x.text = md.inline.lex(x.text); // perform inline lexing of text block
-    },
-    b_text:     function(x){
-      if (md.tok.length > 2 && md.tok[md.tok.length-2].type === 'b_text') {
-        md.tok[md.tok.length-2].text = md.tok[md.tok.length-2].text
-          .concat(md.inline.lex('\n'+x.cap)); // merge with previous token
-        md.tok.pop(); // remove token no longer needed
-      } else {
-        x.text = md.inline.lex(x.cap); // lex entire captured string
-      }
-    }
-  };
+    function processList(t, tok, state) {
 
-  // block grammar rule sequence for default mode
-  var block_sequence = [
-    'b_code','fences','heading','nptable','lheading','hr','blockquote',
-    'list','html','def','table','paragraph'
-  ];
+      // augment captured list token
+      t.text = []; // container for list item tokens
+      t.ordered = t.bull.length > 1; // is this an ordered list?
+      t.type = t.ordered ? 'ol' : 'ul';
 
-  // block grammar rule sequence for list (or list and blockquote) state
-  var block_sequence_list = _.chain(block_sequence)
-    .without('nptable').without('def').without('table').without('paragraph')
-    .concat('b_text')
-    .value()
+      // capture top-level itemns and iterate over them
+      var cap = t.cap.match(regex.item);
+      var previousNewline = false;
+      for (var i = 0; i < cap.length; i++) {
+        var item = cap[i];
 
-  // block grammar rule sequence for blockquote-only state
-  var block_sequence_bq = _.without(block_sequence, 'def');
+        // remove bullet from current item for recursive processing
+        var matchLength = item.match(/^ *([*+-]|\d+\.) +/)[0].length;
+        item = item.slice(matchLength); // slice off bullet
 
+        // if there are multiple lines in the item, remove leading spaces up to
+        // the first row indentation level on other lines
+        item = item.replace(new RegExp('^ {1,' + matchLength + '}', 'gm'), '');
 
-  ////////// FUNCTION TO TOKENIZE WITH BLOCK GRAMMAR //////////
+        // this is a loose item if the previous item ended in a newline or...
+        // item has a double newline not followed by whitespace to the end of it
+        var loose = previousNewline ||
+          /\n\n(?!\s*$)/.test(item); // double newline not followed by whitespace to end of item
 
-  function tokenize(src) {
-
-    // define variables for use in function
-    var cap, rules;
-
-    // function to try processing a rule
-    function processToken(src, rule) {
-      var cap = regex[rule].exec(src);  // try to match rule
-      if (cap) {                        // if rule matches...
-        var names = regex[rule].tokens || [];  // default to empty list of token names
-        var myTok = {         // initialize output token...
-          type: rule,         //   rule name that matched
-          cap:  cap[0],       //   matching text
-          n:    cap[0].length //   number of characters matched
-        };
-        for (var i = 0; i < names.length; i++){ // iterate over named fields
-          if (names[i] != '') {
-            myTok[names[i]] = cap[i+1]; // assign token to named fields
-          }
+        // if this isn't the last item...
+        //   * remember if this item ended in a newline
+        //   * this is a loose item if it ends in a newline and isn't already loose
+        if (i !== cap.length - 1) {
+          previousNewline = /\n$/.test(item);
+          if (!loose) loose = previousNewline;
         }
-        md.tok.push(myTok); // push token to stack
-        return myTok;       // return a reference to the current token
-      } else {
-        return false; // return false if the rule didn't match
+
+        // recursively process list item
+        var myTok = block.tokenize(item, [], {isList:true, isBlockQuote:state.isBlockQuote});
+
+        // perform inline lexing of non-loose items
+        if (!loose) {
+          var tempTok = [];
+          for (var j = 0; j < myTok.length; j++) {
+            if (myTok[j].type === 'text') {
+              tempTok = tempTok.concat(md.inline.lex(myTok[j]));
+            } else {
+              tempTok.push(myTok[j]);
+            }
+          }
+          myTok = tempTok;
+        }
+
+        // add list item to list
+        t.text.push({
+          type: 'listitem',
+          text: myTok
+        })
       }
     };
 
-    // consume markdown in source string and convert to tokens
-    eat_tokens: while (src) {
 
-      // determine list of block rules to use
-      if (md.state.isList) {
-        rules = block_sequence_list;
-      } else if (md.state.isBlockQuote) {
-        rules = block_sequence_bq;
-      } else {
-        rules = block_sequence;
+    ////////// BLOCK GRAMMAR RULE SEQUENCES //////////
+
+    // block grammar handler functions
+    block.handlers = {
+      b_code:     function(x){ x.text = x.cap.replace(/\n+$/, ''); }, // trim trailing newlines
+      fences:     function(x){ x.text = x.text || ''; }, // use empty string for text if undefined
+      heading:    function(x){
+        x.level = x.depth.length;       // convert captured depth to a number
+        x.text = md.inline.lex(x.text); // perform inline lexing of text block
+      },
+      nptable:    processTable,
+      lheading:   function(x){ x.depth = x.depth === '=' ? 1 : 2; }, // depth of 1 for =, 2 for -
+      blockquote: processBlockQuote,
+      list:       processList,
+      html:       function(x){
+        if (x.pre === 'pre' || x.pre === 'script' || x.pre === 'style') {
+          x.text = x.cap; // use captured string without further processing
+        } else {
+          x.text = md.inline.lex(cap); // lex captured string
+        }
+      },
+      def:        function(x){ md.tok.links[x.link.toLowerCase()] = { href:x.href, title:x.title }; md.tok.pop(); },
+      table:      processTable,
+      paragraph:  function(x){
+        x.text = x.text.replace(/\n$/,''); // trim trailing newline
+        x.text = md.inline.lex(x.text); // perform inline lexing of text block
+      },
+      b_text:     function(x){
+        if (md.tok.length > 2 && md.tok[md.tok.length-2].type === 'b_text') {
+          md.tok[md.tok.length-2].text = md.tok[md.tok.length-2].text
+            .concat(md.inline.lex('\n'+x.cap)); // merge with previous token
+          md.tok.pop(); // remove token no longer needed
+        } else {
+          x.text = md.inline.lex(x.cap); // lex entire captured string
+        }
+      }
+    };
+
+    // container object for rule sequences
+    block.rule_sequence = {};
+
+    // block grammar rule sequence for default mode
+    block.rule_sequence.default = [
+      'b_code','fences','heading','nptable','lheading','hr','blockquote',
+      'list','html','def','table','paragraph'
+    ];
+
+    // block grammar rule sequence for list (or list and blockquote) state
+    block.rule_sequence.list = _.chain(block_sequence)
+      .without('nptable').without('def').without('table').without('paragraph')
+      .concat('b_text')
+      .value()
+
+    // block grammar rule sequence for blockquote-only state
+    block.rule_sequence.bq = _.without(block_sequence, 'def');
+
+
+    ////////// FUNCTION TO TOKENIZE WITH BLOCK GRAMMAR //////////
+
+    block.tokenize = function(src, tok, state) {
+
+      // define variables for use in function
+      var cap, rules;
+
+      // initialize tokens to a blank list if unspecified
+      tok = tok || [];
+
+      // initialize lexer state if uninitialized
+      state = state || {
+        isList:       false, // not in a list
+        isBlockQuote: false  // not in a block quote
       }
 
-      // process leading newlines
-      if (cap = processToken(src, 'newline')) {
-        if (cap.n == 1) tok.pop();  // ignore single newlines
-        src = src.substring(cap.n); // removed captured newline(s)
-      }
+      // function to try processing a rule
+      function processToken(src, rule) {
+        var cap = regex[rule].exec(src);          // try to match rule
+        if (cap) {                                // if rule matches...
+          var names = regex[rule].tokens || [];   //   default to empty list of token names
+          var myTok = {                           //   initialize output token...
+            type: rule,                           //     rule name that matched
+            cap:  cap[0],                         //     matching text
+            n:    cap[0].length                   //     number of characters matched
+          };                                      //
+          for (var i = 0; i < names.length; i++){ //   iterate over named fields...
+            if (names[i] != '') {                 //     if name is defined...
+              myTok[names[i]] = cap[i+1];         //       assign token to named field
+            }                                     //
+          }                                       //
+          tok.push(myTok);                        //   push token to stack
+          return myTok;                           //   return a reference to the current token
+        } else {                                  // rule doesn't match...
+          return false;                           //   so return false
+        }
+      };
 
-      // run through list of regex rules
-      for (var i = 0; i < rules.length; i++) {
-        var r = rules[i], rule = block_rules[r];
-        if (cap = processToken(src, r)) {
-          if (block_handlers[r]) block_handlers[r](cap); // execute callback
-          src = src.substring(cap.n); // remove captured text from string
-          continue eat_tokens; // continue consumption while loop
+      // consume markdown in source string and convert to tokens
+      eat_tokens: while (src) {
+
+        // determine list of block rules to use
+        if (state.isList) {
+          rules = block.rule_sequence.list;
+        } else if (state.isBlockQuote) {
+          rules = block.rule_sequence.bq;
+        } else {
+          rules = block.rule_sequence.default;
+        }
+
+        // process leading newlines
+        if (cap = processToken(src, 'newline')) {
+          if (cap.n == 1) tok.pop();  // ignore single newlines
+          src = src.substring(cap.n); // removed captured newline(s)
+        }
+
+        // run through list of regex rules
+        for (var i = 0; i < rules.length; i++) {
+          var r = rules[i], rule = block_rules[r];
+          if (cap = processToken(src, r)) {
+            if (block.handlers[r]) block.handlers[r](cap,tok,state); // execute callback
+            src = src.substring(cap.n); // remove captured text from string
+            continue eat_tokens; // continue consumption while loop
+          }
+        }
+
+        // throw an error if none of the rules matched
+        if (src) { // nothing matched and a string remains
+          throw new Error('Failed to match a markdown rule: ' + src.charCodeAt(0));
         }
       }
 
-      // throw an error if none of the rules matched
-      if (src) { // nothing matched and a string remains
-        throw new Error('Failed to match a markdown rule: ' + src.charCodeAt(0));
-      }
+      // return the captured tokens
+      return tok;
     }
-  }
 
+    // return the block object
+    return block;
+  }();
 
   ///////////////
   // RENDERING //
@@ -1621,7 +1615,7 @@ function mdToHTML(src, regex) {
 
   // convert source string to block grammar tokens (md.tok)
   // equivalent to marked.js `marked.lexer(src)` or `Lexer.lex(src)`
-  tokenize(src);
+  var tok = md.block.tokenize(src);
 
   // parse block grammar tokens and return results
   // equvalent to marked.js `marked.parser(tok)` or `Parser.prototype.parse(tok)`
@@ -1630,7 +1624,7 @@ function mdToHTML(src, regex) {
   //     - Delegate to inline lexer as needed
   //   - Append rendered results to output string
   //   - Return output string
-  return parse(md.tok.reverse);
+  return parse(tok.reverse);
 
 }
 
