@@ -495,7 +495,7 @@ var regex = function(){
     / */,             // optional whitespace
     /(?:\n+|$)/       // non-captured newlines or end of line
   );
-  regex.fences.tokens = ['lang', 'text'];
+  regex.fences.tokens = ['', 'lang', 'code'];
 
 
   ////////// PARAGRAPH REGEX //////////
@@ -554,6 +554,7 @@ var regex = function(){
       /\n*/,    //   zero or more newlines
     ')+'        // end capture
   );
+  regex.b_code.tokens = ['code'];
 
 
   ////////// BLOCK LATEX REGEX //////////
@@ -806,6 +807,7 @@ var regex = function(){
     /\1/,         // captured backticks
     /(?!`)/       // not followed by another backtick
   );
+  regex.i_code.tokens = ['text'];
 
 
   ////////// ESCAPED CHARACTER REGEX //////////
@@ -853,7 +855,6 @@ var regex = function(){
       ')*?',          //   end non-capturing group
       />/             //   >
   );
-  regex.tag.tokens = ['text'];
 
 
   ////////// INLINE TEXT REGEX //////////
@@ -871,7 +872,6 @@ var regex = function(){
         /$/,            //     end of string
     ')'                 // end lookahead
   );
-  regex.i_text.tokens = ['text'];
 
 
   ////////// URL REGEX //////////
@@ -1091,8 +1091,8 @@ function mdToHTML(src, regex, dataOnly) {
     }
 
     // recursively process 'text' field
-    inline.Lexer.prototype.recurse = function(txt, inLink){
-      this.text = inline.lex(txt||this.text, inLink||this.inLink);
+    inline.Lexer.prototype.recurse = function(tok, txt, inLink){
+      tok.text = inline.lex(txt||tok.text, inLink||this.inLink);
     }
 
     // rewind last token capture
@@ -1103,10 +1103,14 @@ function mdToHTML(src, regex, dataOnly) {
 
     ////////// INLINE TOKEN PROCESSING //////////
 
+    // assign captured text to 'text' field
+    inline.Lexer.prototype.i_text = function(x){ x.text = x.cap };
+    inline.Lexer.prototype.tag    = function(x){ x.text = x.cap };
+
     // recursive processing of 'text' field
-    inline.Lexer.prototype.strong = function(x){ this.recurse(x.opt1 || x.opt2) };
-    inline.Lexer.prototype.em     = function(x){ this.recurse(x.opt1 || x.opt2) };
-    inline.Lexer.prototype.del    = function(x){ this.recurse()                 };
+    inline.Lexer.prototype.strong = function(x){ this.recurse(x, x.opt1 || x.opt2) };
+    inline.Lexer.prototype.em     = function(x){ this.recurse(x, x.opt1 || x.opt2) };
+    inline.Lexer.prototype.del    = function(x){ this.recurse(x)                   };
 
     // process an escaped character
     inline.Lexer.prototype.escape = function(x){
@@ -1146,7 +1150,7 @@ function mdToHTML(src, regex, dataOnly) {
         x.type = 'image';                           //   then set type to image
       } else {                                      // otherwise ...
         x.type = 'link';                            //   set type to link (if coming from reflink)
-        this.recurse(x.text, true);                 //   recursively process link text
+        this.recurse(x, x.text, true);              //   recursively process link text
       }
     }
 
@@ -1306,7 +1310,7 @@ function mdToHTML(src, regex, dataOnly) {
     block.handlers = {
       b_code:     function(x){ x.text = x.cap.replace(/\n+$/, ''); }, // trim trailing newlines
       fences:     function(x){
-        x.text = x.text || ''; // use empty string for text if undefined
+        x.code = x.code || ''; // use empty string for code if undefined
         x.type = 'b_code'; // render as block code
       },
       heading:    function(x){
@@ -1416,7 +1420,8 @@ function mdToHTML(src, regex, dataOnly) {
         // process leading newlines
         if (cap = processToken(src, 'newline')) {
           if (cap.n == 1) tok.pop();  // ignore single newlines
-          src = src.substring(cap.n); // removed captured newline(s)
+          cap.type = 'space';         // treat as a space token
+          src = src.substring(cap.n); // remove captured newline(s)
         }
 
         // run through list of regex rules
@@ -1488,7 +1493,7 @@ function mdToHTML(src, regex, dataOnly) {
     // escape HTML (taken from from marked.js)
     // - escape(html) to escape HTML (respecting already-escaped characters)
     // - escape(html,true) to escape text inside HTML (like code)
-    function escape(html, encode) {
+    var escape = function(html, encode) {
       return html
         .replace(                 // replace ...
           !encode                 //   not encode? (default behavior) ...
@@ -1498,12 +1503,12 @@ function mdToHTML(src, regex, dataOnly) {
         .replace(/</g, '&lt;')    // replace < -> &lt;
         .replace(/>/g, '&gt;')    // replace > -> &gt;
         .replace(/"/g, '&quot;')  // replace " -> &quot;
-        .replace(/'/g, '&#39;');  // replace ' -> &#39;
-    }
+        .replace(/'/g, '&#39;')   // replace ' -> &#39;
+    };
 
     // mangle mailto links (taken from marked.js)
-    function mangle(text) {
-      var out = ''                            // initialize output string
+    var mangle = function(text) {
+      var out = '';                           // initialize output string
       for (var i = 0; i < text.length; i++) { // iterate over characters in input...
         var ch = text.charCodeAt(i);          //   current decimal character code
         if (Math.random() > 0.5) {            //   with 50% probability...
@@ -1550,7 +1555,16 @@ function mdToHTML(src, regex, dataOnly) {
         }
         return code.join('+');
       }
-      return new Function('x', 'return ' + processString(src.replace(/'/g,"\\'")));
+      var prefix = '';
+      if (src.match(/{{\^/)) { // add escape code if needed
+        prefix = prefix + 'escape=' + escape.toString().replace(/\/\/.*/g, '').replace(/\s+/g, '').replace('return','return ') + ';';
+      }
+      if (src.match(/{{@/)) { // add mangle code if needed
+        prefix = prefix + 'mangle=' + mangle.toString().replace(/\/\/.*/g, '').replace(/\s+/g, '').replace('return','return ') + ';';
+      }
+      var fx = prefix + 'return ' + processString(src.replace(/'/g,"\\'"));
+      console.log(fx);
+      return new Function('x', fx);
     }
 
     // compile rendering templates
@@ -1622,21 +1636,25 @@ function mdToHTML(src, regex, dataOnly) {
     }
 
     // parse list of tokens and return HTML code as a string
-    return function(tokens) {
-      var out = [];
-      while (tokens.length > 0) {
-        var tok = tokens.pop(); // grab next token
+    function parser(tokens) {
+      var out = new Array(tokens.length);
+      for (var i = 0; i < tokens.length; i++) {
+        var tok = tokens[i]; // grab next token
         if (_.isArray(tok.text)) { // convert array of inline tokens to string
-          for (var i = 0; i < tok.text.length; i++) {
-            tok.text[i] = renderToken(tok.text[i]);
-          }
-          tok.text = tok.text.join('');
+          //for (var i = 0; i < tok.text.length; i++) {
+          //  tok.text[i] = renderToken(tok.text[i]);
+          //}
+          //tok.text = tok.text.join('');
+          tok.text = parser(tok.text);
         }
         if (parser_data[tok.type]) parser_data[tok.type](tok, tokens); // convert token
-        out.push(renderToken(tok)); // render token and add to output
+        out[i] = renderToken(tok);
       }
       return out.join(''); // squish together output and return it
     }
+
+    // return the parser function
+    return parser;
   }();
 
   ///////////////////
@@ -1657,7 +1675,7 @@ function mdToHTML(src, regex, dataOnly) {
   //     - Delegate to inline lexer as needed
   //   - Append rendered results to output string
   //   - Return output string
-  return md.parse(tok.reverse());
+  return md.parse(tok);
 
 }
 
@@ -2096,6 +2114,7 @@ $(function(){
   // test function
   window.test = function(){
     $('section#viewer-container').html(mdToHTML(cm.getValue(), regex))
+    return mdToHTML(cm.getValue(), regex, true);
   }
 
   // starter text for editor
