@@ -478,7 +478,7 @@ var regex = function(){
     / */,         // zero or more spaces
     /(?:\n+|$)/   // non-captured newlines or end of line
   );
-  regex.lheading.tokens = ['depth', 'text'];
+  regex.lheading.tokens = ['text', 'depth'];
 
 
   ////////// FENCED CODE REGEX //////////
@@ -554,7 +554,6 @@ var regex = function(){
       /\n*/,    //   zero or more newlines
     ')+'        // end capture
   );
-  regex.b_code.tokens = ['code'];
 
 
   ////////// BLOCK LATEX REGEX //////////
@@ -807,7 +806,7 @@ var regex = function(){
     /\1/,         // captured backticks
     /(?!`)/       // not followed by another backtick
   );
-  regex.i_code.tokens = ['text'];
+  regex.i_code.tokens = ['', 'text'];
 
 
   ////////// ESCAPED CHARACTER REGEX //////////
@@ -1140,6 +1139,7 @@ function mdToHTML(src, regex, dataOnly) {
 
     // process a tag: toggle inLink state if this is an opening or closing anchor
     inline.Lexer.prototype.tag = function(x){
+      x.text = x.cap;
       if      (  /^<a /i.test(x.cap)) this.inLink = true;
       else if (/^<\/a /i.test(x.cap)) this.inLink = false;
     }
@@ -1159,7 +1159,7 @@ function mdToHTML(src, regex, dataOnly) {
       var linkLookup = (x.href || x.text).replace(/\s+/g, ' ').toLowerCase();
       if (!md.links[linkLookup] || !md.links[linkLookup].href){ // undefined link
         this.rewind();                                    // reverse capture
-        this.tok.push({ type:'text', text:this.src[0] }); // push single character token
+        this.tok.push({ type:'i_text', text:this.src[0] }); // push single character token
         this.src = this.src.slice(1);                     // and chop character off of src
       } else {
         this.link(x); // call link processor
@@ -1286,8 +1286,9 @@ function mdToHTML(src, regex, dataOnly) {
         if (!loose) {
           var tempTok = [];
           for (var j = 0; j < myTok.length; j++) {
-            if (myTok[j].type === 'text') {
-              tempTok = tempTok.concat(md.inline.lex(myTok[j]));
+            if (myTok[j].type === 'b_text') {
+              //tempTok = tempTok.concat(md.inline.lex(myTok[j]));
+              tempTok = tempTok.concat(myTok[j].text);
             } else {
               tempTok.push(myTok[j]);
             }
@@ -1308,19 +1309,26 @@ function mdToHTML(src, regex, dataOnly) {
 
     // block grammar handler functions
     block.handlers = {
-      b_code:     function(x){ x.text = x.cap.replace(/\n+$/, ''); }, // trim trailing newlines
+      b_code:     function(x){
+        x.code = x.cap            // start with captured text...
+          .replace(/^ {4}/gm, '') //   remove leading whitespace
+          .replace(/\n+$/, '');   //   trim trailing newlines
+      },
       fences:     function(x){
         x.code = x.code || ''; // use empty string for code if undefined
         x.type = 'b_code'; // render as block code
       },
       heading:    function(x){
+        x.id = x.text.toLowerCase().replace(/[^\w]+/g, '-'); // create a heading ID
         x.level = x.depth.length;       // convert captured depth to a number
         x.text = md.inline.lex(x.text); // perform inline lexing of text block
       },
       nptable:    processTable,
       lheading:   function(x){
-        x.depth = x.depth === '=' ? 1 : 2; // depth of 1 for =, 2 for -
+        x.id = x.text.toLowerCase().replace(/[^\w]+/g, '-'); // create a heading ID
+        x.level = x.depth === '=' ? 1 : 2; // depth of 1 for =, 2 for -
         x.type = 'heading'; // render as a heading
+        x.text = md.inline.lex(x.text); // perform inline lexing of text block
       },
       blockquote: processBlockQuote,
       list:       processList,
@@ -1466,17 +1474,17 @@ function mdToHTML(src, regex, dataOnly) {
     var render_templates = {
       space:      '',
       hr:         '<hr/>\n',
-      heading:    '<h{{level}} id="{{id}}">{{text}}</h{{level}}>',
+      heading:    '<h{{level}} id="{{id}}">{{text}}</h{{level}}>\n',
       b_code:     '<pre><code{{IF lang}} class="{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>',
       blockquote: '<blockquote>\n{{text}}</blockquote>\n',
       html:       '{{text}}',
-      list:       '<{{listtype}}>{{text}}</{{listtype}}>',
-      listitem:   '<li>{{text}}</li>',
-      paragraph:  '<p>{{text}}</p>',
-      b_text:     '<p>{{text}}</p>',
-      table:      '<table><thead>\n{{header}}\n</thead><tbody>\n{{body}}\n</tbody></table>\n',
+      list:       '<{{listtype}}>\n{{text}}</{{listtype}}>\n',
+      listitem:   '<li>{{text}}</li>\n',
+      paragraph:  '<p>{{text}}</p>\n',
+      b_text:     '<p>{{text}}</p>\n',
+      table:      '<table>\n<thead>\n{{header}}</thead>\n<tbody>\n{{body}}</tbody>\n</table>\n',
       tablerow:   '<tr>\n{{content}}</tr>\n',
-      tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}>{{text}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>',
+      tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}>{{text}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>\n',
       strong:     '<strong>{{text}}</strong>',
       em:         '<em>{{text}}</em>',
       i_code:     '<code>{{^^text}}</code>',
@@ -1486,7 +1494,7 @@ function mdToHTML(src, regex, dataOnly) {
       link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{^text}}</a>',
       mailto:     '<a href="{{@href}}"}>{{@text}}</a>',
       image:      '<img src="{{href}}" alt="{{text}}"{{IF title}} title="{{title}}"{{ENDIF}}/>',
-      text:       '{{text}}',
+//      text:       '{{text}}',
       tag:        '{{text}}'
     }
 
@@ -1563,7 +1571,6 @@ function mdToHTML(src, regex, dataOnly) {
         prefix = prefix + 'mangle=' + mangle.toString().replace(/\/\/.*/g, '').replace(/\s+/g, '').replace('return','return ') + ';';
       }
       var fx = prefix + 'return ' + processString(src.replace(/'/g,"\\'"));
-      console.log(fx);
       return new Function('x', fx);
     }
 
@@ -1599,7 +1606,7 @@ function mdToHTML(src, regex, dataOnly) {
         cell += md.render.tablecell({
           header: true,
           align:  x.align[i],
-          text:   md.inline.lex(x.header[i])
+          text:   parser(md.inline.lex(x.header[i]))
         })
       }
       var header = md.render.tablerow({ content: cell });
@@ -1613,14 +1620,15 @@ function mdToHTML(src, regex, dataOnly) {
           cell += md.render.tablecell({
             header: false,
             align:  x.align[j],
-            text:   md.inline.lex(row[j])
+            text:   parser(md.inline.lex(row[j]))
           })
         }
         body += md.render.tablerow({ content: cell });
       }
 
       // return assembled output
-      return md.render.table({ header:header, body:body });
+      x.header = header;
+      x.body = body;
     }
 
 
@@ -2113,8 +2121,29 @@ $(function(){
 
   // test function
   window.test = function(){
-    $('section#viewer-container').html(mdToHTML(cm.getValue(), regex))
+    var $el = $('section#viewer-container');
+    $el.html(mdToHTML(cm.getValue(), regex));
+
+    // style tables
+    $el.find('table').addClass('table table-striped table-hover table-condensed');
+    $el.find('thead').addClass('btn-primary');
+
+    // perform syntax highlighting
+    $el.find('pre code').each(function(i, block) { hljs.highlightBlock(block); });
+
+    // create bootstrap alert boxes
+    $el.find('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
+    $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
+
     return mdToHTML(cm.getValue(), regex, true);
+  }
+
+  // text comparison function
+  window.compare = function(){
+    $('main#content').html('<pre></pre>');
+    $('main#content pre').text(marked(cm.getValue()));
+    $('section#viewer-container').html('<pre></pre>').attr('style','');
+    $('section#viewer-container pre').text(mdToHTML(cm.getValue(), regex));
   }
 
   // starter text for editor

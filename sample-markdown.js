@@ -19,7 +19,7 @@ $$\n\
 \\vec{x_2}\n\
 $$\n\
 \n\
-$$\vec{x_3}$$\n\
+$$\\vec{x_3}$$\n\
 \n\
 This is a paragraph with a <a href='test'>Test</a> hyperlink embedded in it\n\
 and some \\\\(\\vec{latex}\\\\) embedded in it\n\
