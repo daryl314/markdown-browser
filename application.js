@@ -984,12 +984,6 @@ var regex = function(){
   return regex;
 }();
 
-////////// BASIC REGEXES //////////
-
-var headerRegex = /^\s*#+.*/;
-var boldRegex1 = /^__([\s\S]+?)__(?!_)/
-var boldRegex2 = /^\*\*([\s\S]+?)\*\*(?!\*)/;
-
 
 /////////////////////////////
 /////////////////////////////
@@ -1162,6 +1156,8 @@ function mdToHTML(src, regex, dataOnly) {
         this.tok.push({ type:'i_text', text:this.src[0] }); // push single character token
         this.src = this.src.slice(1);                     // and chop character off of src
       } else {
+        x.href  = md.links[linkLookup].href;  // get link from lookup
+        x.title = md.links[linkLookup].title; // get title from lookup
         this.link(x); // call link processor
       }
     }
@@ -1283,7 +1279,7 @@ function mdToHTML(src, regex, dataOnly) {
         var myTok = block.tokenize(item, [], {isList:true, isBlockQuote:state.isBlockQuote});
 
         // perform inline lexing of non-loose items
-        if (!loose) {
+        /*if (!loose) {
           var tempTok = [];
           for (var j = 0; j < myTok.length; j++) {
             if (myTok[j].type === 'b_text') {
@@ -1294,12 +1290,13 @@ function mdToHTML(src, regex, dataOnly) {
             }
           }
           myTok = tempTok;
-        }
+        }*/
 
         // add list item to list
         t.text.push({
           type: 'listitem',
-          text: myTok
+          text: myTok,
+          loose: loose
         })
       }
     };
@@ -1321,23 +1318,17 @@ function mdToHTML(src, regex, dataOnly) {
       heading:    function(x){
         x.id = x.text.toLowerCase().replace(/[^\w]+/g, '-'); // create a heading ID
         x.level = x.depth.length;       // convert captured depth to a number
-        x.text = md.inline.lex(x.text); // perform inline lexing of text block
       },
       nptable:    processTable,
       lheading:   function(x){
         x.id = x.text.toLowerCase().replace(/[^\w]+/g, '-'); // create a heading ID
         x.level = x.depth === '=' ? 1 : 2; // depth of 1 for =, 2 for -
         x.type = 'heading'; // render as a heading
-        x.text = md.inline.lex(x.text); // perform inline lexing of text block
       },
       blockquote: processBlockQuote,
       list:       processList,
       html:       function(x){
-        if (x.pre === 'pre' || x.pre === 'script' || x.pre === 'style') {
-          x.text = x.cap; // use captured string without further processing
-        } else {
-          x.text = md.inline.lex(x.cap); // lex captured string
-        }
+        x.text = x.cap; // use captured string as text
       },
       def:        function(x,tok){
         md.links[x.link.toLowerCase()] = { href:x.href, title:x.title };
@@ -1346,15 +1337,15 @@ function mdToHTML(src, regex, dataOnly) {
       table:      processTable,
       paragraph:  function(x){
         x.text = x.text.replace(/\n$/,''); // trim trailing newline
-        x.text = md.inline.lex(x.text); // perform inline lexing of text block
       },
       b_text:     function(x,tok){
         if (tok.length > 1 && tok[tok.length-2].type === 'b_text') {
           tok[tok.length-2].text = tok[tok.length-2].text
-            .concat(md.inline.lex('\n'+x.cap)); // merge with previous token
+            .concat('\n' + x.cap); // merge with previous token
           tok.pop(); // remove token no longer needed
         } else {
-          x.text = md.inline.lex(x.cap); // lex entire captured string
+          //x.text = md.inline.lex(x.cap); // lex entire captured string
+          x.text = x.cap; // assign captured text to 'text' field
         }
       }
     };
@@ -1497,7 +1488,7 @@ function mdToHTML(src, regex, dataOnly) {
       link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{^text}}</a>',
       mailto:     '<a href="{{@href}}"}>{{@text}}</a>',
       image:      '<img src="{{href}}" alt="{{text}}"{{IF title}} title="{{title}}"{{ENDIF}}/>',
-//      text:       '{{text}}',
+    //  text:       '{{text}}',
       tag:        '{{text}}'
     }
 
@@ -1599,6 +1590,36 @@ function mdToHTML(src, regex, dataOnly) {
     // container for token-specific parsing
     var parser_data = {};
 
+    // perform inline lexing of text blocks
+    // note that this has to happen after block lexing is complete so that
+    // all link definitions have been processed
+    parser_data.heading   = function(x){ x.text = md.inline.lex(x.text) };
+    parser_data.lheading  = function(x){ x.text = md.inline.lex(x.text) };
+    parser_data.paragraph = function(x){ x.text = md.inline.lex(x.text) };
+    parser_data.b_text    = function(x){ x.text = md.inline.lex(x.text) };
+    parser_data.html      = function(x){
+      if (x.pre !== 'pre' && x.pre !== 'script' && x.pre !== 'style') {
+        x.text = md.inline.lex(x.text);
+      }
+    };
+
+    // perform inline lexing of non-loose list items
+    parser_data.listitem = function(x){
+      if (!x.loose) {
+        var itemText = [];
+        for (var i = 0; i < x.text.length; i++) {
+          var tok = x.text[i];
+          if (tok.type === 'b_text') {
+            itemText = itemText.concat(md.inline.lex(tok.text));
+          } else {
+            itemText.push(tok);
+          }
+        }
+        x.text = itemText;
+      }
+    }
+
+
     ////////// TABLE HANDLER //////////
 
     parser_data.table = function(x){
@@ -1651,6 +1672,7 @@ function mdToHTML(src, regex, dataOnly) {
       var out = new Array(tokens.length);
       for (var i = 0; i < tokens.length; i++) {
         var tok = tokens[i]; // grab next token
+        if (parser_data[tok.type]) parser_data[tok.type](tok, tokens); // convert token
         if (_.isArray(tok.text)) { // convert array of inline tokens to string
           //for (var i = 0; i < tok.text.length; i++) {
           //  tok.text[i] = renderToken(tok.text[i]);
@@ -1658,7 +1680,6 @@ function mdToHTML(src, regex, dataOnly) {
           //tok.text = tok.text.join('');
           tok.text = parser(tok.text);
         }
-        if (parser_data[tok.type]) parser_data[tok.type](tok, tokens); // convert token
         out[i] = renderToken(tok);
       }
       return out.join(''); // squish together output and return it
@@ -1704,6 +1725,8 @@ function mdToHTML(src, regex, dataOnly) {
 //   codemirror simple mode demo: https://codemirror.net/demo/simplemode.html
 //   codemirror markdown mode demo: http://codemirror.net/mode/markdown/
 //   regex tester: https://regex101.com/#javascript
+
+var headerRegex = /^\s*#+.*/;
 
 // Define a CodeMirror mode for markdown editor
 CodeMirror.defineSimpleMode("gfm", {
