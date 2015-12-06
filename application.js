@@ -1339,14 +1339,17 @@ function mdToHTML(src, regex, dataOnly) {
           x.text = md.inline.lex(x.cap); // lex captured string
         }
       },
-      def:        function(x,tok){ md.links[x.link.toLowerCase()] = { href:x.href, title:x.title }; tok.pop(); },
+      def:        function(x,tok){
+        md.links[x.link.toLowerCase()] = { href:x.href, title:x.title };
+        tok.pop();
+      },
       table:      processTable,
       paragraph:  function(x){
         x.text = x.text.replace(/\n$/,''); // trim trailing newline
         x.text = md.inline.lex(x.text); // perform inline lexing of text block
       },
       b_text:     function(x,tok){
-        if (tok.length > 2 && tok[tok.length-2].type === 'b_text') {
+        if (tok.length > 1 && tok[tok.length-2].type === 'b_text') {
           tok[tok.length-2].text = tok[tok.length-2].text
             .concat(md.inline.lex('\n'+x.cap)); // merge with previous token
           tok.pop(); // remove token no longer needed
@@ -1475,7 +1478,7 @@ function mdToHTML(src, regex, dataOnly) {
       space:      '',
       hr:         '<hr/>\n',
       heading:    '<h{{level}} id="{{id}}">{{text}}</h{{level}}>\n',
-      b_code:     '<pre><code{{IF lang}} class="{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>',
+      b_code:     '<pre><code{{IF lang}} class="lang-{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>{{IF lang}}\n{{ENDIF}}',
       blockquote: '<blockquote>\n{{text}}</blockquote>\n',
       html:       '{{text}}',
       list:       '<{{listtype}}>\n{{text}}</{{listtype}}>\n',
@@ -1532,8 +1535,8 @@ function mdToHTML(src, regex, dataOnly) {
       function processString(src) {
         var code = [], cap;
         while(src) {
-          if (src.match(/^{{IF.*?{{ENDIF}}/)) {
-            var sub_src = src.match(/^{{IF.*?{{ENDIF}}/);
+          if (src.match(/^{{IF[\s\S]*?{{ENDIF}}/)) {
+            var sub_src = src.match(/^{{IF[\s\S]*?{{ENDIF}}/);
             if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ELSE}}([\s\S]*?){{ENDIF}}/.exec(sub_src)) {
               code.push('(x.'+cap[1]+'?'+processString(cap[2])+':'+processString(cap[3])+')');
             } else if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ENDIF}}/.exec(sub_src)) {
