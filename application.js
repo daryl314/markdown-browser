@@ -2194,10 +2194,11 @@ $(function(){
     for (var i = 0; i < d.length; i++) {
       if (d[i][0] == diff.EQUAL) {
         if (d[i][1].match(/\n/)) {
+          var txt = d[i][1].replace(/^(.*\n.*\n)([\s\S]*)(.*\n.*\n.*)$/, '$1...$3');
           var cap = (i > 1 ?
             /(.*\n)([\s\S]*\n)?(.*)/ :
             /()([\s\S]*\n)(.*)/
-          ).exec(d[i][1]);
+          ).exec(txt);
           $('<span>').css('background-color','LightSteelBlue').text( cap[1] ).appendTo($el1);
           $('<span>').css('background-color','LightSteelBlue').text( cap[1] ).appendTo($el2);
           $('<span>').text( cap[2] || '' ).appendTo($el1);
