@@ -1575,6 +1575,10 @@ function mdToHTML(src, regex, dataOnly) {
       render[keys[i]] = convertTemplate(render_templates[keys[i]]);
     }
 
+    // attach escape and mangle functions
+    render.escape = escape;
+    render.mangle = mangle;
+
     // return the compiled templates
     return render;
   }();
@@ -2166,10 +2170,52 @@ $(function(){
 
   // text comparison function
   window.compare = function(){
-    $('main#content').html('<pre></pre>');
-    $('main#content pre').text(marked(cm.getValue()));
-    $('section#viewer-container').html('<pre></pre>').attr('style','');
-    $('section#viewer-container pre').text(mdToHTML(cm.getValue(), regex));
+
+    // get markdown object
+    md = mdToHTML(cm.getValue(), regex, true)
+
+    // clear text areas
+    $el1 = $('main#content');
+    $el2 = $('section#viewer-container');
+    //$el1.html('<pre></pre>');
+    //$el2.html('<pre></pre>').attr('style','');
+    $el1.add($el2).html('').attr('style','').css({
+      'white-space':'pre', 'font-family':'monospace', 'overflow-wrap':'break-word'
+    });
+
+    // render markdown
+    var md_1 = marked(cm.getValue());
+    var md_2 = mdToHTML(cm.getValue(), regex);
+
+    // compare results
+    d = diff(md_1, md_2);
+
+    // display output
+    for (var i = 0; i < d.length; i++) {
+      if (d[i][0] == diff.EQUAL) {
+        if (d[i][1].match(/\n/)) {
+          var cap = (i > 1 ?
+            /(.*\n)([\s\S]*\n)?(.*)/ :
+            /()([\s\S]*\n)(.*)/
+          ).exec(d[i][1]);
+          $('<span>').css('background-color','LightSteelBlue').text( cap[1] ).appendTo($el1);
+          $('<span>').css('background-color','LightSteelBlue').text( cap[1] ).appendTo($el2);
+          $('<span>').text( cap[2] || '' ).appendTo($el1);
+          $('<span>').text( cap[2] || '' ).appendTo($el2);
+          $('<span>').css('background-color','LightSteelBlue').text( cap[3] ).appendTo($el1);
+          $('<span>').css('background-color','LightSteelBlue').text( cap[3] ).appendTo($el2);
+        } else {
+          $('<span>').css('background-color','LightSteelBlue').text( d[i][1] ).appendTo($el1);
+          $('<span>').css('background-color','LightSteelBlue').text( d[i][1] ).appendTo($el2);
+        }
+      } else if (d[i][0] == diff.DELETE) {
+        $('<span>').css({'white-space':'pre', 'font-family':'monospace', 'overflow-wrap':'break-word', 'background-color':'red'}).text(d[i][1]).appendTo($el1);
+      } else {
+        $('<span>').css({'white-space':'pre', 'font-family':'monospace', 'overflow-wrap':'break-word', 'background-color':'green'}).text(d[i][1]).appendTo($el2);
+      }
+    }
+    //$('main#content pre').text(md_1);
+    //$('section#viewer-container pre').text(md_2);
   }
 
   // starter text for editor
