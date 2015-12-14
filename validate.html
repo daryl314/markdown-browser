@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Markdown Editor</title>
+
+  <!-- JAVASCRIPT RESOURCES -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.2/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.9.3/lodash.min.js"></script>
+  <style>
+    div.diff {
+      white-space: pre;
+      font-family: monospace;
+      overflow-wrap: break-word;
+      font-size: 0.8em;
+    }
+    div.diff span.flag {
+      background-color: LightSteelBlue
+    }
+    div.diff span.add, span.pass {
+      background-color: PaleGreen
+    }
+    div.diff span.delete, span.fail {
+      background-color: red;
+      color: white;
+    }
+    div.diff span.skipped {
+      background-color: Gainsboro
+    }
+  </style>
+
+  <!-- APPLICATION RESOURCES -->
+  <script type="text/javascript">window.module={};//for diff.js node exports</script><script type="text/javascript" src="diff.js"></script>
+  <script type="text/javascript" src="marked.js"></script>
+  <script type="text/javascript" src="markdown.js"></script>
+  <script type="text/javascript" src="sample-markdown.js"></script>
+  <script type="text/javascript">$(function(){
+
+    /////////////////////////////////////
+    // FUNCTION TO COMPARE TEXT BLOCKS //
+    /////////////////////////////////////
+
+    function compareBlocks(text1, text2, title, $container) {
+
+      // default to body for container
+      $container = $container || $('body');
+
+      // prepare text areas
+      if (title) $('<h2>'+title+'</h2>').appendTo($container);
+      $container.append('<div class="container-fluid"><div class="row diff">');
+      $container = $container.find('div.row').last();
+      $el1 = $('<section class="col-md-6">').appendTo($container);
+      $el2 = $('<section class="col-md-6">').appendTo($container);
+
+      // compare results
+      d = diff(text1, text2);
+
+      // display output
+      for (var i = 0; i < d.length; i++) {
+        if (d[i][0] == diff.EQUAL) {
+          if (d[i][1].match(/\n/)) {
+            var txt = d[i][1];
+            var cap = (i > 1 ?
+              /(.*\n)([\s\S]*\n)?(.*)/ :
+              /()([\s\S]*\n)(.*)/
+            ).exec(txt);
+            var block = (cap[2] || '').split(/\n/);
+            $('<span>').addClass('flag').text( cap[1] ).appendTo($el1);
+            $('<span>').addClass('flag').text( cap[1] ).appendTo($el2);
+            if (block.length < 5) {
+              $('<span>').text( cap[2] || '' ).appendTo($el1);
+              $('<span>').text( cap[2] || '' ).appendTo($el2);
+            } else {
+              $('<span>').text( block[1] + '\n' ).appendTo($el1);
+              $('<span>').text( block[1] + '\n' ).appendTo($el2);
+              $('<span>').addClass('skipped').text( '=== ' + (block.length-1) + ' lines ===\n' ).appendTo($el1);
+              $('<span>').addClass('skipped').text( '=== ' + (block.length-1) + ' lines ===\n' ).appendTo($el2);
+              $('<span>').text( block.slice(-2).join('\n') ).appendTo($el1);
+              $('<span>').text( block.slice(-2).join('\n') ).appendTo($el2);
+            }
+            $('<span>').addClass('flag').text( cap[3] ).appendTo($el1);
+            $('<span>').addClass('flag').text( cap[3] ).appendTo($el2);
+          } else {
+            $('<span>').addClass('flag').text( d[i][1] ).appendTo($el1);
+            $('<span>').addClass('flag').text( d[i][1] ).appendTo($el2);
+          }
+        } else if (d[i][0] == diff.DELETE) {
+          $('<span>').addClass('delete').text(d[i][1]).appendTo($el1);
+        } else {
+          $('<span>').addClass('add').text(d[i][1]).appendTo($el2);
+        }
+      }
+    }
+
+
+    /////////////////////////////
+    // REGEX VALIDATION CHECKS //
+    /////////////////////////////
+
+    // extract markdown.js regex grammar
+    var regex = markdown.regex;
+
+    // block grammar from marked.js 0.3.5 (marked.Lexer.rules.tables)
+    var marked_block = {
+      blockquote: /^( *>[^\n]+(\n(?! *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))[^\n]+)*\n*)+/,
+      bullet: /(?:[*+-]|\d+\.)/,
+      code: /^( {4}[^\n]+\n*)+/,
+      def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)/,
+      fences: /^ *(`{3,}|~{3,})[ \.]*(\S+)? *\n([\s\S]*?)\s*\1 *(?:\n+|$)/,
+      heading: /^ *(#{1,6}) +([^\n]+?) *#* *(?:\n+|$)/,
+      hr: /^( *[-*_]){3,} *(?:\n+|$)/,
+      html: /^ *(?:<!--[\s\S]*?--> *(?:\n|\s*$)|<((?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b)[\s\S]+?<\/\1> *(?:\n{2,}|\s*$)|<(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b(?:"[^"]*"|'[^']*'|[^'">])*?> *(?:\n{2,}|\s*$))/,
+      item: /^( *)((?:[*+-]|\d+\.)) [^\n]*(?:\n(?!\1(?:[*+-]|\d+\.) )[^\n]*)*/gm,
+      lheading: /^([^\n]+)\n *(=|-){2,} *(?:\n+|$)/,
+      list: /^( *)((?:[*+-]|\d+\.)) [\s\S]+?(?:\n+(?=\1?(?:[-*_] *){3,}(?:\n+|$))|\n+(?= *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))|\n{2,}(?! )(?!\1(?:[*+-]|\d+\.) )\n*|\s*$)/,
+      newline: /^\n+/,
+      nptable: /^ *(\S.*\|.*)\n *([-:]+ *\|[-| :]*)\n((?:.*\|.*(?:\n|$))*)\n*/,
+      paragraph: /^((?:[^\n]+\n?(?! *(`{3,}|~{3,})[ \.]*(\S+)? *\n([\s\S]*?)\s*\2 *(?:\n+|$)|( *)((?:[*+-]|\d+\.)) [\s\S]+?(?:\n+(?=\3?(?:[-*_] *){3,}(?:\n+|$))|\n+(?= *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))|\n{2,}(?! )(?!\1(?:[*+-]|\d+\.) )\n*|\s*$)|( *[-*_]){3,} *(?:\n+|$)| *(#{1,6}) *([^\n]+?) *#* *(?:\n+|$)|([^\n]+)\n *(=|-){2,} *(?:\n+|$)|( *>[^\n]+(\n(?! *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$))[^\n]+)*\n*)+|<(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\b)\w+(?!:\/|[^\w\s@]*@)\b| *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)))+)\n*/,
+      table: /^ *\|(.+)\n *\|( *[-:]+[-| :]*)\n((?: *\|.*(?:\n|$))*)\n*/,
+      text: /^[^\n]+/
+    };
+
+    // inline grammar from marked.js 0.3.5 (marked.InlineLexer.rules.gfm)
+    var marked_inline = {
+      autolink: /^<([^ >]+(@|:\/)[^ >]+)>/,
+      br: /^ {2,}\n(?!\s*$)/,
+      code: /^(`+)\s*([\s\S]*?[^`])\s*\1(?!`)/,
+      del: /^~~(?=\S)([\s\S]*?\S)~~/,
+      em: /^\b_((?:[^_]|__)+?)_\b|^\*((?:\*\*|[\s\S])+?)\*(?!\*)/,
+      escape: /^\\([\\`*{}\[\]()#+\-.!_>~|])/,
+      link: /^!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\(\s*<?([\s\S]*?)>?(?:\s+['"]([\s\S]*?)['"])?\s*\)/,
+      nolink: /^!?\[((?:\[[^\]]*\]|[^\[\]])*)\]/,
+      reflink: /^!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\s*\[([^\]]*)\]/,
+      strong: /^__([\s\S]+?)__(?!_)|^\*\*([\s\S]+?)\*\*(?!\*)/,
+      tag: /^<!--[\s\S]*?-->|^<\/?\w+(?:"[^"]*"|'[^']*'|[^'">])*?>/,
+      text: /^[\s\S]+?(?=[\\<!\[_*`~]|https?:\/\/| {2,}\n|$)/,
+      url: /^(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/
+    };
+
+    // patch marked.js paragraph grammar
+    // AS DEFINED: only first \3 back reference is replaced with \1
+    // SHOULD BE: all \3 back references are replaced with \1
+    marked_block.paragraph = new RegExp(
+      marked_block.paragraph.source.replace(
+        regex.list.source.replace(/^\^/,'').replace(/\\1/ , '\\3'),
+        regex.list.source.replace(/^\^/,'').replace(/\\1/g, '\\3')
+      )
+    );
+
+    // return a string representation of a regex
+    regexAsString = function(r) {
+      return '/' + r.source + '/'  +
+        (r.global     ? 'g' : '')  +
+        (r.ignoreCase ? 'i' : '')  +
+        (r.multiline  ? 'm' : '')
+    }
+
+    // function to run validation checks
+    function doValidate(rules, prefix) {
+      var result = {pass:[], fail:[], na:[]};
+      $.each(rules, function(k,v){            // iterate over marked.js regexes
+        if (k[0] != '_') {                    // ignore intermediate regexes
+          var r1 = regex[prefix+k] ?          // is there an entry w/ current prefix?
+            regexAsString(regex[prefix+k]) :  // use matching entry if it exists
+            regexAsString(regex[k       ]);   // otherwise use key
+          var r2 = regexAsString(v);
+          if (r1 == r2) {
+            $('body').append('<h4><span class="pass">PASS</span>: '+k+'</h4>');
+          } else {
+            $('body').append('<h4><span class="fail">FAIL</span>: '+k+'</h4>');
+            compareBlocks(r1, r2);
+          }
+        }
+      });
+    }
+
+    // execute validation checks
+    $('body').append('<h2>Validating block grammar</h2>')
+    doValidate(marked_block, 'b_');
+    $('body').append('<h2>Validating inline grammar</h2>')
+    doValidate(marked_inline, 'i_');
+
+
+    /////////////////////////////////
+    // COMPARE OUTPUT TO MARKED.JS //
+    /////////////////////////////////
+
+    // render markdown
+    var txt = md_test + gfm_test;
+    var md_1 = marked(txt);
+    var md_2 = markdown.process(txt);
+
+    // compare results
+    compareBlocks(md_1, md_2, 'Compare to marked.js');
+
+  })</script>
+
+</head>
+<body>
+</body>
+</html>
