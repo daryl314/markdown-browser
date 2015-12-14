@@ -192,14 +192,45 @@
     // render markdown
     var txt = md_test + gfm_test;
     var md_1 = marked(txt);
-    var md_2 = markdown.process(txt);
+    var md_2 = markdown.toHTML(txt);
 
     // compare results
     compareBlocks(md_1, md_2, 'Compare to marked.js');
+
+
+    //////////////////////////
+    // RUN INDIVIDUAL TESTS //
+    //////////////////////////
+
+    // iterate over tests
+    $('body').append('<h2>Executing tests</h2>')
+    $('section#tests section').each(function(){
+      var txt = $(this).data('text').replace(/^\n/, '');
+      var html = $(this).html().replace(/^\n/, '');
+      var html_out = markdown.toHTML(txt);
+      if (html == html_out) {
+        $('body').append('<h4><span class="pass">PASS</span>: '+$(this).attr('id')+'</h4>');
+      } else {
+        $('body').append('<h4><span class="fail">FAIL</span>: '+$(this).attr('id')+'</h4>');
+        compareBlocks(html, html_out);
+      }
+    })
 
   })</script>
 
 </head>
 <body>
+<section id="tests">
+
+<!-- autolink_lines -->
+<section id="autolink_lines" data-text="
+hello world
+<http://example.com>
+">
+<p>hello world
+<a href="http://example.com">http://example.com</a></p>
+</section>
+
+</section>
 </body>
 </html>

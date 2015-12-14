@@ -1300,10 +1300,6 @@ markdown.parse = function(){
       var tok = tokens[i]; // grab next token
       if (parser_data[tok.type]) parser_data[tok.type](tok, tokens); // convert token
       if (_.isArray(tok.text)) { // convert array of inline tokens to string
-        //for (var i = 0; i < tok.text.length; i++) {
-        //  tok.text[i] = renderToken(tok.text[i]);
-        //}
-        //tok.text = tok.text.join('');
         tok.text = parser(tok.text);
       }
       out[i] = renderToken(tok);
@@ -1321,14 +1317,13 @@ markdown.parse = function(){
 ///////////////////
 
 // function to convert markdown to HTML
-markdown.process = function(src) {
+markdown.toHTML = function(src) {
 
   // preprocess source string by replacing blank lines with ''
   src = src.replace(/^ +$/gm, '');
 
   // create/reset hyperlink lookup table
   markdown.links = {};
-
 
   // convert source string to block grammar tokens (md.tok)
   // equivalent to marked.js `marked.lexer(src)` or `Lexer.lex(src)`
