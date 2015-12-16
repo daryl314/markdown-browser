@@ -39,6 +39,8 @@
   <script type="text/javascript" src="markdown.js"></script>
   <script type="text/javascript" src="sample-markdown.js"></script>
   <script type="text/javascript">$(function(){
+    var startTime = new Date().getTime();
+
 
     /////////////////////////////////////
     // FUNCTION TO COMPARE TEXT BLOCKS //
@@ -206,18 +208,36 @@
     $('body').append('<h2>Executing tests</h2>')
     $('section#tests section').each(function(){
       var txt  = $(this).data('text').replace(/^\n/, '').replace(/^ {4}/mg, '');
-      var html = $(this).html(      ).replace(/^\n/, '').replace(/^ {4}/mg, '');
-      var html_out = markdown.toHTML(txt);
+      var html = $(this).html(      ).replace(/^\n/, '').replace(/^ {4}/mg, '').replace(/[\n\s]+$/, '');;
+      var html_out = markdown.toHTML(txt).replace(/[\n\s]+$/, '');;
+      var marked_out = marked(txt).replace(/[\n\s]+$/, '');;
+
       if (html == html_out) {
-        $('body').append('<h4><span class="pass">PASS</span>: '+$(this).attr('id')+'</h4>');
+        $('body').append('<hr/><h4><span class="pass">PASS</span>: '+$(this).attr('id')+'</h4>');
       } else {
-        $('body').append('<h4><span class="fail">FAIL</span>: '+$(this).attr('id')+'</h4>');
+        $('body').append('<hr/><h4><span class="fail">FAIL</span>: '+$(this).attr('id')+'</h4>');
         compareBlocks(html, html_out);
         $('body div.diff').last().find('section').first().prepend('<h4>Specified</h4>');
+        $('body div.diff').last().find('section').last( ).prepend('<h4>Generated</h4>');
+        compareBlocks(marked_out, html_out);
+        $('body div.diff').last().find('section').first().prepend('<h4>Marked.js</h4>');
         $('body div.diff').last().find('section').last( ).prepend('<h4>Generated</h4>');
       }
     })
 
+    // report results
+    var endTime = new Date().getTime();
+    var deltaTime = endTime - startTime;
+    var passedTests = $('body span.pass').length;
+    var failedTests = $('body span.fail').length;
+    $('body').prepend('<h2>Summary:</h2>'
+      + '<ul>'
+      + '<li>' + passedTests + ' tests passed</li>'
+      + '<li>' + failedTests + ' tests failed</li>'
+      + '<li>' + 100*passedTests/(passedTests+failedTests) + '% success</li>'
+      + '<li>' + deltaTime + ' ms elapsed</li>'
+      + '</ul>'
+    );
   })</script>
 
 </head>
@@ -498,8 +518,12 @@
 
     ">
     <p>This fails in markdown.pl and upskirt:</p>
-    <ul><li>hello<blockquote><p>world</p></blockquote></li></ul>
-
+    <ul>
+    <li>hello<blockquote>
+    <p>world</p>
+    </blockquote>
+    </li>
+    </ul>
   </section>
   <!-- blockquotes_with_code_blocks-->
   <section id="blockquotes_with_code_blocks" data-text="
@@ -538,7 +562,6 @@
 
     ">
     <p><a href="/url">hi</a></p>
-
   </section>
   <!-- code_blocks-->
   <section id="code_blocks" data-text="
