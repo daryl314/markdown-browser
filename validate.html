@@ -6,12 +6,18 @@
 	<title>Markdown Validation</title>
 
   <!-- JAVASCRIPT RESOURCES -->
+  <link rel="stylesheet" href="lib/bootstrap.min.css" />
+  <script type="text/javascript" src="lib/jquery.min.js"></script>
+  <script type="text/javascript" src="lib/lodash.min.js"></script>
+  <!--
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.2/marked.min.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.9.3/lodash.min.js"></script>
+  -->
   <style>
+    body {
+      padding: 1em;
+    }
     div.diff {
       white-space: pre;
       font-family: monospace;
@@ -96,6 +102,53 @@
           $('<span>').addClass('add').text(d[i][1]).appendTo($el2);
         }
       }
+    }
+
+
+    //////////////////////////////////
+    // FUNCTION TO STANDARDIZE HTML //
+    //////////////////////////////////
+
+    function standardizeHTML(h) {
+      var out = ''; // variable to accumulate processed output
+      var depth = 0; // start with no indentation
+      while (h.length > 0) {
+        if (h.match(/^[\s\n]+/)) {
+          h = h.replace(/^[\s\n]+/, '');
+        } else if (h[0] == '<') {
+          tag = h.match(/<[\s\S]*?>/)[0];
+          h = h.slice(tag.length);
+          tag = tag
+            .replace(/\/?>/, '>')  // clear self closing tags
+            .replace(/<\s+/, '<')  // clear leading whitespace
+            .replace(/\s+>/, '>'); // clear trailing whitespace
+          if (tag.match(/<\/[\s\S]*>/)) {
+            out = out + tag;
+            depth = depth - 2;
+          } else {
+            out = out + '\n' + new Array(depth+1).join(' ') + tag;
+            depth = depth + 2;
+          }
+        } else {
+          txt = h.match(/[\s\S]*?(?=<|$)/);
+          if (!txt || txt[0].length == 0) {
+            barf
+          } else {
+            txt = txt[0];
+          }
+          h = h.slice(txt.length);
+          txt = txt
+            .replace(/[\s\n]+/g, ' ')
+            .replace(/[\s\n]*$/, '')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'");
+          out = out + txt;
+        }
+      }
+      return out
+        .replace(/\n\s*\n/g, '\n') // replace empty lines
+        .replace(/^[\s\n]+/,'')
+        .replace(/[\s\n]+$/,'')
     }
 
 
@@ -197,8 +250,12 @@
     var md_2 = markdown.toHTML(txt);
 
     // compare results
+    if (md_1 == md_2) {
+      $('body').append('<h4>Compare to marked.js: <span class="pass">PASS</span></h4>');
+    } else {
+      $('body').append('<h4>Compare to marked.js: <span class="fail">FAIL</span></h4>');
+    }
     compareBlocks(md_1, md_2, 'Compare to marked.js');
-
 
     //////////////////////////
     // RUN INDIVIDUAL TESTS //
@@ -208,20 +265,29 @@
     $('body').append('<h2>Executing tests</h2>')
     $('section#tests section').each(function(){
       var txt  = $(this).data('text').replace(/^\n/, '').replace(/^ {4}/mg, '');
-      var html = $(this).html(      ).replace(/^\n/, '').replace(/^ {4}/mg, '').replace(/[\n\s]+$/, '');;
-      var html_out = markdown.toHTML(txt).replace(/[\n\s]+$/, '');;
-      var marked_out = marked(txt).replace(/[\n\s]+$/, '');;
+      var html = $(this).html(      ).replace(/^\n/, '').replace(/^ {4}/mg, '').replace(/[\n\s]+$/, '');
+      var html_out = markdown.toHTML(txt).replace(/[\n\s]+$/, '');
+      var marked_out = marked(txt).replace(/[\n\s]+$/, '');
 
-      if (html == html_out) {
+      // standardize html
+      html       = standardizeHTML(html);
+      html_out   = standardizeHTML(html_out);
+      marked_out = standardizeHTML(marked_out);
+
+      if (html == html_out && marked_out == html_out) {
         $('body').append('<hr/><h4><span class="pass">PASS</span>: '+$(this).attr('id')+'</h4>');
       } else {
         $('body').append('<hr/><h4><span class="fail">FAIL</span>: '+$(this).attr('id')+'</h4>');
-        compareBlocks(html, html_out);
-        $('body div.diff').last().find('section').first().prepend('<h4>Specified</h4>');
-        $('body div.diff').last().find('section').last( ).prepend('<h4>Generated</h4>');
-        compareBlocks(marked_out, html_out);
-        $('body div.diff').last().find('section').first().prepend('<h4>Marked.js</h4>');
-        $('body div.diff').last().find('section').last( ).prepend('<h4>Generated</h4>');
+        if (html != html_out) {
+          compareBlocks(html, html_out);
+          $('body div.diff').last().find('section').first().prepend('<h4>Specified</h4>');
+          $('body div.diff').last().find('section').last( ).prepend('<h4>Generated</h4>');
+        }
+        if (marked_out != html_out) {
+          compareBlocks(marked_out, html_out);
+          $('body div.diff').last().find('section').first().prepend('<h4>Marked.js</h4>');
+          $('body div.diff').last().find('section').last( ).prepend('<h4>Generated</h4>');
+        }
       }
     })
 
@@ -234,7 +300,7 @@
       + '<ul>'
       + '<li>' + passedTests + ' tests passed</li>'
       + '<li>' + failedTests + ' tests failed</li>'
-      + '<li>' + 100*passedTests/(passedTests+failedTests) + '% success</li>'
+      + '<li>' + (100*passedTests/(passedTests+failedTests)).toFixed(2) + '% success</li>'
       + '<li>' + deltaTime + ' ms elapsed</li>'
       + '</ul>'
     );

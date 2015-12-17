@@ -1319,8 +1319,13 @@ markdown.parse = function(){
 // function to convert markdown to HTML
 markdown.toHTML = function(src) {
 
-  // preprocess source string by replacing blank lines with ''
-  src = src.replace(/^ +$/gm, '');
+  // preprocess source string
+  src = src
+    .replace(/\r\n|\r/g, '\n')  // use consistent newline format
+    .replace(/\t/g, '    ')     // replace tabs with spaces
+    .replace(/\u00a0/g, ' ')    // replace non-breaking space with space
+    .replace(/\u2424/g, '\n')   // replace unicode newline with newline
+    .replace(/^ +$/gm, '');     // replace blank lines with ''
 
   // create/reset hyperlink lookup table
   markdown.links = {};
