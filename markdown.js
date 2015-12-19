@@ -1107,10 +1107,9 @@ markdown.render = function(){
     i_text:     '{{^text}}',
     br:         '<br/>',
     del:        '<del>{{text}}</del>',
-    link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{^text}}</a>',
+    link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{text}}</a>',
     mailto:     '<a href="{{@href}}"}>{{@text}}</a>',
-    image:      '<img src="{{href}}" alt="{{text}}"{{IF title}} title="{{title}}"{{ENDIF}}/>',
-  //  text:       '{{text}}',
+    image:      '<img src="{{^href}}" alt="{{^text}}"{{IF title}} title="{{^title}}"{{ENDIF}}/>',
     tag:        '{{text}}'
   }
 

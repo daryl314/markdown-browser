@@ -251,11 +251,11 @@
 
     // compare results
     if (md_1 == md_2) {
-      $('body').append('<h4>Compare to marked.js: <span class="pass">PASS</span></h4>');
+      $('body').append('<h2>Compare to marked.js: <span class="pass">PASS</span></h2>');
     } else {
-      $('body').append('<h4>Compare to marked.js: <span class="fail">FAIL</span></h4>');
+      $('body').append('<h2>Compare to marked.js: <span class="fail">FAIL</span></h2>');
     }
-    compareBlocks(md_1, md_2, 'Compare to marked.js');
+    compareBlocks(md_1, md_2);
 
     //////////////////////////
     // RUN INDIVIDUAL TESTS //
@@ -270,16 +270,15 @@
       var marked_out = marked(txt).replace(/[\n\s]+$/, '');
 
       // standardize html
-      html       = standardizeHTML(html);
-      html_out   = standardizeHTML(html_out);
-      marked_out = standardizeHTML(marked_out);
+      html_std       = standardizeHTML(html);
+      html_out_std   = standardizeHTML(html_out);
 
-      if (html == html_out && marked_out == html_out) {
+      if (html_std == html_out_std && marked_out == html_out) {
         $('body').append('<hr/><h4><span class="pass">PASS</span>: '+$(this).attr('id')+'</h4>');
       } else {
         $('body').append('<hr/><h4><span class="fail">FAIL</span>: '+$(this).attr('id')+'</h4>');
-        if (html != html_out) {
-          compareBlocks(html, html_out);
+        if (html_std != html_out_std) {
+          compareBlocks(html_std, html_out_std);
           $('body div.diff').last().find('section').first().prepend('<h4>Specified</h4>');
           $('body div.diff').last().find('section').last( ).prepend('<h4>Generated</h4>');
         }
