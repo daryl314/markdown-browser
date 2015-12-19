@@ -783,7 +783,7 @@ markdown.inline = function(){
 
   // process an escaped character
   inline.Lexer.prototype.escape = function(x){
-    x.type = 'i_text'; // render escaped character as inline text
+    x.type = 'i_html'; // render escaped character as unescaped html
   }
 
   // process an autolink
@@ -794,7 +794,7 @@ markdown.inline = function(){
       x.href = 'mailto:' + email;                 //   hyperlink href: mailto:email
       x.type = 'mailto';                          //   render as a mailto link
     } else {                                      // url
-      x.text = x.link;                            //   hyperlink text: link
+      x.text = markdown.render.escape(x.link);    //   hyperlink text: escaped link
       x.href = x.link;                            //   hyperlink href: link
       x.type = 'link';                            //   render as a link
     }
@@ -1105,6 +1105,7 @@ markdown.render = function(){
     em:         '<em>{{text}}</em>',
     i_code:     '<code>{{^^text}}</code>',
     i_text:     '{{^text}}',
+    i_html:     '{{text}}',
     br:         '<br/>',
     del:        '<del>{{text}}</del>',
     link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{text}}</a>',

@@ -109,46 +109,111 @@
     // FUNCTION TO STANDARDIZE HTML //
     //////////////////////////////////
 
-    function standardizeHTML(h) {
-      var out = ''; // variable to accumulate processed output
-      var depth = 0; // start with no indentation
-      while (h.length > 0) {
-        if (h.match(/^[\s\n]+/)) {
-          h = h.replace(/^[\s\n]+/, '');
-        } else if (h[0] == '<') {
-          tag = h.match(/<[\s\S]*?>/)[0];
-          h = h.slice(tag.length);
-          tag = tag
-            .replace(/\/?>/, '>')  // clear self closing tags
-            .replace(/<\s+/, '<')  // clear leading whitespace
-            .replace(/\s+>/, '>'); // clear trailing whitespace
-          if (tag.match(/<\/[\s\S]*>/)) {
-            out = out + tag;
-            depth = depth - 2;
-          } else {
-            out = out + '\n' + new Array(depth+1).join(' ') + tag;
-            depth = depth + 2;
-          }
+    // helper function to extract a regex match
+    function extractMatch(str, regex){
+      matched = str.match(regex);
+      if (!matched || matched[0].length == 0) {
+        throw new Error('Regex match failure');
+      } else {
+        return matched[0];
+      }
+    }
+
+    // helper function to standardize html tag content
+    function standardizeTag(tag) {
+
+      // pre-process tag
+      tag = tag
+        .replace(/\/?>/, '>')  // clear self closing tags
+        .replace(/<\s+/, '<')  // clear leading whitespace
+        .replace(/\s+>/, '>'); // clear trailing whitespace
+
+      // initialize output with start of tag
+      var out = extractMatch(tag, /^<\/?\w+/);
+      tag = tag.slice(out.length);
+
+      // while there is still content to consume...
+      var cap;
+      while (true) {
+        if (cap = /^\/?>/.exec(tag)) {
+          return [ out+cap[0], tag.slice(cap[0].length) ];
+        } else if (cap = /^[\s\n]+/.exec(tag)) {
+          tag = tag.slice(cap[0].length); // remove whitespace
+        } else if (cap = /^'.*?'/.exec(tag)) {
+          tag = tag.slice(cap[0].length);
+          out = out + cap[0];
+        } else if (cap = /^".*?"/.exec(tag)) {
+          tag = tag.slice(cap[0].length);
+          out = out + "'" + cap[0].slice(1,-1).replace(/'/g,'"') + "'";
+        } else if (cap = /^[^"'>\/=\s]+\s*=?\s*/.exec(tag)) {
+          tag = tag.slice(cap[0].length);
+          out = out + cap[0];
         } else {
-          txt = h.match(/[\s\S]*?(?=<|$)/);
-          if (!txt || txt[0].length == 0) {
-            barf
+          throw new Error('Unrecognized tag content')
+        }
+      }
+    }
+
+    // function to perform standardization
+    function standardizeHTML(h) {
+      var out = '';  // variable to accumulate processed output
+      var depth = 0; // start with no indentation
+
+      // while there is still content to consume...
+      while (h.length > 0) {
+
+        // ===== LEADING WHITESPACE =====
+        if (h.match(/^[\s\n]+/)) {
+          h = h.replace(/^[\s\n]+/, ''); // remove whitespace
+
+        // ===== LEADING COMMENT =====
+        } else if (h.match(/^<!--/)) {
+          var cap = extractMatch(h, /^<!--[\s\S]*-->/);
+          h = h.slice(cap.length);
+          out = out + cap;
+
+        // ===== LEADING TAG =====
+        } else if (h[0] == '<') {
+
+          // extract and process tag
+          var processed = standardizeTag(h);
+          var tag = processed[0];
+          h = processed[1];
+
+          // add tag to output and adjust indentation
+          if (tag.match(/^<\//)) {
+            out = out + tag;
+            depth = depth - 2; // dedent for closing tag
           } else {
-            txt = txt[0];
+            out = out + '\n' + (new Array(depth+1)).join(' ') + tag;
+            depth = depth + 2; // indent for opening tag
           }
+
+        // ===== LEADING TEXT =====
+        } else {
+
+          // extract text up to next tag
+          var txt = extractMatch(h, /[\s\S]*?(?=<|$)/);
           h = h.slice(txt.length);
+
+          // standardize content
           txt = txt
-            .replace(/[\s\n]+/g, ' ')
-            .replace(/[\s\n]*$/, '')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'");
+            .replace(/[\s\n]+/g , ' ')
+            .replace(/[\s\n]*$/ , '' )
+            .replace(/&gt;/g    , '>')
+            .replace(/&quot;/g  , '"')
+            .replace(/&#39;/g   , "'");
+
+          // add tag to output
           out = out + txt;
         }
       }
+
+      // return assembled text
       return out
-        .replace(/\n\s*\n/g, '\n') // replace empty lines
-        .replace(/^[\s\n]+/,'')
-        .replace(/[\s\n]+$/,'')
+        .replace(/\n\s*\n/g, '\n') // remove empty lines
+        .replace(/^[\s\n]+/,'')    // remove leading whitespace
+        .replace(/[\s\n]+$/,'')    // remove trailing whitespace
     }
 
 
@@ -246,7 +311,7 @@
 
     // render markdown
     var txt = md_test + gfm_test;
-    var md_1 = marked(txt);
+    var md_1 = marked(txt, {xhtml:true});
     var md_2 = markdown.toHTML(txt);
 
     // compare results
@@ -267,7 +332,7 @@
       var txt  = $(this).data('text').replace(/^\n/, '').replace(/^ {4}/mg, '');
       var html = $(this).html(      ).replace(/^\n/, '').replace(/^ {4}/mg, '').replace(/[\n\s]+$/, '');
       var html_out = markdown.toHTML(txt).replace(/[\n\s]+$/, '');
-      var marked_out = marked(txt).replace(/[\n\s]+$/, '');
+      var marked_out = marked(txt, {xhtml:true}).replace(/[\n\s]+$/, '');
 
       // standardize html
       html_std       = standardizeHTML(html);
