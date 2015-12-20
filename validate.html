@@ -122,21 +122,15 @@
     // helper function to standardize html tag content
     function standardizeTag(tag) {
 
-      // pre-process tag
-      tag = tag
-        .replace(/\/?>/, '>')  // clear self closing tags
-        .replace(/<\s+/, '<')  // clear leading whitespace
-        .replace(/\s+>/, '>'); // clear trailing whitespace
-
       // initialize output with start of tag
-      var out = extractMatch(tag, /^<\/?\w+/);
+      var out = extractMatch(tag, /^<\s*\/?\s*\w+/);
       tag = tag.slice(out.length);
 
       // while there is still content to consume...
       var cap;
       while (true) {
         if (cap = /^\/?>/.exec(tag)) {
-          return [ out+cap[0], tag.slice(cap[0].length) ];
+          return [ out+'>', tag.slice(cap[0].length) ];
         } else if (cap = /^[\s\n]+/.exec(tag)) {
           tag = tag.slice(cap[0].length); // remove whitespace
         } else if (cap = /^'.*?'/.exec(tag)) {
@@ -186,7 +180,9 @@
             depth = depth - 2; // dedent for closing tag
           } else {
             out = out + '\n' + (new Array(depth+1)).join(' ') + tag;
-            depth = depth + 2; // indent for opening tag
+            if (!tag.match(/^<(img|hr|br)/)) {
+              depth = depth + 2; // indent for opening tag
+            }
           }
 
         // ===== LEADING TEXT =====
