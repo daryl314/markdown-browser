@@ -764,12 +764,6 @@ markdown.inline = function(){
     tok.text = inline.lex(txt||tok.text, inLink||this.inLink);
   }
 
-  // rewind last token capture
-  inline.Lexer.prototype.rewind = function(){
-    var tok = this.tok.pop();
-    this.src = this.src + tok.cap;
-  }
-
   ////////// INLINE TOKEN PROCESSING //////////
 
   // assign captured text to 'text' field
@@ -830,9 +824,12 @@ markdown.inline = function(){
     if (
         !markdown.links[linkLookup]       ||
         !markdown.links[linkLookup].href) { // undefined link
-      this.rewind();                                    // reverse capture
-      this.tok.push({ type:'i_text', text:this.src[0] }); // push single character token
-      this.src = this.src.slice(1);                     // and chop character off of src
+      this.tok.pop();       // rewind token capture
+      x.type = 'i_text';    // set token type to inline text ...
+      x.text = this.src[0]; //   that is the first character in source
+      x.n = 1;              //   that is a single character
+      x.cap = x.text;       //   that captured the single character
+      this.tok.push(x);     // add new token to stack
     } else {
       x.href  = markdown.links[linkLookup].href;  // get link from lookup
       x.title = markdown.links[linkLookup].title; // get title from lookup
