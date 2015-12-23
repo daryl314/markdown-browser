@@ -129,19 +129,19 @@
       // while there is still content to consume...
       var cap;
       while (true) {
-        if (cap = /^\/?>/.exec(tag)) {
+        if (cap = /^\/?>/.exec(tag)) {                        // closing >
           return [ out+'>', tag.slice(cap[0].length) ];
-        } else if (cap = /^[\s\n]+/.exec(tag)) {
+        } else if (cap = /^[\s\n]+/.exec(tag)) {              // whitespace
           tag = tag.slice(cap[0].length); // remove whitespace
-        } else if (cap = /^'.*?'/.exec(tag)) {
+        } else if (cap = /^'[\s\S]*?'/.exec(tag)) {           // single quoted
           tag = tag.slice(cap[0].length);
           out = out + cap[0];
-        } else if (cap = /^".*?"/.exec(tag)) {
+        } else if (cap = /^"[\s\S]*?"/.exec(tag)) {           // double quoted
           tag = tag.slice(cap[0].length);
           out = out + "'" + cap[0].slice(1,-1).replace(/'/g,'"') + "'";
-        } else if (cap = /^[^"'>\/=\s]+\s*=?\s*/.exec(tag)) {
+        } else if (cap = /^[^"'>\/=\s]+\s*=?\s*/.exec(tag)) { // attribute
           tag = tag.slice(cap[0].length);
-          out = out + cap[0];
+          out = out + ' ' + cap[0];
         } else {
           throw new Error('Unrecognized tag content')
         }

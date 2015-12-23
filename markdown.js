@@ -1178,10 +1178,10 @@ markdown.render = function(){
     }
     var prefix = '';
     if (src.match(/{{\^/)) { // add escape code if needed
-      prefix = prefix + 'escape=' + escape.toString().replace(/\/\/.*/g, '').replace(/\s+/g, '').replace('return','return ') + ';';
+      prefix = prefix + 'escape=' + escape.toString().replace(/\/\/.*/g, '').replace(/\s+/g, '').replace(/var/g,'var ').replace('return','return ') + ';';
     }
     if (src.match(/{{@/)) { // add mangle code if needed
-      prefix = prefix + 'mangle=' + mangle.toString().replace(/\/\/.*/g, '').replace(/\s+/g, '').replace('return','return ') + ';';
+      prefix = prefix + 'mangle=' + mangle.toString().replace(/\/\/.*/g, '').replace(/\s+/g, '').replace(/var/g,'var ').replace('return','return ') + ';';
     }
     var fx = prefix + 'return ' + processString(src.replace(/'/g,"\\'"));
     return new Function('x', fx);
