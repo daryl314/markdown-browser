@@ -152,7 +152,6 @@
     function standardizeHTML(h) {
       var out = '';       // variable to accumulate processed output
       var depth = 0;      // start with no indentation
-      var escape = true;  // are we escaping text?
 
       // while there is still content to consume...
       while (h.length > 0) {
@@ -163,7 +162,7 @@
 
         // ===== LEADING COMMENT =====
         } else if (h.match(/^<!--/)) {
-          var cap = extractMatch(h, /^<!--[\s\S]*-->/);
+          var cap = extractMatch(h, /^<!--[\s\S]*?-->/);
           h = h.slice(cap.length);
           out = out + cap;
 
@@ -186,13 +185,6 @@
             }
           }
 
-          // toggle text escaping
-          if (tag.match(/^<code/)) {
-            escape = false;
-          } else if (tag.match(/^<\/code/)) {
-            escape = true;
-          }
-
         // ===== LEADING TEXT =====
         } else {
 
@@ -206,11 +198,11 @@
             .replace(/[\s\n]*$/ , '' ); // clear trailing whitespace
 
           // un-escape text
-          if (escape) txt = txt
-            .replace(/&gt;/g    , '>')  // &gt;   -> >
-            .replace(/&quot;/g  , '"')  // &quot; -> "
-            .replace(/&#39;/g   , "'")  // &#39;  -> '
-            .replace(/&amp;/g   , '&'); // &amp;  -> & (must be last!)
+          txt = txt
+            .replace(/&gt;/g    , '>')  // &gt;    -> >
+            .replace(/&quot;/g  , '"')  // &quot;  -> "
+            .replace(/&#39;/g   , "'")  // &#39;   -> '
+            .replace(/&amp;/g   , '&'); // &amp;   -> & (must be last!)
 
           // add text to output
           out = out + txt;

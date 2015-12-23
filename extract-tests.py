@@ -35,6 +35,9 @@ for f in files:
             re.sub(r'\s+\n', '\n', '    '+x)
             for x in open('marked/test/tests/'+base+'.html') 
             if not re.match(r'^\s*$',x) ])
+        
+        # escape ampersands in text input
+        text = text.replace('&', '&amp;')
 
         # escape quotes in text input
         text = text.replace('"', '&quot;')
