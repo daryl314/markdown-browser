@@ -382,13 +382,14 @@
 <body>
 <section id="tests" style="display:none"> <!-- TEST CONTENT FROM MARKED.JS -->
 
+  <!-- START AUTO-POPULATED TESTS -->
   <!-- amps_and_angles_encoding-->
   <section id="amps_and_angles_encoding" data-text="
-    AT&T has an ampersand in their name.
+    AT&amp;T has an ampersand in their name.
 
-    AT&amp;T is another way to write it.
+    AT&amp;amp;T is another way to write it.
 
-    This & that.
+    This &amp; that.
 
     4 < 5.
 
@@ -396,15 +397,15 @@
 
     Here's a [link] [1] with an ampersand in the URL.
 
-    Here's a link with an amersand in the link text: [AT&T] [2].
+    Here's a link with an amersand in the link text: [AT&amp;T] [2].
 
-    Here's an inline [link](/script?foo=1&bar=2).
+    Here's an inline [link](/script?foo=1&amp;bar=2).
 
-    Here's an inline [link](</script?foo=1&bar=2>).
+    Here's an inline [link](</script?foo=1&amp;bar=2>).
 
 
-    [1]: http://example.com/?foo=1&bar=2
-    [2]: http://att.com/  &quot;AT&T&quot;
+    [1]: http://example.com/?foo=1&amp;bar=2
+    [2]: http://att.com/  &quot;AT&amp;T&quot;
 
     ">
     <p>AT&amp;T has an ampersand in their name.</p>
@@ -422,7 +423,7 @@
   <section id="auto_links" data-text="
     Link: <http://example.com/>.
 
-    With an ampersand: <http://example.com/?foo=1&bar=2>
+    With an ampersand: <http://example.com/?foo=1&amp;bar=2>
 
     * In a list?
     * <http://example.com/>
@@ -696,6 +697,7 @@
 
     ">
     <p><a href="/url">hi</a></p>
+
   </section>
   <!-- code_blocks-->
   <section id="code_blocks" data-text="
@@ -2023,27 +2025,27 @@
     ### Code ###
 
     In a regular paragraph, you can create code span by wrapping text in
-    backtick quotes. Any ampersands (`&`) and angle brackets (`<` or
+    backtick quotes. Any ampersands (`&amp;`) and angle brackets (`<` or
     `>`) will automatically be translated into HTML entities. This makes
     it easy to use Markdown to write about HTML example code:
 
         I strongly recommend against using any `<blink>` tags.
 
-        I wish SmartyPants used named entities like `&mdash;`
-        instead of decimal-encoded entites like `&#8212;`.
+        I wish SmartyPants used named entities like `&amp;mdash;`
+        instead of decimal-encoded entites like `&amp;#8212;`.
 
     Output:
 
         <p>I strongly recommend against using any
-        <code>&lt;blink&gt;</code> tags.</p>
+        <code>&amp;lt;blink&amp;gt;</code> tags.</p>
 
         <p>I wish SmartyPants used named entities like
-        <code>&amp;mdash;</code> instead of decimal-encoded
-        entites like <code>&amp;#8212;</code>.</p>
+        <code>&amp;amp;mdash;</code> instead of decimal-encoded
+        entites like <code>&amp;amp;#8212;</code>.</p>
 
 
     To specify an entire block of pre-formatted code, indent every line of
-    the block by 4 spaces or 1 tab. Just like with code spans, `&`, `<`,
+    the block by 4 spaces or 1 tab. Just like with code spans, `&amp;`, `<`,
     and `>` characters will be escaped automatically.
 
     Markdown:
@@ -2060,9 +2062,9 @@
         <p>If you want your page to validate under XHTML 1.0 Strict,
         you've got to put paragraph tags in your blockquotes:</p>
 
-        <pre><code>&lt;blockquote&gt;
-            &lt;p&gt;For example.&lt;/p&gt;
-        &lt;/blockquote&gt;
+        <pre><code>&amp;lt;blockquote&amp;gt;
+            &amp;lt;p&amp;gt;For example.&amp;lt;/p&amp;gt;
+        &amp;lt;/blockquote&amp;gt;
         </code></pre>
 
     ">
@@ -2413,20 +2415,20 @@
     <h3 id=&quot;autoescape&quot;>Automatic Escaping for Special Characters</h3>
 
     In HTML, there are two characters that demand special treatment: `<`
-    and `&`. Left angle brackets are used to start tags; ampersands are
+    and `&amp;`. Left angle brackets are used to start tags; ampersands are
     used to denote HTML entities. If you want to use them as literal
-    characters, you must escape them as entities, e.g. `&lt;`, and
-    `&amp;`.
+    characters, you must escape them as entities, e.g. `&amp;lt;`, and
+    `&amp;amp;`.
 
     Ampersands in particular are bedeviling for web writers. If you want to
-    write about 'AT&T', you need to write '`AT&amp;T`'. You even need to
+    write about 'AT&amp;T', you need to write '`AT&amp;amp;T`'. You even need to
     escape ampersands within URLs. Thus, if you want to link to:
 
-        http://images.google.com/images?num=30&q=larry+bird
+        http://images.google.com/images?num=30&amp;q=larry+bird
 
     you need to encode the URL as:
 
-        http://images.google.com/images?num=30&amp;q=larry+bird
+        http://images.google.com/images?num=30&amp;amp;q=larry+bird
 
     in your anchor tag `href` attribute. Needless to say, this is easy to
     forget, and is probably the single most common source of HTML validation
@@ -2435,19 +2437,19 @@
     Markdown allows you to use these characters naturally, taking care of
     all the necessary escaping for you. If you use an ampersand as part of
     an HTML entity, it remains unchanged; otherwise it will be translated
-    into `&amp;`.
+    into `&amp;amp;`.
 
     So, if you want to include a copyright symbol in your article, you can write:
 
-        &copy;
+        &amp;copy;
 
     and Markdown will leave it alone. But if you write:
 
-        AT&T
+        AT&amp;T
 
     Markdown will translate it to:
 
-        AT&amp;T
+        AT&amp;amp;T
 
     Similarly, because Markdown supports [inline HTML](#html), if you use
     angle brackets as delimiters for HTML tags, Markdown will treat them as
@@ -2457,13 +2459,13 @@
 
     Markdown will translate it to:
 
-        4 &lt; 5
+        4 &amp;lt; 5
 
     However, inside Markdown code spans and blocks, angle brackets and
     ampersands are *always* encoded automatically. This makes it easy to use
     Markdown to write about HTML code. (As opposed to raw HTML, which is a
     terrible format for writing about HTML syntax, because every single `<`
-    and `&` in your example code needs to be escaped.)
+    and `&amp;` in your example code needs to be escaped.)
 
 
     * * *
@@ -2787,21 +2789,21 @@
     A code block continues until it reaches a line that is not indented
     (or the end of the article).
 
-    Within a code block, ampersands (`&`) and angle brackets (`<` and `>`)
+    Within a code block, ampersands (`&amp;`) and angle brackets (`<` and `>`)
     are automatically converted into HTML entities. This makes it very
     easy to include example HTML source code using Markdown -- just paste
     it and indent it, and Markdown will handle the hassle of encoding the
     ampersands and angle brackets. For example, this:
 
             <div class=&quot;footer&quot;>
-                &copy; 2004 Foo Corporation
+                &amp;copy; 2004 Foo Corporation
             </div>
 
     will turn into:
 
-        <pre><code>&lt;div class=&quot;footer&quot;&gt;
-            &amp;copy; 2004 Foo Corporation
-        &lt;/div&gt;
+        <pre><code>&amp;lt;div class=&quot;footer&quot;&amp;gt;
+            &amp;amp;copy; 2004 Foo Corporation
+        &amp;lt;/div&amp;gt;
         </code></pre>
 
     Regular Markdown syntax is not processed within code blocks. E.g.,
@@ -3064,16 +3066,16 @@
 
     into:
 
-        <p>Please don't use any <code>&lt;blink&gt;</code> tags.</p>
+        <p>Please don't use any <code>&amp;lt;blink&amp;gt;</code> tags.</p>
 
     You can write this:
 
-        `&#8212;` is the decimal-encoded equivalent of `&mdash;`.
+        `&amp;#8212;` is the decimal-encoded equivalent of `&amp;mdash;`.
 
     to produce:
 
-        <p><code>&amp;#8212;</code> is the decimal-encoded
-        equivalent of <code>&amp;mdash;</code>.</p>
+        <p><code>&amp;amp;#8212;</code> is the decimal-encoded
+        equivalent of <code>&amp;amp;mdash;</code>.</p>
 
 
 
@@ -3138,10 +3140,10 @@
 
     into something like this:
 
-        <a href=&quot;&#x6D;&#x61;i&#x6C;&#x74;&#x6F;:&#x61;&#x64;&#x64;&#x72;&#x65;
-        &#115;&#115;&#64;&#101;&#120;&#x61;&#109;&#x70;&#x6C;e&#x2E;&#99;&#111;
-        &#109;&quot;>&#x61;&#x64;&#x64;&#x72;&#x65;&#115;&#115;&#64;&#101;&#120;&#x61;
-        &#109;&#x70;&#x6C;e&#x2E;&#99;&#111;&#109;</a>
+        <a href=&quot;&amp;#x6D;&amp;#x61;i&amp;#x6C;&amp;#x74;&amp;#x6F;:&amp;#x61;&amp;#x64;&amp;#x64;&amp;#x72;&amp;#x65;
+        &amp;#115;&amp;#115;&amp;#64;&amp;#101;&amp;#120;&amp;#x61;&amp;#109;&amp;#x70;&amp;#x6C;e&amp;#x2E;&amp;#99;&amp;#111;
+        &amp;#109;&quot;>&amp;#x61;&amp;#x64;&amp;#x64;&amp;#x72;&amp;#x65;&amp;#115;&amp;#115;&amp;#64;&amp;#101;&amp;#120;&amp;#x61;
+        &amp;#109;&amp;#x70;&amp;#x6C;e&amp;#x2E;&amp;#99;&amp;#111;&amp;#109;</a>
 
     which will render in a browser as a clickable link to &quot;address@example.com&quot;.
 
@@ -4360,6 +4362,8 @@
     </ul>
 
   </section>
+
+  <!-- END AUTO-POPULATED TESTS -->
 
 </section>
 </body>
