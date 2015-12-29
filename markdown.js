@@ -727,30 +727,32 @@ markdown.inline = function(){
   inline.rules_link = _.without(inline.rules, 'url');
 
   // function to handle lexing by instantiating Inline Lexer
-  inline.lex = function(src, inLink){
-    var myLexer = new inline.Lexer(src, inLink);
+  inline.lex = function(src, lineNumber, inLink){
+    var myLexer = new inline.Lexer(src, lineNumber, inLink);
     return myLexer.lex();
   }
 
   ////////// LEXER CLASS //////////
 
   // constructor
-  inline.Lexer = function(src, inLink){
+  inline.Lexer = function(src, lineNumber, inLink){
+    this.line   = lineNumber;       // current line number
     this.src    = src;              // remaining text to process
     this.tok    = [];               // list of processed tokens
     this.inLink = inLink || false;  // state flag: inside a hyperlink?
   }
 
   // processor: consume markdown in source string and convert to tokens
-  inline.Lexer.prototype.lex = function(src){
+  inline.Lexer.prototype.lex = function(){
     var cap;
     inline_consumer: while(this.src){
       var rules = this.inLink ? inline.rules_link : inline.rules;
       for (var i = 0; i < rules.length; i++) {
         var r = rules[i];                      // current rule in list
-        if (cap = markdown.processToken(this.src, r, this.tok)) {
+        if (cap = markdown.processToken(this.src, r, this.tok, this.line)) {
           if (this[r]) this[r](cap);              // execute handler
           this.src = this.src.substring(cap.n);   // remove captured text
+          this.line += cap.lines;                 // increment line counter
           continue inline_consumer;               // continue consumption
         }
       }
@@ -765,7 +767,7 @@ markdown.inline = function(){
 
   // recursively process 'text' field
   inline.Lexer.prototype.recurse = function(tok, txt, inLink){
-    tok.text = inline.lex(txt||tok.text, inLink||this.inLink);
+    tok.text = inline.lex(txt||tok.text, this.line, inLink||this.inLink);
   }
 
   ////////// INLINE TOKEN PROCESSING //////////
@@ -941,14 +943,17 @@ markdown.block = function(){
       // recursively process list item
       var myTok = block.tokenize(item, [], {isList:true, isBlockQuote:state.isBlockQuote}, lineNumber);
       for (var j = 0; j < myTok.length ; j++) {
-        t.lines += myTok[j].lines;
+        lineNumber += myTok[j].lines + 1; // each token already is a line
       }
 
       // add list item to list
       t.text.push({
-        type: 'listitem',
-        text: myTok,
-        loose: loose
+        cap:        item,
+        n:          item.length,
+        type:       'listitem',
+        text:       myTok,
+        sourceLine: lineNumber,
+        loose:      loose,
       })
     }
   };
@@ -1234,13 +1239,13 @@ markdown.parse = function(){
   // perform inline lexing of text blocks
   // note that this has to happen after block lexing is complete so that
   // all link definitions have been processed
-  parser_data.heading   = function(x){ x.text = markdown.inline.lex(x.text) };
-  parser_data.lheading  = function(x){ x.text = markdown.inline.lex(x.text) };
-  parser_data.paragraph = function(x){ x.text = markdown.inline.lex(x.text) };
-  parser_data.b_text    = function(x){ x.text = markdown.inline.lex(x.text) };
+  parser_data.heading   = function(x){ x.text = markdown.inline.lex(x.text,x.sourceLine) };
+  parser_data.lheading  = function(x){ x.text = markdown.inline.lex(x.text,x.sourceLine) };
+  parser_data.paragraph = function(x){ x.text = markdown.inline.lex(x.text,x.sourceLine) };
+  parser_data.b_text    = function(x){ x.text = markdown.inline.lex(x.text,x.sourceLine) };
   parser_data.html      = function(x){
     if (x.pre !== 'pre' && x.pre !== 'script' && x.pre !== 'style') {
-      x.text = markdown.inline.lex(x.text);
+      x.text = markdown.inline.lex(x.text,x.sourceLine);
     }
   };
 
@@ -1251,7 +1256,7 @@ markdown.parse = function(){
       for (var i = 0; i < x.text.length; i++) {
         var tok = x.text[i];
         if (tok.type === 'b_text') {
-          itemText = itemText.concat(markdown.inline.lex(tok.text));
+          itemText = itemText.concat(markdown.inline.lex(tok.text,tok.sourceLine));
         } else {
           itemText.push(tok);
         }
@@ -1271,7 +1276,7 @@ markdown.parse = function(){
       cell += markdown.render.tablecell({
         header: true,
         align:  x.align[i],
-        text:   parser(markdown.inline.lex(x.header[i]), opt)
+        text:   parser(markdown.inline.lex(x.header[i],x.sourceLine), opt)
       })
     }
     var header = markdown.render.tablerow({ content: cell });
@@ -1285,7 +1290,7 @@ markdown.parse = function(){
         cell += markdown.render.tablecell({
           header: false,
           align:  x.align[j],
-          text:   parser(markdown.inline.lex(row[j]), opt)
+          text:   parser(markdown.inline.lex(row[j],x.sourceLine+j), opt)
         })
       }
       body += markdown.render.tablerow({ content: cell });
