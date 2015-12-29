@@ -891,16 +891,20 @@ markdown.block = function(){
   ////////// HANDLER FUNCTION FOR MARKDOWN BLOCKQUOTES //////////
 
   // recursively process captured text without leading blockquote markup
-  function processBlockQuote(t, tok, state) {
+  function processBlockQuote(t, tok, state, lineNumber) {
     t.text = block.tokenize(t.cap.replace(/^ *> ?/gm, ''), [],
-      { isList:state.isList, isBlockQuote:true } // set state to inside a blockquote
+      { isList:state.isList, isBlockQuote:true }, // set state to inside a blockquote
+      lineNumber
     );
+    for (var j = 0; j < t.text.length ; j++) {
+      t.lines += t.text[j].lines;
+    }
   };
 
 
   ////////// HANDLER FUNCTION FOR MARKDOWN LISTS //////////
 
-  function processList(t, tok, state) {
+  function processList(t, tok, state, lineNumber) {
 
     // augment captured list token
     t.text = []; // container for list item tokens
@@ -935,7 +939,10 @@ markdown.block = function(){
       }
 
       // recursively process list item
-      var myTok = block.tokenize(item, [], {isList:true, isBlockQuote:state.isBlockQuote});
+      var myTok = block.tokenize(item, [], {isList:true, isBlockQuote:state.isBlockQuote}, lineNumber);
+      for (var j = 0; j < myTok.length ; j++) {
+        t.lines += myTok[j].lines;
+      }
 
       // add list item to list
       t.text.push({
@@ -1016,7 +1023,7 @@ markdown.block = function(){
 
   ////////// FUNCTION TO TOKENIZE WITH BLOCK GRAMMAR //////////
 
-  block.tokenize = function(src, tok, state) {
+  block.tokenize = function(src, tok, state, lineNumber) {
 
     // define variables for use in function
     var cap, rules;
@@ -1030,8 +1037,8 @@ markdown.block = function(){
       isBlockQuote: false  // not in a block quote
     }
 
-    // starting on line 0
-    var lineNumber = 0;
+    // starting on line 0 if unspecified
+    lineNumber = lineNumber || 0;
 
     // consume markdown in source string and convert to tokens
     eat_tokens: while (src) {
@@ -1057,7 +1064,9 @@ markdown.block = function(){
       for (var i = 0; i < rules.length; i++) {
         var r = rules[i];
         if (cap = markdown.processToken(src, r, tok, lineNumber)) {
-          if (block.handlers[r]) block.handlers[r](cap,tok,state); // execute callback
+          if (block.handlers[r]) {    // if there is a handler, call it
+            block.handlers[r](cap,tok,state,lineNumber);
+          }
           lineNumber += cap.lines;    // increment line count
           src = src.substring(cap.n); // remove captured text from string
           continue eat_tokens;        // continue consumption while loop
