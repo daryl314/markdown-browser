@@ -680,7 +680,8 @@ markdown.regex = function(){
 /////////////////////////////
 
 // function to try processing a regex rule
-markdown.processToken = function(src, rule, stack){
+markdown.processToken = function(src, rule, stack, line){
+  line = line || 0;                         // default line number is 0
   var cap = markdown.regex[rule].exec(src); // try to match rule
   if (cap) {                                // if rule matches...
     var names =
@@ -695,6 +696,9 @@ markdown.processToken = function(src, rule, stack){
         myTok[names[i]] = cap[i+1];         //       assign captured text to named token
       }
     }
+    myTok.sourceLine = line;                //   attach source line number to token
+    myTok.lines =                           //   store number of lines processed
+      (cap[0].match(/\n/g) || []).length;   //     ...
     stack.push(myTok);                      //   push token to stack
     return myTok;                           //   return a reference to the current token
   } else {                                  // if rule doesn't match...
@@ -1026,6 +1030,9 @@ markdown.block = function(){
       isBlockQuote: false  // not in a block quote
     }
 
+    // starting on line 0
+    var lineNumber = 0;
+
     // consume markdown in source string and convert to tokens
     eat_tokens: while (src) {
 
@@ -1039,19 +1046,21 @@ markdown.block = function(){
       }
 
       // process leading newlines
-      if (cap = markdown.processToken(src, 'newline', tok)) {
+      if (cap = markdown.processToken(src, 'newline', tok, lineNumber)) {
         if (cap.n == 1) tok.pop();  // ignore single newlines
         cap.type = 'space';         // treat as a space token
         src = src.substring(cap.n); // remove captured newline(s)
+        lineNumber += cap.lines;    // increment line count
       }
 
       // run through list of regex rules
       for (var i = 0; i < rules.length; i++) {
         var r = rules[i];
-        if (cap = markdown.processToken(src, r, tok)) {
+        if (cap = markdown.processToken(src, r, tok, lineNumber)) {
           if (block.handlers[r]) block.handlers[r](cap,tok,state); // execute callback
+          lineNumber += cap.lines;    // increment line count
           src = src.substring(cap.n); // remove captured text from string
-          continue eat_tokens; // continue consumption while loop
+          continue eat_tokens;        // continue consumption while loop
         }
       }
 
@@ -1086,28 +1095,28 @@ markdown.render = function(){
   // {{IF expr}}A{{ELSE}}B{{ENDIF}} .. if expr is true, insert "A", otherwise insert "B"
   var render_templates = {
     space:      '',
-    hr:         '<hr/>\n',
-    heading:    '<h{{level}} id="{{id}}">{{text}}</h{{level}}>\n',
-    b_code:     '<pre><code{{IF lang}} class="lang-{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>{{IF lang}}\n{{ENDIF}}',
-    blockquote: '<blockquote>\n{{text}}</blockquote>\n',
+    hr:         '<hr{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>\n',
+    heading:    '<h{{level}} id="{{id}}"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</h{{level}}>\n',
+    b_code:     '<pre{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}><code{{IF lang}} class="lang-{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>{{IF lang}}\n{{ENDIF}}',
+    blockquote: '<blockquote{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{text}}</blockquote>\n',
     html:       '{{text}}',
-    list:       '<{{listtype}}>\n{{text}}</{{listtype}}>\n',
-    listitem:   '<li>{{text}}</li>\n',
-    paragraph:  '<p>{{text}}</p>\n',
-    b_text:     '<p>{{text}}</p>\n',
-    table:      '<table>\n<thead>\n{{header}}</thead>\n<tbody>\n{{body}}</tbody>\n</table>\n',
-    tablerow:   '<tr>\n{{content}}</tr>\n',
-    tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}>{{text}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>\n',
-    strong:     '<strong>{{text}}</strong>',
-    em:         '<em>{{text}}</em>',
-    i_code:     '<code>{{^^text}}</code>',
+    list:       '<{{listtype}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{text}}</{{listtype}}>\n',
+    listitem:   '<li{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</li>\n',
+    paragraph:  '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
+    b_text:     '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
+    table:      '<table{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n<thead>\n{{header}}</thead>\n<tbody>\n{{body}}</tbody>\n</table>\n',
+    tablerow:   '<tr{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{content}}</tr>\n',
+    tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>\n',
+    strong:     '<strong{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</strong>',
+    em:         '<em{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</em>',
+    i_code:     '<code{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{^^text}}</code>',
     i_text:     '{{^text}}',
     i_html:     '{{text}}',
-    br:         '<br/>',
-    del:        '<del>{{text}}</del>',
-    link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{text}}</a>',
-    mailto:     '<a href="{{@href}}"}>{{@text}}</a>',
-    image:      '<img src="{{^href}}" alt="{{^text}}"{{IF title}} title="{{^title}}"{{ENDIF}}/>',
+    br:         '<br{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
+    del:        '<del{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</del>',
+    link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</a>',
+    mailto:     '<a href="{{@href}}"}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{@text}}</a>',
+    image:      '<img src="{{^href}}" alt="{{^text}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
     tag:        '{{text}}'
   }
 
@@ -1245,7 +1254,7 @@ markdown.parse = function(){
 
   ////////// TABLE HANDLER //////////
 
-  parser_data.table = function(x){
+  parser_data.table = function(x, opt){
 
     // process header
     var cell = '';
@@ -1253,7 +1262,7 @@ markdown.parse = function(){
       cell += markdown.render.tablecell({
         header: true,
         align:  x.align[i],
-        text:   parser(markdown.inline.lex(x.header[i]))
+        text:   parser(markdown.inline.lex(x.header[i]), opt)
       })
     }
     var header = markdown.render.tablerow({ content: cell });
@@ -1267,7 +1276,7 @@ markdown.parse = function(){
         cell += markdown.render.tablecell({
           header: false,
           align:  x.align[j],
-          text:   parser(markdown.inline.lex(row[j]))
+          text:   parser(markdown.inline.lex(row[j]), opt)
         })
       }
       body += markdown.render.tablerow({ content: cell });
@@ -1291,13 +1300,14 @@ markdown.parse = function(){
   }
 
   // parse list of tokens and return HTML code as a string
-  function parser(tokens) {
+  function parser(tokens, opt) {
     var out = new Array(tokens.length);
     for (var i = 0; i < tokens.length; i++) {
       var tok = tokens[i]; // grab next token
-      if (parser_data[tok.type]) parser_data[tok.type](tok, tokens); // convert token
+      if (!opt.includeLines) tok.sourceLine = null;
+      if (parser_data[tok.type]) parser_data[tok.type](tok, opt); // convert token
       if (_.isArray(tok.text)) { // convert array of inline tokens to string
-        tok.text = parser(tok.text);
+        tok.text = parser(tok.text, opt);
       }
       out[i] = renderToken(tok);
     }
@@ -1314,7 +1324,11 @@ markdown.parse = function(){
 ///////////////////
 
 // function to convert markdown to HTML
-markdown.toHTML = function(src) {
+markdown.toHTML = function(src, opt) {
+
+  // process options
+  opt = opt || {};
+  opt.includeLines = opt.includeLines || false;
 
   // preprocess source string
   src = src
@@ -1338,6 +1352,6 @@ markdown.toHTML = function(src) {
   //     - Delegate to inline lexer as needed
   //   - Append rendered results to output string
   //   - Return output string
-  return markdown.parse(tok);
+  return markdown.parse(tok, opt);
 
 }
