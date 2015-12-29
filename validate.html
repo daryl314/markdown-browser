@@ -368,6 +368,30 @@
       + '<li>' + deltaTime + ' ms elapsed</li>'
       + '</ul>'
     );
+
+    // run line number test
+    $('body').append('<h2>Line check</h2>');
+    var md = markdown.toHTML(txt, {includeLines:true}).split(/\n/);
+    var src = txt.split(/\n/);
+    var tgt = [];
+    var currentLine = 0;
+    for (var i = 0; i < md.length; i++) {
+      if (md[i].match(/data-source-line="(\d+)"/)) {
+        currentLine = parseInt(md[i].match(/data-source-line="(\d+)"/)[1]);
+      }
+      tgt[currentLine] = (tgt[currentLine] || []).concat(md[i]);
+    }
+    var table_rows = [];
+    for (var i = 0; i < tgt.length || i < src.length; i++) {
+      table_rows.push(
+        '<tr>' +
+          '<td>' + i + '</td>' +
+          '<td><pre><code>' + markdown.render.escape(src[i] || '')              + '</code></pre></td>' +
+          '<td><pre><code>' + markdown.render.escape((tgt[i] || []).join('\n')) + '</code></pre></td>' +
+        '</tr>'
+      )
+    }
+    $('body').append('<table>\n' + table_rows.join('\n') + '\n</table>')
   })</script>
 
 </head>
