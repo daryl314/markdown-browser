@@ -809,9 +809,12 @@ markdown.inline = function(){
 
   // process a tag: toggle inLink state if this is an opening or closing anchor
   inline.Lexer.prototype.tag = function(x){
-    x.text = x.cap;
-    if      (  /^<a /i.test(x.cap)) this.inLink = true;
-    else if (/^<\/a /i.test(x.cap)) this.inLink = false;
+    x.isClosing = x.cap[1] === '/';                             // closing tag if ^</ ...
+    x.selfClose = x.cap[x.cap.length-2] === '/';                // self closing if ... />$
+    x.text      = x.cap.replace(/^<\/?([\s\S]*?)\/?>$/, '$1');  // strip outer <>
+    if (x.isClosing) x.sourceLine = null;                       // remove line # for closing tags
+    if      (  /^<a /i.test(x.cap)) this.inLink = true;         // in a link if ^<a ...
+    else if (/^<\/a /i.test(x.cap)) this.inLink = false;        // no longer in a link if ^</a ...
   }
 
   // process a link
@@ -1131,7 +1134,7 @@ markdown.render = function(){
     link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</a>',
     mailto:     '<a href="{{@href}}"}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{@text}}</a>',
     image:      '<img src="{{^href}}" alt="{{^text}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
-    tag:        '{{text}}'
+    tag:        '<{{IF isClosing}}/{{ENDIF}}{{text}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}{{IF selfClose}}/{{ENDIF}}>'
   }
 
   // escape HTML (taken from from marked.js)
