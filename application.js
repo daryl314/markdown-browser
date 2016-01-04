@@ -497,11 +497,10 @@ renderMarkdown = function(x, $el) {
   var latex = x.match(LATEX_REGEX);
 
   // populate specified element with text converted to markdown
-  $el.html(marked(x
-    .replace(/\r?\n/g,    '\n'         ) // standardize line breaks to /n
+  $el.html(markdown.toHTML(x
     //.replace(LATEX_REGEX, '<latex />'  ) // escape latex
     .replace(/\[TOC\]/gi, '<toc></toc>') // TOC jQuery can find
-  ,{lineMarkers:true}));
+  ,{includeLines:true}));
 
   // return latex to page
   //$el.find('latex').each(function(){
@@ -516,7 +515,7 @@ renderMarkdown = function(x, $el) {
   //});
 
   // create a table of contents
-  var toc = marked(
+  var toc = markdown.toHTML(
     $(':header').not('h1').map(function(){
       var level = parseInt($(this).prop("tagName").slice(1));
       return Array(1+2*(level-1)).join(' ') + "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
@@ -558,9 +557,33 @@ renderMarkdown = function(x, $el) {
 // CODEMIRROR HANDLING //
 /////////////////////////
 
+// average adjacent points
+collapseRepeated = function(x_vec, y_vec) {
+  var head = 0, tail = 0;
+  while (tail < x_vec.length) {
+    if (tail+1 < x_vec.length && x_vec[tail] == x_vec[tail+1]) {
+      var x_tail = x_vec[tail];
+      var sum    = y_vec[tail];
+      var count = 1;
+      while (x_vec[++tail] == x_tail) {
+        sum += y_vec[tail];
+        count++;
+      }
+      x_vec[head  ] = x_tail;
+      y_vec[head++] = sum / count;
+    } else {
+      x_vec[head  ] = x_vec[tail  ];
+      y_vec[head++] = y_vec[tail++];
+    }
+  }
+  x_vec.splice(head, tail-head);
+  y_vec.splice(head, tail-head);
+}
+
 // interpolate data to a linear range
 interpolate = function(x_vec, y_vec, xi, xf) {
   var out = [], x1, x2, y1, y2, m;
+  collapseRepeated(x_vec, y_vec);
   var updateSlope = function(){
     x1 = x2; x2 = x_vec.shift();
     y1 = y2; y2 = y_vec.shift();
@@ -630,9 +653,9 @@ var render = function(){
 
   // capture line numbers
   var x = [], y = [];
-  var lineRefs = $('span.linemarker').map( function(){
-    x.push(parseInt($(this).text()));
-    y.push($(this).next().position().top);
+  var lineRefs = $('section#viewer-container [data-source-line]').each( function(){
+    x.push( parseInt($(this).attr('data-source-line')) );
+    y.push( $(this).position().top                     );
   })
 
   // interpolate/extrapolate to create a line number lookup array
