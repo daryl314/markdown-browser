@@ -681,7 +681,7 @@ markdown.regex = function(){
 
 // function to try processing a regex rule
 markdown.processToken = function(src, rule, stack, line){
-  line = line || 0;                         // default line number is 0
+  line = line || 1;                         // default line number is 1
   var cap = markdown.regex[rule].exec(src); // try to match rule
   if (cap) {                                // if rule matches...
     var names =
@@ -901,9 +901,6 @@ markdown.block = function(){
       { isList:state.isList, isBlockQuote:true }, // set state to inside a blockquote
       lineNumber
     );
-    for (var j = 0; j < t.text.length ; j++) {
-      t.lines += t.text[j].lines;
-    }
   };
 
 
@@ -945,9 +942,6 @@ markdown.block = function(){
 
       // recursively process list item
       var myTok = block.tokenize(item, [], {isList:true, isBlockQuote:state.isBlockQuote}, lineNumber);
-      for (var j = 0; j < myTok.length ; j++) {
-        lineNumber += myTok[j].lines + 1; // each token already is a line
-      }
 
       // add list item to list
       t.text.push({
@@ -958,6 +952,9 @@ markdown.block = function(){
         sourceLine: lineNumber,
         loose:      loose,
       })
+
+      // increment current line to reflect size of list item
+      lineNumber += item.split(/\n/).length;
     }
   };
 
@@ -1045,8 +1042,8 @@ markdown.block = function(){
       isBlockQuote: false  // not in a block quote
     }
 
-    // starting on line 0 if unspecified
-    lineNumber = lineNumber || 0;
+    // starting on line 1 if unspecified
+    lineNumber = lineNumber || 1;
 
     // consume markdown in source string and convert to tokens
     eat_tokens: while (src) {
@@ -1273,16 +1270,23 @@ markdown.parse = function(){
 
   parser_data.table = function(x, opt){
 
+    // current line counter
+    var currentLine = opt.includeLines ? x.sourceLine : undefined;
+
     // process header
     var cell = '';
     for (var i = 0; i < x.header.length; i++){
       cell += markdown.render.tablecell({
         header: true,
         align:  x.align[i],
-        text:   parser(markdown.inline.lex(x.header[i],x.sourceLine), opt)
+        text:   parser(markdown.inline.lex(x.header[i],currentLine), opt)
       })
     }
-    var header = markdown.render.tablerow({ content: cell });
+    var header = markdown.render.tablerow({
+      content: cell,
+      sourceLine: currentLine
+    });
+    currentLine += 2; // header row and separator row below it
 
     // process rows
     var body = '';
@@ -1293,10 +1297,13 @@ markdown.parse = function(){
         cell += markdown.render.tablecell({
           header: false,
           align:  x.align[j],
-          text:   parser(markdown.inline.lex(row[j],x.sourceLine+j), opt)
+          text:   parser(markdown.inline.lex(row[j],currentLine), opt)
         })
       }
-      body += markdown.render.tablerow({ content: cell });
+      body += markdown.render.tablerow({
+        content: cell,
+        sourceLine: currentLine++
+      });
     }
 
     // return assembled output

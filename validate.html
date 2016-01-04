@@ -387,7 +387,7 @@
     var md = markdown.toHTML(txt, {includeLines:true}).split(/\n/);
     var src = txt.split(/\n/);
     var tgt = [];
-    var currentLine = 0;
+    var currentLine = 1;
     for (var i = 0; i < md.length; i++) {
       if (md[i].match(/data-source-line="(\d+)"/)) {
         currentLine = parseInt(md[i].match(/data-source-line="(\d+)"/)[1]);
@@ -395,11 +395,11 @@
       tgt[currentLine] = (tgt[currentLine] || []).concat(md[i]);
     }
     var table_rows = [];
-    for (var i = 0; i < tgt.length || i < src.length; i++) {
+    for (var i = 1; i <= tgt.length || i < src.length; i++) {
       table_rows.push(
         '<tr>' +
           '<td class="line">' + i + '</td>' +
-          '<td class="raw">' + markdown.render.escape(src[i] || '')              + '</td>' +
+          '<td class="raw">'      + markdown.render.escape(src[i-1] || '')            + '</td>' +
           '<td class="rendered">' + markdown.render.escape((tgt[i] || []).join('\n')) + '</td>' +
         '</tr>'
       )
