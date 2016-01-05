@@ -454,65 +454,41 @@ CodeMirror.defineMode('gfm-expanded', function(){
 // CACHED LATEX RENDERING //
 ////////////////////////////
 
-// regex to match latex blocks
-var LATEX_REGEX = /(?:\\\\\(([^]*?)\\\\\))|(?:\$\$([^]*?)\$\$)/g;
-
-// hash table of processed latex
-var latexMap = {};
-
-// capture previously rendered latex in specified element
-captureLatex = function($el) {
-  if ($el.find('div.MathJax_Display').length > 0){
-    var latex = $el.find('script').first().text().replace(/^\s*(.*?)\s*$/,'$1');
-    var html = $el.find('div.MathJax_Display')[0].outerHTML;
-    latexMap[latex] = html;
+// convert a latex string to HTML code (with caching to speed procesing)
+var cachedLatex = {}; // cache
+function latexToHTML(latex, isBlock) {
+  if (cachedLatex[latex]) {
+    return cachedLatex[latex];
+  } else {
+    try {
+      out = katex.renderToString(latex, {
+        displayMode: isBlock,
+        throwOnError: false
+      });
+      cachedLatex[latex] = out;
+      return out;
+    } catch (err) {
+      return '<span style="color:red">' + err + '</span>'
+    }
   }
 }
-
-// render latex in the specified element
-renderLatex = function(el) {
-  var latex = $(el).text().replace(LATEX_REGEX, "$1$2").replace(/^\s*(.*?)\s*$/,'$1');
-  if (latexMap[latex]) {
-    var idx = $.inArray($(el)[0], $('latex'));
-    $(el).html( latexMap[latex] ).append(
-      '<script type="math/tex; mode=display">' + latex + '</script>'
-    );
-  } else {
-    MathJax.Hub.Queue(["Typeset", MathJax.Hub, el]);
-  }
-};
 
 
 ////////////////////////
 // MARKDOWN RENDERING //
 ////////////////////////
 
-// has the latex processing script been loaded yet?
-var latexLoaded = false;
-
 // function to render markdown into the specified element
 renderMarkdown = function(x, $el) {
 
-  // capture latex blocks
-  var latex = x.match(LATEX_REGEX);
-
   // populate specified element with text converted to markdown
   $el.html(markdown.toHTML(x
-    //.replace(LATEX_REGEX, '<latex />'  ) // escape latex
     .replace(/\[TOC\]/gi, '<toc></toc>') // TOC jQuery can find
   ,{includeLines:true}));
 
-  // return latex to page
-  //$el.find('latex').each(function(){
-    //$(this).text(latex.shift());
-    /*var tex = latex.shift().replace(/^\\\\\(/, '').replace(/\\\\\)$/, '').replace(/^\$\$/, '').replace(/\$\$$/, '');
-    try {
-      tex = katex.renderToString(tex);
-    } catch(err) {
-      console.log("Error processing latex: \n\n" + tex + "\n\n" + err);
-    }
-    $(this).html(tex);*/
-  //});
+  // process <latex> tags in rendered markdown
+  $el.find('latex.block' ).each(function(){ $(this).html( latexToHTML($(this).html(), true ) ) });
+  $el.find('latex.inline').each(function(){ $(this).html( latexToHTML($(this).html(), false) ) });
 
   // create a table of contents
   var toc = markdown.toHTML(
@@ -523,16 +499,6 @@ renderMarkdown = function(x, $el) {
 
   // fill TOC elements
   $el.find('toc').html(toc);
-
-  // add latex processor if applicable
-  if (latex) {
-    if (latexLoaded) {
-      $el.find('latex').each(function(){ renderLatex(this) });
-    } else {
-      $.getScript('https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML');
-      latexLoaded = true;
-    }
-  }
 
   // style tables
   $el.find('table').addClass('table table-striped table-hover table-condensed');
@@ -612,22 +578,6 @@ visibleLines = function(cm){
   }
 }
 
-// return editor contents with line markers
-contentWithMarkers = function(cm){
-  var data = cm.getValue().split("\n");
-  for (var i = 0; i < data.length; i++) {
-    data[i] += "<codemirror-line" + i + " />"
-  }
-  var tok = marked.lexer(data.join("\n"));
-  var out_tok = [];
-  for (var i = 0; i < tok.length; i++) {
-    if (tok[i].text != null && tok[i].text.match(/<codemirror-(top|cursor|bottom)\/>/)) {
-      console.log(tok[i]);
-    }
-  }
-  debugger
-}
-
 // line number lookup array
 var lineMap;
 
@@ -644,9 +594,6 @@ var scrollTo = function(line, marker) {
 
 // function to render markdown
 var render = function(){
-
-  // capture any existing rendered latex
-  $('#viewer latex').each(function(){ captureLatex($(this)); });
 
   // execute rendering
   renderMarkdown(cm.getValue(),$('#viewer'));

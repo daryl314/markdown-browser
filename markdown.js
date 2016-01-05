@@ -342,14 +342,15 @@ markdown.regex = function(){
   ////////// BLOCK LATEX REGEX //////////
 
   regex.b_latex = regex.Combine(
-    /^/,          // anchor to start of string
-    / */,         // optional spaces
-    /\$\$/,       // $$
-      /\s*/,      //   optional whitespace
-      /([^]+?)/,  //   captured minimal multi-line regex
-      /\s*/,      //   optional whitespace
-    /\$\$/        // $$
+    /^/,            // anchor to start of string
+    / */,           // optional spaces
+    /\$\$/,         // $$
+      /\s*/,        //   optional whitespace
+      /([\s\S]+?)/, //   captured minimal multi-line regex
+      /\s*/,        //   optional whitespace
+    /\$\$/          // $$
   );
+  regex.b_latex.tokens = ['latex'];
 
 
   ////////// NEWLINE REGEX //////////
@@ -607,13 +608,14 @@ markdown.regex = function(){
   ////////// INLINE LATEX REGEX //////////
 
   regex.i_latex = regex.Combine(
-    /^/,          // anchor to start of string
-    /\\\\\(/,     // \\(
-      /\s*/,      //   optional whitespace
-      /([^]+?)/,  //   minimal multi-line wildcard
-      /\s*/,      //   optional whitespace
-    /\\\\\)/      // \\)
+    /^/,            // anchor to start of string
+    /\\\\\(/,       // \\(
+      /\s*/,        //   optional whitespace
+      /([\s\S]+?)/, //   captured minimal multi-line wildcard
+      /\s*/,        //   optional whitespace
+    /\\\\\)/        // \\)
   );
+  regex.i_latex.tokens = ['latex'];
 
 
   ////////// TAG REGEX //////////
@@ -719,7 +721,7 @@ markdown.inline = function(){
 
   // rule sequence
   inline.rules = [
-    'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
+    'i_latex', 'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
     'strong', 'em', 'i_code', 'br', 'del', 'i_text'
   ]
 
@@ -1012,7 +1014,7 @@ markdown.block = function(){
 
   // block grammar rule sequence for default mode
   block.rule_sequence.default = [
-    'b_code','fences','heading','nptable','lheading','hr','blockquote',
+    'b_code','fences','b_latex','heading','nptable','lheading','hr','blockquote',
     'list','html','def','table','paragraph'
   ];
 
@@ -1131,7 +1133,9 @@ markdown.render = function(){
     link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</a>',
     mailto:     '<a href="{{@href}}"}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{@text}}</a>',
     image:      '<img src="{{^href}}" alt="{{^text}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
-    tag:        '<{{IF isClosing}}/{{ENDIF}}{{text}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}{{IF selfClose}}/{{ENDIF}}>'
+    tag:        '<{{IF isClosing}}/{{ENDIF}}{{text}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}{{IF selfClose}}/{{ENDIF}}>',
+    i_latex:    '<latex class="inline"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{latex}}</latex>',
+    b_latex:    '<latex class="block"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{latex}}</latex>'
   }
 
   // escape HTML (taken from from marked.js)
