@@ -30,25 +30,25 @@ markdown.regex = function(){
       }
 
       // is a set of replacements specified in the last argument?
-      var lastArg = _.last(arguments);
-      var hasReplacements = _.isObject(lastArg) && !(lastArg instanceof RegExp);
-
-      // collection of regexes to combine (excluding replacements)
-      var args = hasReplacements ? _.dropRight(arguments) : arguments;
+      var lastArg = arguments[arguments.length-1];
+      var hasReplacements = typeof lastArg === 'object' && !(lastArg instanceof RegExp);
 
       // combine inputs into a single regex
-      var out = new RegExp(
-        _.map(args, function(x,i) {
-          return x.source || x
-        }).join('')
-      );
+      var src = '';
+      for ( var i = 0;
+            i < (hasReplacements ? arguments.length-1 : arguments.length); // don't include replacements
+            i++) {
+        src = src + (arguments[i].source || arguments[i]); // use regex source if available
+      }
+      var out = new RegExp(src);
 
       // replace tokens in the assembled regex using the lookup map
       if (hasReplacements) {
         out = out.source;
-        _.each(_.last(arguments), function(v,k){
+        for (var k in arguments[arguments.length-1]) {
+          var v = arguments[arguments.length-1][k];
           out = out.replace(new RegExp(k,'g'), trimAnchor(v.source||v));
-        });
+        };
         out = new RegExp(out);
       }
 
@@ -726,7 +726,10 @@ markdown.inline = function(){
   ]
 
   // rule sequence when in 'inLink' state
-  inline.rules_link = _.without(inline.rules, 'url');
+  inline.rules_link = [];
+  for (var i = 0; i < inline.rules.length; i++) {
+    if (inline.rules[i] !== 'url') inline.rules_link.push(inline.rules[i]);
+  }
 
   // function to handle lexing by instantiating Inline Lexer
   inline.lex = function(src, lineNumber, inLink){
@@ -1019,13 +1022,21 @@ markdown.block = function(){
   ];
 
   // block grammar rule sequence for list (or list and blockquote) state
-  block.rule_sequence.list = _.chain(block.rule_sequence.default)
-    .without('nptable').without('def').without('table').without('paragraph')
-    .concat('b_text')
-    .value()
+  block.rule_sequence.list = [];
+  for (var i = 0; i < block.rule_sequence.default.length; i++) {
+    var rule_i = block.rule_sequence.default[i];
+    if (rule_i !== 'nptable' && rule_i !== 'def' && rule_i !== 'table' && rule_i !== 'paragraph') {
+      block.rule_sequence.list.push(rule_i);
+    }
+  }
+  block.rule_sequence.list.push('b_text');
 
   // block grammar rule sequence for blockquote-only state
-  block.rule_sequence.bq = _.without(block.rule_sequence.default, 'def');
+  block.rule_sequence.bq = [];
+  for (var i = 0; i < block.rule_sequence.default.length; i++) {
+    var rule_i = block.rule_sequence.default[i];
+    if (rule_i !== 'def') block.rule_sequence.bq.push(rule_i);
+  }
 
 
   ////////// FUNCTION TO TOKENIZE WITH BLOCK GRAMMAR //////////
@@ -1215,10 +1226,9 @@ markdown.render = function(){
   }
 
   // compile rendering templates
-  var keys = _.keys(render_templates);
   var render = {};
-  for (var i = 0; i < keys.length; i++) {
-    render[keys[i]] = convertTemplate(render_templates[keys[i]]);
+  for (var key in render_templates) {
+    render[key] = convertTemplate(render_templates[key]);
   }
 
   // attach escape and mangle functions
@@ -1334,7 +1344,7 @@ markdown.parse = function(){
       var tok = tokens[i]; // grab next token
       if (!opt.includeLines) tok.sourceLine = null;
       if (parser_data[tok.type]) parser_data[tok.type](tok, opt); // convert token
-      if (_.isArray(tok.text)) { // convert array of inline tokens to string
+      if (Array.isArray(tok.text)) { // convert array of inline tokens to string
         tok.text = parser(tok.text, opt);
       }
       out[i] = renderToken(tok);
