@@ -339,20 +339,6 @@ markdown.regex = function(){
   );
 
 
-  ////////// BLOCK LATEX REGEX //////////
-
-  regex.b_latex = regex.Combine(
-    /^/,            // anchor to start of string
-    / */,           // optional spaces
-    /\$\$/,         // $$
-      /\s*/,        //   optional whitespace
-      /([\s\S]+?)/, //   captured minimal multi-line regex
-      /\s*/,        //   optional whitespace
-    /\$\$/          // $$
-  );
-  regex.b_latex.tokens = ['latex'];
-
-
   ////////// NEWLINE REGEX //////////
 
   regex.newline = /^\n+/; // one or more newlines anchored at start of string
@@ -618,6 +604,20 @@ markdown.regex = function(){
   regex.i_latex.tokens = ['latex'];
 
 
+  ////////// BLOCK LATEX REGEX //////////
+
+  regex.b_latex = regex.Combine(
+    /^/,            // anchor to start of string
+    / */,           // optional spaces
+    /\$\$/,         // $$
+      /\s*/,        //   optional whitespace
+      /([\s\S]+?)/, //   captured minimal multi-line regex
+      /\s*/,        //   optional whitespace
+    /\$\$/          // $$
+  );
+  regex.b_latex.tokens = ['latex'];
+
+
   ////////// TAG REGEX //////////
 
   regex.tag = regex.Combine(
@@ -654,6 +654,8 @@ markdown.regex = function(){
         / {2,}\n/,      //     2 or more spaces followed by a newline
       /|/,              //   OR
         /$/,            //     end of string
+      /|/,              //   OR
+        /\$\$/,         //     $$
     ')'                 // end lookahead
   );
 
@@ -721,7 +723,7 @@ markdown.inline = function(){
 
   // rule sequence
   inline.rules = [
-    'i_latex', 'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
+    'i_latex', 'b_latex', 'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
     'strong', 'em', 'i_code', 'br', 'del', 'i_text'
   ]
 
@@ -1017,7 +1019,7 @@ markdown.block = function(){
 
   // block grammar rule sequence for default mode
   block.rule_sequence.default = [
-    'b_code','fences','b_latex','heading','nptable','lheading','hr','blockquote',
+    'b_code','fences','heading','nptable','lheading','hr','blockquote',
     'list','html','def','table','paragraph'
   ];
 
