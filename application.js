@@ -12,37 +12,6 @@
 //   codemirror markdown mode demo: http://codemirror.net/mode/markdown/
 //   regex tester: https://regex101.com/#javascript
 
-var headerRegex = /^\s*#+.*/;
-
-// Define a CodeMirror mode for markdown editor
-// CodeMirror.defineSimpleMode("gfm", {
-//   start: [
-//     { regex:/!?\[((?:\[[^\]]*\]|[^\[\]]|\](?=[^\[]*\]))*)\]\(\s*<?([\s\S]*?)>?(?:\s+['"]([\s\S]*?)['"])?\s*\)/, token:['link','string']},
-//     { regex:/```/, token: 'comment', next:'code' },
-//     { regex:/   .+/, token:'comment', sol:true },
-//     { regex:/`.+`/, token:'comment'},
-//     { regex:/ *#+.*/, token:'header', sol:true },
-//     { regex:/ *\*.*/, token:'variable-2', sol:true },
-//     { regex:/ *\d+\. .*/, token:'variable-2', sol:true },
-//     { regex:/\*{2}.+?\*{2}/, token:'strong'},
-//     { regex:/\b_.+?_\b/, token:'em'},
-//     { regex:/\\\\\(.+?\\\\\)/, token:'error'},
-//     { regex:/(=|\-)+/, token:'header', sol:true}
-//
-//
-//     //{ regex:/\b_(?:__|[\s\S])+?_\b/, token:'em' },
-//     //{ regex:/\b\*\*/, token:'strong', push:'strong' }
-//   ],
-//   code: [
-//     {regex:/.*?```/, token: 'comment', next:'start'},
-//     {regex:/.*/, token:'comment'}
-//   ],
-//   strong: [
-//     { regex:/.*\*{2}\b}/, token: 'strong', pop:true },
-//     { regex:/.*/, token:'string'}
-//   ]
-// });
-
 // Define a CodeMirror mode for markdown editor
 CodeMirror.defineMode('gfm-expanded', function(){
 
@@ -61,46 +30,106 @@ CodeMirror.defineMode('gfm-expanded', function(){
     table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'table'       }, // later in sequence??
     hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr'          },
     blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'blockquote'  },
-    //list
-    //html
-    def:        { seq:8,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'def'         }
-    //table
-    //paragraph
+    list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.)/,   stop:null,        style:'list'        },
+    def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'def'         }
   };
   var blockSequence = [];
   for (k in blockData) blockSequence[ blockData[k].seq ] = k;
+
+  // callback functions for list mode
+  // a list is terminated by one of the following:
+  //  - HR block
+  //  - def block
+  //  - 2+ newlines followed by a non-indented line
+  blockData.list.init = function(obj, stream, state, match){
+    state.stack = [['list', {
+      isFirstMatch: true
+    }]];
+  }
+  blockData.list.process = function(obj, stream, state){
+    var data = state.stack[state.stack.length-1][1];
+    if (data.isFirstMatch) {
+      data.isFirstMatch = false;
+      stream.match(/.*/);
+      return obj.assignToken(stream, state, blockData.list.style);
+    } else if (stream.match(blockData.def.start, false)     // HR block
+            || stream.match(blockData.hr .start, false)) {  // def block
+      state.stack = [];
+      return obj.token(stream, state);
+    } else if (!stream.match(/^ /, false) && state.blanks >= 1) { // non-indented line
+      state.stack = [];
+      return obj.token(stream, state);
+    } else {
+      stream.match(/.*/);
+      return obj.assignToken(stream, state, blockData.list.style);
+    }
+  }
 
   // inline mode data
   // which are recursive??
   // which need multi-line expansions??
   var inlineData = {
-    i_latex:  { seq:0,  start:/^\\\\\(/, stop:/.*\\\\\)/,       style:'i_latex'   },
-    b_latex:  { seq:1,  start:/^ *\$\$/, stop:/.*\$\$/,         style:'b_latex'   },
-    escape:   { seq:2,  start:markdown.regex.escape,            style:'escape'    },
-    autolink: { seq:3,  start:markdown.regex.autolink,          style:'link'  },
-    url:      { seq:4,  start:markdown.regex.url,              style:'link'},
-    tag:      { seq:5},
-    link:     { seq:6,  start:markdown.regex.link,              style:['link-text','link-href','link-title']},
-    reflink:  { seq:7},
-    nolink:   { seq:8},
-    strong1:  { seq:9,  start:/^\*\*/,   stop:/.*\*\*(?!\*)/,  style:'strong'  },
-    strong2:  { seq:10, start:/^__/,     stop:/.*__(?!_)/,     style:'strong'  },
-    em1:      { seq:11, start:/^\b_/,    stop:/.*_\b/,         style:'em'      },
-    em2:      { seq:12, start:/^\*/,     stop:/.*\*(?!\*)/,    style:'em'      },
-    i_code:   { seq:13 }, //(needs backtick capture)
-    br:       { seq:14 },
-    del:      { seq:15, start:/^~~(?=\S)/, stop:/.*\S~~/,  style:'strikethrough'}
+    i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,      style:'i_latex'                               },
+    b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,        style:'b_latex'                               },
+    escape:   { seq:2,  start:markdown.regex.escape,              style:'escape'                                },
+    autolink: { seq:3,  start:markdown.regex.autolink,            style:'link'                                  },
+    url:      { seq:4,  start:markdown.regex.url,                 style:'link'                                  },
+    html:     { seq:5,  start:markdown.regex.tag,                 style:'html'                                  },
+    link:     { seq:6,  start:markdown.regex.link,                style:['link-text','link-href','link-title']  },
+    reflink:  { seq:7,  start:markdown.regex.reflink,             style:['link-text','link-href']               },
+    nolink:   { seq:8,  start:markdown.regex.nolink,              style:'link-href'                             },
+    strong1:  { seq:9,  start:/^\*\*/,      stop:/.*\*\*(?!\*)/,  style:'strong'                                },
+    strong2:  { seq:10, start:/^__/,        stop:/.*__(?!_)/,     style:'strong'                                },
+    em1:      { seq:11, start:/^\b_/,       stop:/.*_\b/,         style:'em'                                    },
+    em2:      { seq:12, start:/^\*/,        stop:/.*\*(?!\*)/,    style:'em'                                    },
+    i_code:   { seq:13, start:/^ *(`+)/,    stop:null,            style:'i_code'                                },
+    del:      { seq:14, start:/^~~(?=\S)/,  stop:/.*\S~~/,        style:'strikethrough'                         }
   }
   var inlineSequence = [];
   for (k in inlineData) inlineSequence[ inlineData[k].seq ] = k;
 
-  /*
-  NOTES:
-  If there are multiple captured groups with non-captured content, need to use one of the
-  following approaches:
-  - search for substring matches
-  - add parentheses around the non-captured content with no associated styling
-  */
+  // callback function for inline code mode
+  inlineData.i_code.init = function(obj, stream, state, match) {
+    inlineData.i_code.stop = new RegExp('.*?[^`]\s*' + match[1] + '(?!`)');
+  }
+
+  // callback function for html mode
+  inlineData.html.init = function(obj, stream, state, match) {
+    var cap;
+    if (cap = match[0].match(/^<\w+.*?>/)) {
+      if (!cap[0].match(/\/>$/)) { // ignore self-closers
+        state.isBlock = false;
+        state.stack.push(['html', {
+          closingTag: cap[0].replace(/^<(\w+).*/, '</$1>')
+        }]);
+      }
+    }
+  }
+  inlineData.html.process = function(obj, stream, state) {
+    var data = state.stack[state.stack.length-1][1];
+    stream.match(/[^<]*/);  // consume any non-tag text
+    if (!stream.eol()) {
+      var cap;
+      if (cap = stream.match(/<\/\w+.*?>/)) {
+        while (state.stack.length > 0
+            && state.stack[state.stack.length-1][0] == 'html'
+            && state.stack[state.stack.length-1][1].closingTag !== cap[0]) {
+          state.stack.pop();
+        }
+        state.stack.pop();
+      } else if (cap = stream.match(this.start)) {
+        this.init(obj, stream, state, cap);
+      } else { // Isolated < that is not part of a tag
+        if (!stream.eat('<')) {
+          throw new Error('Failed to consume a token')
+        }
+      }
+    }
+    return obj.assignToken(stream, state, inlineData.html.style);
+  }
+
+
+  ///// RETURN THE MODE OBJECT /////
 
   return {
 
@@ -108,10 +137,11 @@ CodeMirror.defineMode('gfm-expanded', function(){
     startState: function(basecolumn) {
       return {
         isBlock:  true,   // are we in block mode (vs inline)?
+        isList:   false,  // are we in block list mode? (block mode submode)
+        isBQ:     false,  // are we in block quote mode? (block mode submode)
+        blanks:   0,      // number of blank lines
         stack:    [],     // mode data stack
-        inline:   null,   // ???
-        queue:    [],     // queued up tokens for subsequent styling
-        children: []      // ???
+        queue:    []      // queued up tokens for subsequent styling
       };
     },
 
@@ -119,11 +149,17 @@ CodeMirror.defineMode('gfm-expanded', function(){
     copyState: function(state) {
       return {
         isBlock:  state.isBlock,
-        inline:   state.inline,
-        stack:    state.stack.slice(0),
-        queue:    state.queue.slice(0), // copy array
-        children: state.children.slice(0) // copy array
+        isList:   state.isList,
+        isBQ:     state.isBQ,
+        blanks:   state.blanks,
+        stack:    state.stack.slice(0), // copy of array
+        queue:    state.queue.slice(0)  // copy of array
       }
+    },
+
+    // function called when a blank line is passed over
+    blankLine: function(state) {
+      state.blanks += 1;
     },
 
     // create a queue from a multi-match
@@ -157,22 +193,34 @@ CodeMirror.defineMode('gfm-expanded', function(){
       return this.token(stream, state); // recurse to pop off first token
     },
 
+    // function called when a style is assigned
+    assignToken(stream, state, style) {
+      if (stream.pos == stream.start) // check that a token was consumed
+        throw new Error('Failed to consume anything!');
+      if (stream.eol() && state.stack.length == 0)               // return to block mode at end of line
+        state.isBlock = true;
+      state.blanks = 0;               // reset blank line counter
+      return style;                   // return the style
+    },
+
     // perform inline lexing MOve tO MAIN TOKEN FUNCTION???
-    inlineLex: function(stream, state) {
+    inlineLex: function(obj, stream, state) {
 
       var match;
       for (var i = 0; i < inlineSequence.length; i++) {
         var rule_i = inlineData[ inlineSequence[i] ];
         if (rule_i.start) if (match = stream.match(rule_i.start)) {
+          if (rule_i.init) {
+            rule_i.init(obj, stream, state, match);
+          }
           if (rule_i.stop) {
             state.stack.push(inlineSequence[i]);
             state.isBlock = false;
           }
           if (typeof rule_i.style == 'string') {
-            if (stream.pos == stream.start) throw new Error('Failed to consume anything!');
-            return rule_i.style;
+            return this.assignToken(stream, state, rule_i.style);
           } else {
-            return this.multiMatchToQueue(stream, state, match, rule_i.style);
+            return this.multiMatchToQueue(stream, state, match, rule_i.style.slice(0));
           }
         }
       }
@@ -183,10 +231,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
         if (stream.peek() == '_' && match[0].match(/\w$/)) { // internal _
           stream.eat(/_+/);  // consume to prevent identification as 'em'
         }
-        return null;
+        state.isBlock = false;
+        return this.assignToken(stream, state, null);
       }
-
-      //i_text: { seq:2, start:markdown.regex.i_text, stop:null, style:null }
 
       // otherwise we have an error (style as an error instead??)
       throw new Error('Failed to consume an inline token!');
@@ -202,25 +249,47 @@ CodeMirror.defineMode('gfm-expanded', function(){
         if (item[0].length == 0) {
           return this.token(stream,state);
         } else {
-          if (stream.pos == stream.start) throw new Error('Failed to consume anything!');
-          return item[1];
+          return this.assignToken(stream, state, item[1]);
         }
       }
 
-      // if stack is empty, we are in root block mode, so search for block tokens
-      if (state.stack.length == 0) {
+      // if stack is empty and we are in block mode, we are in root block mode, so search for block tokens
+      if (state.stack.length == 0 && state.isBlock) {
         for (var i = 0; i < blockSequence.length; i++) {
           var rule_i = blockData[ blockSequence[i] ];
-          if (rule_i.start && stream.match(rule_i.start)) {
+          var match;
+          if (rule_i.start) if (match = stream.match(rule_i.start)) {
+            if (rule_i.init) {
+              rule_i.init(this, stream, state, match);
+            }
             if (rule_i.stop) {
               state.stack.push(blockSequence[i]);
             }
-            if (stream.pos == stream.start) throw new Error('Failed to consume anything!');
-            return rule_i.style;
+            return this.assignToken(stream, state, rule_i.style);
           }
         }
         // no block rules matched, so switch to inline for this token
-        return this.inlineLex(stream, state);
+        return this.inlineLex(this, stream, state);
+      }
+
+      // if stack is empty and we are in inline mode, continue processing
+      if (state.stack.length == 0 && !state.isBlock) {
+        return this.inlineLex(this, stream, state);
+      }
+
+      ///// EVERYTHING BELOW USES THE STACK /////
+
+      // check for a special mode stack
+      if (state.isBlock
+          && blockData[state.stack[state.stack.length-1][0]]
+          && blockData[state.stack[state.stack.length-1][0]].process
+          ) {
+        return blockData[state.stack[state.stack.length-1][0]].process(this, stream, state);
+      } else if (!state.isBlock
+          && inlineData[state.stack[state.stack.length-1][0]]
+          && inlineData[state.stack[state.stack.length-1][0]].process
+          ) {
+        return inlineData[state.stack[state.stack.length-1][0]].process(this, stream, state);
       }
 
       // if we are in block mode with a non-empty stack, search for the closing tag
@@ -231,8 +300,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
         } else {
           stream.skipToEnd();
         }
-        if (stream.pos == stream.start) throw new Error('Failed to consume anything!');
-        return data.style;
+        return this.assignToken(stream, state, data.style);
       }
 
       // if we are in inline mode with a non-empty stack, search for the closing tag
@@ -246,12 +314,11 @@ CodeMirror.defineMode('gfm-expanded', function(){
         } else {
           stream.skipToEnd();
         }
-        if (stream.pos == stream.start) throw new Error('Failed to consume anything!');
-        return data.style;
+        return this.assignToken(stream, state, data.style);
       }
 
       // if we get here, it's because nothing matched (which shouldn't happen!)
-      throw new Error('Failed to match a token!');
+      throw new Error('Failed to consume a block token!');
     }
   }
 })

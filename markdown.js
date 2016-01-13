@@ -451,7 +451,7 @@ markdown.regex = function(){
   });
   regex.link.tokens = ['text','href','title'];
 
-  // reflink regex (what is this??)
+  // regex for a cross-referenced link with a link title
   regex.reflink = regex.Combine(
     /^!?/,        // optional leading ! (for an image)
     /\[INSIDE\]/, // link text in square brackets
@@ -464,7 +464,7 @@ markdown.regex = function(){
   });
   regex.reflink.tokens = ['text', 'href'];
 
-  // nolink regex (what is this??)
+  // regex for a cross-referenced link without link text: [foo][] or [foo]
   regex.nolink = regex.Combine(
     /^!?/,        // optional leading ! (for an image)
     /\[INSIDE\]/, // link text in square brackets
@@ -475,7 +475,7 @@ markdown.regex = function(){
       .join('|')      // undo split
       .concat(')*)')  // close out regex_inside
   });
-  regex.nolink.tokens = ['text', 'href'];
+  regex.nolink.tokens = ['text']; // combination href and text
 
 
   ////////// BOLD REGEX //////////
