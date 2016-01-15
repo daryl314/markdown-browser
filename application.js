@@ -66,24 +66,23 @@ CodeMirror.defineMode('gfm-expanded', function(){
   }
 
   // inline mode data
-  // which are recursive??
-  // which need multi-line expansions??
+  // which are recursive??  strong/em/del/link(text)
   var inlineData = {
-    i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,      style:'i_latex'                               },
-    b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,        style:'b_latex'                               },
-    escape:   { seq:2,  start:markdown.regex.escape,              style:'escape'                                },
-    autolink: { seq:3,  start:markdown.regex.autolink,            style:'link'                                  },
-    url:      { seq:4,  start:markdown.regex.url,                 style:'link'                                  },
-    html:     { seq:5,  start:markdown.regex.tag,                 style:'html'                                  },
-    link:     { seq:6,  start:markdown.regex.link,                style:['link-text','link-href','link-title']  },
-    reflink:  { seq:7,  start:markdown.regex.reflink,             style:['link-text','link-href']               },
-    nolink:   { seq:8,  start:markdown.regex.nolink,              style:'link-href'                             },
-    strong1:  { seq:9,  start:/^\*\*/,      stop:/.*\*\*(?!\*)/,  style:'strong'                                },
-    strong2:  { seq:10, start:/^__/,        stop:/.*__(?!_)/,     style:'strong'                                },
-    em1:      { seq:11, start:/^\b_/,       stop:/.*_\b/,         style:'em'                                    },
-    em2:      { seq:12, start:/^\*/,        stop:/.*\*(?!\*)/,    style:'em'                                    },
-    i_code:   { seq:13, start:/^ *(`+)/,    stop:null,            style:'i_code'                                },
-    del:      { seq:14, start:/^~~(?=\S)/,  stop:/.*\S~~/,        style:'strikethrough'                         }
+    i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,      recursive:false,  style:'i_latex'                               },
+    b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,        recursive:false,  style:'b_latex'                               },
+    escape:   { seq:2,  start:markdown.regex.escape,              recursive:false,  style:'escape'                                },
+    autolink: { seq:3,  start:markdown.regex.autolink,            recursive:false,  style:'link'                                  },
+    url:      { seq:4,  start:markdown.regex.url,                 recursive:false,  style:'link'                                  },
+    html:     { seq:5,  start:markdown.regex.tag,                 recursive:false,  style:'html'                                  },
+    link:     { seq:6,  start:markdown.regex.link,                recursive:true,   style:['link-text','link-href','link-title']  },
+    reflink:  { seq:7,  start:markdown.regex.reflink,             recursive:true,   style:['link-text','link-href']               },
+    nolink:   { seq:8,  start:markdown.regex.nolink,              recursive:true,   style:'link-href'                             },
+    strong1:  { seq:9,  start:/^\*\*/,      stop:/\*\*(?!\*)/,  recursive:true,   style:'strong'                                },
+    strong2:  { seq:10, start:/^__/,        stop:/__(?!_)/,     recursive:true,   style:'strong'                                },
+    em1:      { seq:11, start:/^\b_/,       stop:/_\b/,         recursive:true,   style:'em'                                    },
+    em2:      { seq:12, start:/^\*/,        stop:/\*(?!\*)/,    recursive:true,   style:'em'                                    },
+    i_code:   { seq:13, start:/^ *(`+)/,    stop:null,            recursive:false,  style:'i_code'                                },
+    del:      { seq:14, start:/^~~(?=\S)/,  stop:/\S~~/,        recursive:true,   style:'strikethrough'                         }
   }
   var inlineSequence = [];
   for (k in inlineData) inlineSequence[ inlineData[k].seq ] = k;
@@ -162,35 +161,35 @@ CodeMirror.defineMode('gfm-expanded', function(){
       state.blanks += 1;
     },
 
-    // create a queue from a multi-match
+    // create a queue from a multi-match (multiple tokens to style in a single match)
     multiMatchToQueue: function(stream, state, matches, css) {
       stream.backUp(matches[0].length); // reverse match consumption
       var str = matches[0];             // full string that matches the regex
       var tok = matches.slice(1);       // captured tokens
-      while (str.length > 0) {
-        idx = str.indexOf(tok[0]);
-        if (idx > 0) {                  // non-captured text at start of token
-          state.queue.push([
-            str.slice(0,idx),
-            ''
-          ]);
-          str = str.slice(idx);
-        } else if (tok.length == 0) {   // non-captured text at end of token
-          state.queue.push([
-            str,
-            ''
-          ]);
-          str = '';
-        } else {                        // token starting at position 0
-          var n = (tok[0]||'').length;
-          state.queue.push([
-            tok.shift() || '',
-            css.shift()
-          ]);
-          str = str.slice(n);
-        }
-      }
-      return this.token(stream, state); // recurse to pop off first token
+      while (str.length > 0) {          // while there is content to process...
+        idx = str.indexOf(tok[0]);      //   identify location of next match
+        if (idx > 0) {                  //   if there is non-captured text at start of token...
+          state.queue.push([            //     queue up an unstyled token...
+            str.slice(0,idx),           //       that is the non-captured text
+            ''                          //       with no css class
+          ]);                           //     ...
+          str = str.slice(idx);         //     remove text from string
+        } else if (tok.length == 0) {   //   if there is non-captured text at the end of token...
+          state.queue.push([            //     queue up an unstyled token...
+            str,                        //       that is the non-captured text
+            ''                          //       with no css class
+          ]);                           //     ...
+          str = '';                     //     done processing string
+        } else {                        //   otherwise there is a token starting at position 0...
+          var n = (tok[0]||'').length;  //     length of the token
+          state.queue.push([            //     queue up a styled token...
+            tok.shift() || '',          //       that is the captured token (removed from list)
+            css.shift()                 //       with the defined style (removed from list)
+          ]);                           //     ...
+          str = str.slice(n);           //     remove text from string
+        }                               //   ...
+      }                                 // ...
+      return this.token(stream, state); // recurse to pop first token off generated queue
     },
 
     // function called when a style is assigned
@@ -201,6 +200,28 @@ CodeMirror.defineMode('gfm-expanded', function(){
         state.isBlock = true;
       state.blanks = 0;               // reset blank line counter
       return style;                   // return the style
+    },
+
+    // consume inline text
+    consumeInlineText: function(stream, state) {
+      var match;
+      if (match = stream.match(markdown.regex.i_text)) {
+        if (stream.peek() == '_') {
+          var token_type = (state.stack[state.stack.length-1] || [''])[0];
+          if (token_type === 'em1' || token_type === 'strong2') {
+            if (stream.match(inlineData[token_type].stop, false)) {
+              return true;
+            }
+          }
+          if (match[0].match(/\w$/)) { // internal _
+            stream.eat(/_+/);  // consume to prevent identification as 'em'
+            this.consumeInlineText(stream, state); // continue consumption
+          }
+        }
+        return true;
+      } else {
+        return false;
+      }
     },
 
     // perform inline lexing MOve tO MAIN TOKEN FUNCTION???
@@ -214,7 +235,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
             rule_i.init(obj, stream, state, match);
           }
           if (rule_i.stop) {
-            state.stack.push(inlineSequence[i]);
+            state.stack.push([inlineSequence[i], {}]);
             state.isBlock = false;
           }
           if (typeof rule_i.style == 'string') {
@@ -226,17 +247,13 @@ CodeMirror.defineMode('gfm-expanded', function(){
       }
 
       // if nothing matched the line, try matching against inline text
-      var match;
-      if (match = stream.match(markdown.regex.i_text)) {
-        if (stream.peek() == '_' && match[0].match(/\w$/)) { // internal _
-          stream.eat(/_+/);  // consume to prevent identification as 'em'
-        }
+      if (this.consumeInlineText(stream, state)) {
         state.isBlock = false;
         return this.assignToken(stream, state, null);
+      } else {
+        // otherwise we have an error (style as an error instead??)
+        throw new Error('Failed to consume an inline token!');
       }
-
-      // otherwise we have an error (style as an error instead??)
-      throw new Error('Failed to consume an inline token!');
     },
 
     // main token processing function
@@ -253,68 +270,65 @@ CodeMirror.defineMode('gfm-expanded', function(){
         }
       }
 
-      // if stack is empty and we are in block mode, we are in root block mode, so search for block tokens
+      // empty stack and in block mode: in base block mode
+      //  - search for block tokens
       if (state.stack.length == 0 && state.isBlock) {
         for (var i = 0; i < blockSequence.length; i++) {
           var rule_i = blockData[ blockSequence[i] ];
           var match;
           if (rule_i.start) if (match = stream.match(rule_i.start)) {
-            if (rule_i.init) {
-              rule_i.init(this, stream, state, match);
-            }
-            if (rule_i.stop) {
-              state.stack.push(blockSequence[i]);
-            }
+            if (rule_i.init) rule_i.init(this, stream, state, match);
+            if (rule_i.stop) state.stack.push([blockSequence[i], {}]);
             return this.assignToken(stream, state, rule_i.style);
           }
         }
-        // no block rules matched, so switch to inline for this token
-        return this.inlineLex(this, stream, state);
       }
 
-      // if stack is empty and we are in inline mode, continue processing
-      if (state.stack.length == 0 && !state.isBlock) {
+      // empty stack and in inline mode (or in block mode and nothing matched)
+      //  - perform inline lexing
+      if (state.stack.length == 0) {
         return this.inlineLex(this, stream, state);
       }
 
       ///// EVERYTHING BELOW USES THE STACK /////
 
+      var stackKey  = state.stack[state.stack.length-1][0];
+      var stackData = state.stack[state.stack.length-1][1];
+      var stackMeta = (state.isBlock ? blockData : inlineData)[stackKey];
+
       // check for a special mode stack
-      if (state.isBlock
-          && blockData[state.stack[state.stack.length-1][0]]
-          && blockData[state.stack[state.stack.length-1][0]].process
-          ) {
-        return blockData[state.stack[state.stack.length-1][0]].process(this, stream, state);
-      } else if (!state.isBlock
-          && inlineData[state.stack[state.stack.length-1][0]]
-          && inlineData[state.stack[state.stack.length-1][0]].process
-          ) {
-        return inlineData[state.stack[state.stack.length-1][0]].process(this, stream, state);
+      if (stackMeta && stackMeta.process) {
+        return stackMeta.process(this, stream, state);
       }
 
       // if we are in block mode with a non-empty stack, search for the closing tag
       if (state.isBlock) {
-        var data = blockData[state.stack[state.stack.length-1]];
-        if (stream.match(data.stop)) {
+        if (stream.match(stackMeta.stop)) {
           state.stack.pop();
         } else {
           stream.skipToEnd();
         }
-        return this.assignToken(stream, state, data.style);
+        return this.assignToken(stream, state, stackMeta.style);
       }
 
-      // if we are in inline mode with a non-empty stack, search for the closing tag
+      // if we are in inline mode with a non-empty stack, search for:
+      //   - the closing tag
+      //   - another inline opening tag
       if (!state.isBlock) {
-        var data = inlineData[state.stack[state.stack.length-1]];
-        if (stream.match(data.stop)) {
+        if (stackMeta.recursive) this.consumeInlineText(stream, state);
+        if (stream.match(stackMeta.stop)) {
           state.stack.pop();
-          if (state.stack.length == 0 || blockData[state.stack[state.stack.length-1]]) {
+          if (state.stack.length == 0 || blockData[stackKey]) {
             state.isBlock = true;
           }
+          return this.assignToken(stream, state, stackMeta.style);
         } else {
-          stream.skipToEnd();
+          if (stream.eol()) {
+            return this.assignToken(stream, state, stackMeta.style);
+          } else {
+            return this.inlineLex(this, stream, state);
+          }
         }
-        return this.assignToken(stream, state, data.style);
       }
 
       // if we get here, it's because nothing matched (which shouldn't happen!)
