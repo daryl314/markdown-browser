@@ -74,9 +74,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
     autolink: { seq:3,  start:markdown.regex.autolink,            recursive:false,  style:'link'                                  },
     url:      { seq:4,  start:markdown.regex.url,                 recursive:false,  style:'link'                                  },
     html:     { seq:5,  start:markdown.regex.tag,                 recursive:false,  style:'html'                                  },
-    link:     { seq:6,  start:markdown.regex.link,                recursive:true,   style:['link-text','link-href','link-title']  },
-    reflink:  { seq:7,  start:markdown.regex.reflink,             recursive:true,   style:['link-text','link-href']               },
-    nolink:   { seq:8,  start:markdown.regex.nolink,              recursive:true,   style:'link-href'                             },
+    link:     { seq:6,  start:markdown.regex.link,                recursive:false,   style:['link-text','link-href','link-title']  },
+    reflink:  { seq:7,  start:markdown.regex.reflink,             recursive:false,   style:['link-text','link-href']               },
+    nolink:   { seq:8,  start:markdown.regex.nolink,              recursive:false,   style:'link-href'                             },
     strong1:  { seq:9,  start:/^\*\*/,      stop:/\*\*(?!\*)/,  recursive:true,   style:'strong'                                },
     strong2:  { seq:10, start:/^__/,        stop:/__(?!_)/,     recursive:true,   style:'strong'                                },
     em1:      { seq:11, start:/^\b_/,       stop:/_\b/,         recursive:true,   style:'em'                                    },
@@ -213,6 +213,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
               return true;
             }
           }
+          if (stream.match(inlineData.em1.start, false) || stream.match(inlineData.strong2.start, false)) {
+            return true;
+          }
           if (match[0].match(/\w$/)) { // internal _
             stream.eat(/_+/);  // consume to prevent identification as 'em'
             this.consumeInlineText(stream, state); // continue consumption
@@ -222,6 +225,15 @@ CodeMirror.defineMode('gfm-expanded', function(){
       } else {
         return false;
       }
+    },
+
+    // return the css style for a given state
+    cssStyle: function(state) {
+      var styles = [];
+      for (var i = 0; i < state.stack.length; i++) {
+        styles.push(inlineData[state.stack[i][0]].style);
+      }
+      return styles.join(' ');
     },
 
     // perform inline lexing MOve tO MAIN TOKEN FUNCTION???
@@ -315,7 +327,30 @@ CodeMirror.defineMode('gfm-expanded', function(){
       //   - the closing tag
       //   - another inline opening tag
       if (!state.isBlock) {
-        if (stackMeta.recursive) this.consumeInlineText(stream, state);
+        if (stackMeta.recursive) {
+          while (!stream.eol() && state.stack.length > 0) {
+            var topOfStack = state.stack[state.stack.length-1];
+            var startPosition = stream.current().length;
+            if (stream.match(inlineData[topOfStack[0]].stop)) {
+              state.queue.push([
+                stream.current().slice(startPosition),
+                this.cssStyle(state)
+              ])
+              state.stack.pop();
+            } else {
+              this.inlineLex(this, stream, state);
+              state.queue.push([
+                stream.current().slice(startPosition),
+                this.cssStyle(state)
+              ]);
+            }
+          }
+          stream.backUp(stream.current().length);
+          return this.token(stream, state);
+        }
+
+
+        // make this a separate block instead of a sub-block
         if (stream.match(stackMeta.stop)) {
           state.stack.pop();
           if (state.stack.length == 0 || blockData[stackKey]) {
