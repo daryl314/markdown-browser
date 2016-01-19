@@ -68,20 +68,20 @@ CodeMirror.defineMode('gfm-expanded', function(){
   // inline mode data
   // which are recursive??  strong/em/del/link(text)
   var inlineData = {
-    i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,      recursive:false,  style:'i_latex'                               },
-    b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,        recursive:false,  style:'b_latex'                               },
-    escape:   { seq:2,  start:markdown.regex.escape,              recursive:false,  style:'escape'                                },
-    autolink: { seq:3,  start:markdown.regex.autolink,            recursive:false,  style:'link'                                  },
-    url:      { seq:4,  start:markdown.regex.url,                 recursive:false,  style:'link'                                  },
-    html:     { seq:5,  start:markdown.regex.tag,                 recursive:false,  style:'html'                                  },
-    link:     { seq:6,  start:markdown.regex.link,                recursive:false,   style:['link-text','link-href','link-title']  },
-    reflink:  { seq:7,  start:markdown.regex.reflink,             recursive:false,   style:['link-text','link-href']               },
-    nolink:   { seq:8,  start:markdown.regex.nolink,              recursive:false,   style:'link-href'                             },
+    i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,    recursive:false,  style:'i_latex'                               },
+    b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,      recursive:false,  style:'b_latex'                               },
+    escape:   { seq:2,  start:markdown.regex.escape,            recursive:false,  style:'escape'                                },
+    autolink: { seq:3,  start:markdown.regex.autolink,          recursive:false,  style:'link'                                  },
+    url:      { seq:4,  start:markdown.regex.url,               recursive:false,  style:'link'                                  },
+    html:     { seq:5,  start:markdown.regex.tag,               recursive:false,  style:'html'                                  },
+    link:     { seq:6,  start:markdown.regex.link,              recursive:false,  style:['link-text','link-href','link-title']  },
+    reflink:  { seq:7,  start:markdown.regex.reflink,           recursive:false,  style:['link-text','link-href']               },
+    nolink:   { seq:8,  start:markdown.regex.nolink,            recursive:false,  style:'link-href'                             },
     strong1:  { seq:9,  start:/^\*\*/,      stop:/\*\*(?!\*)/,  recursive:true,   style:'strong'                                },
     strong2:  { seq:10, start:/^__/,        stop:/__(?!_)/,     recursive:true,   style:'strong'                                },
     em1:      { seq:11, start:/^\b_/,       stop:/_\b/,         recursive:true,   style:'em'                                    },
     em2:      { seq:12, start:/^\*/,        stop:/\*(?!\*)/,    recursive:true,   style:'em'                                    },
-    i_code:   { seq:13, start:/^ *(`+)/,    stop:null,            recursive:false,  style:'i_code'                                },
+    i_code:   { seq:13, start:/^ *(`+)/,    stop:null,          recursive:false,  style:'i_code'                                },
     del:      { seq:14, start:/^~~(?=\S)/,  stop:/\S~~/,        recursive:true,   style:'strikethrough'                         }
   }
   var inlineSequence = [];
@@ -206,20 +206,21 @@ CodeMirror.defineMode('gfm-expanded', function(){
     consumeInlineText: function(stream, state) {
       var match;
       if (match = stream.match(markdown.regex.i_text)) {
+        var token_type = (state.stack[state.stack.length-1] || [''])[0];
         if (stream.peek() == '_') {
-          var token_type = (state.stack[state.stack.length-1] || [''])[0];
           if (token_type === 'em1' || token_type === 'strong2') {
-            if (stream.match(inlineData[token_type].stop, false)) {
-              return true;
-            }
+            if (stream.match(inlineData[token_type].stop, false)) return true;
           }
-          if (stream.match(inlineData.em1.start, false) || stream.match(inlineData.strong2.start, false)) {
-            return true;
-          }
+          if (stream.match(inlineData.strong2.start, false)) return true;
           if (match[0].match(/\w$/)) { // internal _
             stream.eat(/_+/);  // consume to prevent identification as 'em'
             this.consumeInlineText(stream, state); // continue consumption
           }
+        } else if (stream.peek() == '~' && token_type == 'del') {
+          // try reversing to see if this is an end token
+          stream.backUp(1);
+          if (!stream.match(inlineData.del.stop, false))
+            stream.next(); // undo backUp operation
         }
         return true;
       } else {
@@ -323,34 +324,32 @@ CodeMirror.defineMode('gfm-expanded', function(){
         return this.assignToken(stream, state, stackMeta.style);
       }
 
-      // if we are in inline mode with a non-empty stack, search for:
-      //   - the closing tag
-      //   - another inline opening tag
-      if (!state.isBlock) {
-        if (stackMeta.recursive) {
-          while (!stream.eol() && state.stack.length > 0) {
-            var topOfStack = state.stack[state.stack.length-1];
-            var startPosition = stream.current().length;
-            if (stream.match(inlineData[topOfStack[0]].stop)) {
-              state.queue.push([
-                stream.current().slice(startPosition),
-                this.cssStyle(state)
-              ])
-              state.stack.pop();
-            } else {
-              this.inlineLex(this, stream, state);
-              state.queue.push([
-                stream.current().slice(startPosition),
-                this.cssStyle(state)
-              ]);
-            }
+      // if we are in a recursive inline mode, search for the closing tag,
+      // or another inline opening tag
+      if (!state.isBlock && stackMeta.recursive) {
+        while (!stream.eol() && state.stack.length > 0) {
+          var topOfStack = state.stack[state.stack.length-1];
+          var startPosition = stream.current().length;
+          if (stream.match(inlineData[topOfStack[0]].stop)) {
+            state.queue.push([
+              stream.current().slice(startPosition),
+              this.cssStyle(state)
+            ])
+            state.stack.pop();
+          } else {
+            this.inlineLex(this, stream, state);
+            state.queue.push([
+              stream.current().slice(startPosition),
+              this.cssStyle(state)
+            ]);
           }
-          stream.backUp(stream.current().length);
-          return this.token(stream, state);
         }
+        stream.backUp(stream.current().length);
+        return this.token(stream, state);
+      }
 
-
-        // make this a separate block instead of a sub-block
+      // if we are in non-recursive inline mode, look for closing tag
+      if (!state.isBlock && !stackMeta.recursive) {
         if (stream.match(stackMeta.stop)) {
           state.stack.pop();
           if (state.stack.length == 0 || blockData[stackKey]) {
@@ -358,11 +357,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
           }
           return this.assignToken(stream, state, stackMeta.style);
         } else {
-          if (stream.eol()) {
-            return this.assignToken(stream, state, stackMeta.style);
-          } else {
-            return this.inlineLex(this, stream, state);
-          }
+          stream.skipToEnd();
+          return this.assignToken(stream, state, stackMeta.style);
         }
       }
 
