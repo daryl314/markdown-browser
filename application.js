@@ -22,16 +22,16 @@ CodeMirror.defineMode('gfm-expanded', function(){
   // inline lexing: heading, lheading, paragraph, b_text, html, listitem, table
   // sequence: 'b_code','fences','b_latex','heading','nptable','lheading','hr','blockquote','list','html','def','table','paragraph'
   var blockData = {
-    b_code:     { seq:0,  start:/^ {4}.*/,              stop:null,        style:'b_code'      },
-    fences1:    { seq:1,  start:/^ *`{3,}/,             stop:/.*`{3,}$/,  style:'fences'      },
-    fences2:    { seq:2,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'fences'      },
-    heading:    { seq:3,  start:/^ *#+.*/,              stop:null,        style:'heading'     },
-    lheading:   { seq:4,  start:/^ *(=|-){2,}.*/,       stop:null,        style:'hr'          },
-    table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'table'       }, // later in sequence??
-    hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr'          },
-    blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'blockquote'  },
-    list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.)/,   stop:null,        style:'list'        },
-    def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'def'         }
+    b_code:     { seq:0,  start:/^ {4}.*/,              stop:null,        style:'solar-red'           },
+    fences1:    { seq:1,  start:/^ *`{3,}/,             stop:/.*`{3,}$/,  style:'solar-red'           },
+    fences2:    { seq:2,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'solar-red'           },
+    heading:    { seq:3,  start:/^ *#+.*/,              stop:null,        style:'header solar-violet' },
+    lheading:   { seq:4,  start:/^ *(=|-){2,}.*/,       stop:null,        style:'hr solar-violet'     },
+    table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          }, // later in sequence??
+    hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
+    blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'solar-green'         },
+    list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.)/,   stop:null,        style:'solar-magenta'       },
+    def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'solar-cyan'          }
   };
   var blockSequence = [];
   for (k in blockData) blockSequence[ blockData[k].seq ] = k;
@@ -68,21 +68,21 @@ CodeMirror.defineMode('gfm-expanded', function(){
   // inline mode data
   // which are recursive??  strong/em/del/link(text)
   var inlineData = {
-    i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,    recursive:false,  style:'i_latex'                               },
-    b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,      recursive:false,  style:'b_latex'                               },
-    escape:   { seq:2,  start:markdown.regex.escape,            recursive:false,  style:'escape'                                },
-    autolink: { seq:3,  start:markdown.regex.autolink,          recursive:false,  style:'link'                                  },
-    url:      { seq:4,  start:markdown.regex.url,               recursive:false,  style:'link'                                  },
-    html:     { seq:5,  start:markdown.regex.tag,               recursive:false,  style:'html'                                  },
-    link:     { seq:6,  start:markdown.regex.link,              recursive:false,  style:['link-text','link-href','link-title']  },
-    reflink:  { seq:7,  start:markdown.regex.reflink,           recursive:false,  style:['link-text','link-href']               },
-    nolink:   { seq:8,  start:markdown.regex.nolink,            recursive:false,  style:'link-href'                             },
-    strong1:  { seq:9,  start:/^\*\*/,      stop:/\*\*(?!\*)/,  recursive:true,   style:'strong'                                },
-    strong2:  { seq:10, start:/^__/,        stop:/__(?!_)/,     recursive:true,   style:'strong'                                },
-    em1:      { seq:11, start:/^\b_/,       stop:/_\b/,         recursive:true,   style:'em'                                    },
-    em2:      { seq:12, start:/^\*/,        stop:/\*(?!\*)/,    recursive:true,   style:'em'                                    },
-    i_code:   { seq:13, start:/^ *(`+)/,    stop:null,          recursive:false,  style:'i_code'                                },
-    del:      { seq:14, start:/^~~(?=\S)/,  stop:/\S~~/,        recursive:true,   style:'strikethrough'                         }
+    i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,    recursive:false,  style:'solar-red'                                   },
+    b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,      recursive:false,  style:'solar-red'                                   },
+    escape:   { seq:2,  start:markdown.regex.escape,            recursive:false,  style:'escape solar-yellow'                         },
+    autolink: { seq:3,  start:markdown.regex.autolink,          recursive:false,  style:'link solar-cyan'                             },
+    url:      { seq:4,  start:markdown.regex.url,               recursive:false,  style:'link solar-cyan'                             },
+    html:     { seq:5,  start:markdown.regex.tag,               recursive:false,  style:'solar-orange'                                },
+    link:     { seq:6,  start:markdown.regex.link,              recursive:false,  style:['solar-cyan','link solar-cyan','solar-cyan'] }, // text, href, title
+    reflink:  { seq:7,  start:markdown.regex.reflink,           recursive:false,  style:['solar-cyan','link solar-cyan']              }, // text, href
+    nolink:   { seq:8,  start:markdown.regex.nolink,            recursive:false,  style:'link solar-cyan'                             }, // href
+    strong1:  { seq:9,  start:/^\*\*/,      stop:/\*\*(?!\*)/,  recursive:true,   style:'strong solar-yellow'                         },
+    strong2:  { seq:10, start:/^__/,        stop:/__(?!_)/,     recursive:true,   style:'strong solar-yellow'                         },
+    em1:      { seq:11, start:/^\b_/,       stop:/_\b/,         recursive:true,   style:'em solar-yellow'                             },
+    em2:      { seq:12, start:/^\*/,        stop:/\*(?!\*)/,    recursive:true,   style:'em solar-yellow'                             },
+    i_code:   { seq:13, start:/^ *(`+)/,    stop:null,          recursive:false,  style:'solar-red'                                   },
+    del:      { seq:14, start:/^~~(?=\S)/,  stop:/\S~~/,        recursive:true,   style:'strikethrough solar-yellow'                  }
   }
   var inlineSequence = [];
   for (k in inlineData) inlineSequence[ inlineData[k].seq ] = k;
@@ -564,7 +564,7 @@ $(function(){
   // convert textarea to CodeMirror editor
   window.cm = CodeMirror.fromTextArea($('#editor')[0], {
     mode:         "gfm-expanded",
-    theme:        "elegant",
+    //theme:        "solarized light",
     lineNumbers:  true,
     lineWrapping: true,
     underscoresBreakWords: false,

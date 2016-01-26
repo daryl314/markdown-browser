@@ -6,40 +6,29 @@
 	<title>Markdown Editor</title>
 
   <!-- JAVASCRIPT RESOURCES -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.6/styles/sunburst.min.css" />
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.2/marked.min.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/3.3.4/cosmo/bootstrap.min.css" />
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.9.3/lodash.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.6/highlight.min.js"></script>
-  <script type="text/javascript">window.module={};//for diff.js node exports</script><script type="text/javascript" src="diff.js"></script>
+  <link rel="stylesheet" href="lib/bootswatch-cosmo.min.css" />
+  <link rel="stylesheet" href="lib/highlight-sunburst.min.css" />
+  <script type="text/javascript" src="lib/jquery.min.js"></script>
+  <script type="text/javascript" src="lib/lodash.min.js"></script>
+  <script type="text/javascript" src="lib/highlight-9.1.0.min.js"></script>
+  <script type="text/javascript">window.module={};//for diff.js node exports</script>
+  <script type="text/javascript" src="diff.js"></script>
 
   <!-- CODEMIRROR CSS -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/codemirror.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/foldgutter.min.css" />
+  <link rel="stylesheet" href="codemirror/lib/codemirror.css" />
+  <link rel="stylesheet" href="codemirror/addon/fold/foldgutter.css" />
 
   <!-- CODEMIRROR JS -->
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/codemirror.min.js"></script>
-  <!-- <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/mode/overlay.min.js"></script> -->
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/edit/continuelist.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/foldcode.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/foldgutter.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/addon/fold/markdown-fold.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/xml/xml.min.js"></script>
-  <!-- <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/markdown/markdown.min.js"></script> -->
-  <!-- <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.4.0/mode/gfm/gfm.min.js"></script> -->
+  <script type="text/javascript" src="codemirror/lib/codemirror.js"></script>
+  <script type="text/javascript" src="codemirror/addon/edit/continuelist.js"></script>
+  <script type="text/javascript" src="codemirror/addon/fold/foldcode.js"></script>
+  <script type="text/javascript" src="codemirror/addon/fold/foldgutter.js"></script>
+  <script type="text/javascript" src="codemirror/addon/fold/markdown-fold.js"></script>
+  <script type="text/javascript" src="codemirror/mode/xml/xml.js"></script>
 
   <!-- LATEX RENDERING -->
-  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/KaTeX/0.5.1/katex.min.css">
-  <script src="//cdnjs.cloudflare.com/ajax/libs/KaTeX/0.5.1/katex.min.js"></script>
-  <script type="text/x-mathjax-config">
-    MathJax.Hub.Config({ tex2jax: {
-      displayMath: [["$$","$$"],["\\[","\\]"]],
-      inlineMath: [['\\\\(','\\\\)']],
-      processEscapes: true
-    }});
-  </script>
+  <link rel="stylesheet" href="katex-0.5.1/katex.min.css">
+  <script src="katex-0.5.1/katex.min.js"></script>
 
   <!-- APPLICATION RESOURCES -->
   <script type="text/javascript" src="marked.js"></script>
@@ -51,49 +40,112 @@
       border: 1px solid #eee;
       height: 100vh;
     }
-    span.linemarker {
-      background-color: yellow;
-    }
   </style>
 
-  <!-- EDITOR STYLESHEET (adapted from CodeMirror elegant style)-->
+  <!-- EDITOR STYLESHEET (adapted from CodeMirror solarized style)-->
   <style>
-    span.cm-header {color:blue;}
 
-    .cm-s-elegant span.cm-number, .cm-s-elegant span.cm-string, .cm-s-elegant span.cm-atom {color: #762;}
-    .cm-s-elegant span.cm-comment {color: #262; font-style: italic; line-height: 1em;}
-    .cm-s-elegant span.cm-meta {color: #555; font-style: italic; line-height: 1em;}
-    .cm-s-elegant span.cm-variable {color: black;}
-    .cm-s-elegant span.cm-variable-2 {color: #b11;}
-    .cm-s-elegant span.cm-qualifier {color: #555;}
-    .cm-s-elegant span.cm-keyword {color: #730;}
-    .cm-s-elegant span.cm-builtin {color: #30a;}
-    .cm-s-elegant span.cm-link {color: #762;}
-    .cm-s-elegant span.cm-error {background-color: #fdd;}
+    /*
+    Solarized color pallet
+    http://ethanschoonover.com/solarized/img/solarized-palette.png
+    */
 
-    .cm-s-elegant span.cm-tag {color: steelblue;}
+    /* Foreground colors */
+    .cm-solar-base03   { color: #002b36; } /* Darkest background      */
+    .cm-solar-base02   { color: #073642; } /* 2nd darkest background  */
+    .cm-solar-base01   { color: #586e75; } /* Content lightest        */
+    .cm-solar-base00   { color: #657b83; } /* Content 2nd lightest    */
+    .cm-solar-base0    { color: #839496; } /* Content 2nd darkest     */
+    .cm-solar-base1    { color: #93a1a1; } /* Content darkest         */
+    .cm-solar-base2    { color: #eee8d5; } /* 2nd lightest background */
+    .cm-solar-base3    { color: #fdf6e3; } /* Lightest background     */
+    .cm-solar-yellow   { color: #b58900; }
+    .cm-solar-orange   { color: #cb4b16; }
+    .cm-solar-red      { color: #dc322f; }
+    .cm-solar-magenta  { color: #d33682; }
+    .cm-solar-violet   { color: #6c71c4; }
+    .cm-solar-blue     { color: #268bd2; }
+    .cm-solar-cyan     { color: #2aa198; }
+    .cm-solar-green    { color: #859900; }
 
-    .cm-s-elegant .CodeMirror-activeline-background {background: #e8f2ff !important;}
-    .cm-s-elegant .CodeMirror-matchingbracket {outline:1px solid grey; color:black !important;}
+    /* Background colors: apply with class line-background-cm-solar-bg-xxx */
+    .cm-solar-bg-base03   { background-color: #002b36; } /* Darkest background      */
+    .cm-solar-bg-base02   { background-color: #073642; } /* 2nd darkest background  */
+    .cm-solar-bg-base01   { background-color: #586e75; } /* Content lightest        */
+    .cm-solar-bg-base00   { background-color: #657b83; } /* Content 2nd lightest    */
+    .cm-solar-bg-base0    { background-color: #839496; } /* Content 2nd darkest     */
+    .cm-solar-bg-base1    { background-color: #93a1a1; } /* Content darkest         */
+    .cm-solar-bg-base2    { background-color: #eee8d5; } /* 2nd lightest background */
+    .cm-solar-bg-base3    { background-color: #fdf6e3; } /* Lightest background     */
+    .cm-solar-bg-yellow   { background-color: #b58900; }
+    .cm-solar-bg-orange   { background-color: #cb4b16; }
+    .cm-solar-bg-red      { background-color: #dc322f; }
+    .cm-solar-bg-magenta  { background-color: #d33682; }
+    .cm-solar-bg-violet   { background-color: #6c71c4; }
+    .cm-solar-bg-blue     { background-color: #268bd2; }
+    .cm-solar-bg-cyan     { background-color: #2aa198; }
+    .cm-solar-bg-green    { background-color: #859900; }
 
+    /* Editor color scheme */
 
+    .CodeMirror {
+      line-height: 1.45em;
+      color-profile: sRGB;
+      rendering-intent: auto;
+      background-color: #fdf6e3;
+      color: #657b83;
+      text-shadow: #eee8d5 0 1px;
+      -moz-box-shadow: inset 7px 0 12px -6px #000;
+      -webkit-box-shadow: inset 7px 0 12px -6px #000;
+      box-shadow: inset 7px 0 12px -6px #000;
+    }
 
-    .cm-b_code {color:red}
-    .cm-fences {color:orange}
-    .cm-i_latex {background-color:orange}
-    .cm-b_latex {background-color:yellow}
-    .cm-heading {color:green}
-    .cm-table {color:blue}
-    .cm-hr {color:purple}
-    .cm-blockquote {background-color:yellow}
-    .cm-def {background-color:aliceblue}
-    .cm-escape {background-color:yellow; color:blue}
-    .cm-link-text {background-color:goldenrod}
-    .cm-link-href {background-color:steelblue}
-    .cm-link-title {background-color:pink}
-    .cm-list {background-color:beige}
-    .cm-html {background-color:plum}
-    .cm-i_code {background-color:slategray}
+    .CodeMirror-widget {
+      text-shadow: none;
+    }
+
+    .cm-hr {
+      color: transparent;
+      border-top: 1px solid #586e75;
+      display: block;
+    }
+    .cm-link { cursor: pointer; }
+    .cm-em {
+      text-decoration: underline;
+      text-decoration-style: dotted;
+    }
+    .cm-error, .cm-invalidchar {
+      color: #586e75;
+      border-bottom: 1px dotted #dc322f;
+    }
+
+    div.CodeMirror-selected { background: #eee8d5; }
+    .CodeMirror-line::selection, .CodeMirror-line > span::selection, .CodeMirror-line > span > span::selection { background: #eee8d5; }
+    .CodeMirror-line::-moz-selection, .CodeMirror-line > span::-moz-selection, .CodeMirror-line > span > span::-moz-selection { background: #eee8d5; }
+
+    .CodeMirror-gutters {
+      border-right: 1px solid;
+      background-color: #fdf6e3;
+      border-color: #eee8d5;
+    }
+
+    .CodeMirror-linenumber {
+      color: #586e75;
+      padding: 0 5px;
+    }
+    .CodeMirror-guttermarker-subtle { color: #586e75; }
+    .CodeMirror-guttermarker { color: #cb4b16; }
+
+    .CodeMirror-gutter .CodeMirror-gutter-text {
+      color: #586e75;
+    }
+
+    .CodeMirror-cursor { border-left: 1px solid #819090; }
+
+    .CodeMirror-activeline-background {
+      background: rgba(0, 0, 0, 0.10);
+    }
+    
   </style>
 </head>
 <body>
