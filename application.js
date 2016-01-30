@@ -199,6 +199,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
           str = str.slice(n);           //     remove text from string
         }                               //   ...
       }                                 // ...
+      return queue;                     // return the list of tokens
     },
 
     // function called when a style is assigned
@@ -238,17 +239,6 @@ CodeMirror.defineMode('gfm-expanded', function(){
       }
     },
 
-    // return the css style for a given state ===> OBSOLETE NOW??
-    cssStyle: function(state) {
-      var styles = [];
-      for (var i = 0; i < state.stack.length; i++) {
-        if (inlineData[state.stack[i][0]]) { // only push inline token styles
-          styles.push(inlineData[state.stack[i][0]].style);
-        }
-      }
-      return styles.join(' ');
-    },
-
     // push an inline token to the token queue
     pushInlineToken: function(state, text, style) {
       var styles = [];
@@ -260,9 +250,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
       if (style != null) styles.push(style);
       state.queue.push([
         text,
-        styles.join(' ');
-      ])
-    }
+        styles.join(' ')
+      ]);
+    },
 
     // perform inline lexing ===> MOVE TO MAIN TOKEN FUNCTION???
     inlineLex: function(obj, stream, state) {
@@ -270,7 +260,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       var match;
       for (var i = 0; i < inlineSequence.length; i++) {
         var rule_i = inlineData[ inlineSequence[i] ];
-        if (rule_i.start && match = stream.match(rule_i.start, false)) { // rule matches stream
+        if (rule_i.start && (match = stream.match(rule_i.start, false))) { // rule matches stream
           if (rule_i.init) { // rule has an init callback, so call it
             rule_i.init(obj, stream, state, match);
           }
@@ -279,14 +269,14 @@ CodeMirror.defineMode('gfm-expanded', function(){
             state.isBlock = false; // stack is now in inline mode
           }
           if (typeof rule_i.style == 'string') { // rule matches a single style
-            this.pushInlineToken(state, matches[0], rule_i.style);
+            this.pushInlineToken(state, match[0], rule_i.style);
           } else {
             var multiMatch = this.processMultiMatch(stream, state, match, rule_i.style.slice(0));
             for (var j = 0; j < multiMatch.length; j++) {
               this.pushInlineToken(state, multiMatch[j][0], multiMatch[j][1]);
             }
           }
-          return matches[0].length; // something matched, so return to caller
+          return match[0].length; // something matched, so return to caller
         }
       }
 
@@ -294,7 +284,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       var startPosition = stream.current().length;
       var nCaptured;
       if (nCaptured = this.consumeInlineText(stream, state)) {
-        this.pushInlineToken(state, stream.string.slice(startPosition), null);
+        this.pushInlineToken(state, stream.current().slice(startPosition), null);
         state.isBlock = false;
         stream.backUp(stream.current().length - startPosition);
         return nCaptured;
@@ -324,10 +314,10 @@ CodeMirror.defineMode('gfm-expanded', function(){
       // empty stack and in block mode: in base block mode
       //  - search for block tokens
       if (state.stack.length == 0 && state.isBlock) {
+        var match;
         for (var i = 0; i < blockSequence.length; i++) {
           var rule_i = blockData[ blockSequence[i] ];
-          var match;
-          if (rule_i.start) if (match = stream.match(rule_i.start)) {
+          if (rule_i.start && (match = stream.match(rule_i.start))) {
             if (rule_i.init) rule_i.init(this, stream, state, match);
             if (rule_i.stop) state.stack.push([blockSequence[i], {inline:false}]);
             return this.assignToken(stream, state, rule_i.style);
