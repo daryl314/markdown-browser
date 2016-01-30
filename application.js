@@ -60,13 +60,11 @@ CodeMirror.defineMode('gfm-expanded', function(){
       if (stream.sol() && stream.match(blockData.list.start)) {
         return obj.assignToken(stream, state, blockData.list.style);
       } else {
-        var inlineTok = obj.inlineLex(obj, stream, state);
+        obj.inlineLex(obj, stream, state);
         if (state.stack[state.stack.length-1][0] == 'list') {
           state.isBlock = true;
         }
-        return inlineTok;
-        //stream.match(/.*/);
-        //return obj.assignToken(stream, state, null);
+        return obj.token(stream, state);
       }
     }
   }
@@ -173,28 +171,28 @@ CodeMirror.defineMode('gfm-expanded', function(){
       state.blanks += 1;
     },
 
-    // create a queue from a multi-match (multiple tokens to style in a single match)
-    multiMatchToQueue: function(stream, state, matches, css) {
-      stream.backUp(matches[0].length); // reverse match consumption
+    // create a multi-match list (multiple tokens to style in a single match)
+    processMultiMatch: function(stream, state, matches, css) {
+      var queue = [];                   // empty list to contain token data
       var str = matches[0];             // full string that matches the regex
       var tok = matches.slice(1);       // captured tokens
       while (str.length > 0) {          // while there is content to process...
         idx = str.indexOf(tok[0]);      //   identify location of next match
         if (idx > 0) {                  //   if there is non-captured text at start of token...
-          state.queue.push([            //     queue up an unstyled token...
+          queue.push([                  //     queue up an unstyled token...
             str.slice(0,idx),           //       that is the non-captured text
             ''                          //       with no css class
           ]);                           //     ...
           str = str.slice(idx);         //     remove text from string
         } else if (tok.length == 0) {   //   if there is non-captured text at the end of token...
-          state.queue.push([            //     queue up an unstyled token...
+          queue.push([                  //     queue up an unstyled token...
             str,                        //       that is the non-captured text
             ''                          //       with no css class
           ]);                           //     ...
           str = '';                     //     done processing string
         } else {                        //   otherwise there is a token starting at position 0...
           var n = (tok[0]||'').length;  //     length of the token
-          state.queue.push([            //     queue up a styled token...
+          queue.push([                  //     queue up a styled token...
             tok.shift() || '',          //       that is the captured token (removed from list)
             css.shift()                 //       with the defined style (removed from list)
           ]);                           //     ...
@@ -213,8 +211,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
       return style;                   // return the style
     },
 
-    // consume inline text
+    // consume inline text (and return the number of characters consumed)
     consumeInlineText: function(stream, state) {
+      var startPosition = stream.current().length;
       var match;
       if (match = stream.match(markdown.regex.i_text)) {
         var token_type = (state.stackPeek() || [''])[0];
@@ -233,13 +232,13 @@ CodeMirror.defineMode('gfm-expanded', function(){
           if (!stream.match(inlineData.del.stop, false))
             stream.next(); // undo backUp operation
         }
-        return true;
+        return stream.current().length - startPosition;
       } else {
-        return false;
+        return 0;
       }
     },
 
-    // return the css style for a given state
+    // return the css style for a given state ===> OBSOLETE NOW??
     cssStyle: function(state) {
       var styles = [];
       for (var i = 0; i < state.stack.length; i++) {
@@ -250,33 +249,55 @@ CodeMirror.defineMode('gfm-expanded', function(){
       return styles.join(' ');
     },
 
-    // perform inline lexing MOve tO MAIN TOKEN FUNCTION???
+    // push an inline token to the token queue
+    pushInlineToken: function(state, text, style) {
+      var styles = [];
+      for (var i = 0; i < state.stack.length; i++) {
+        if (inlineData[state.stack[i][0]]) { // only push inline token styles
+          styles.push(inlineData[state.stack[i][0]].style);
+        }
+      }
+      if (style != null) styles.push(style);
+      state.queue.push([
+        text,
+        styles.join(' ');
+      ])
+    }
+
+    // perform inline lexing ===> MOVE TO MAIN TOKEN FUNCTION???
     inlineLex: function(obj, stream, state) {
 
       var match;
       for (var i = 0; i < inlineSequence.length; i++) {
         var rule_i = inlineData[ inlineSequence[i] ];
-        if (rule_i.start) if (match = stream.match(rule_i.start)) {
-          if (rule_i.init) {
+        if (rule_i.start && match = stream.match(rule_i.start, false)) { // rule matches stream
+          if (rule_i.init) { // rule has an init callback, so call it
             rule_i.init(obj, stream, state, match);
           }
-          if (rule_i.stop) {
+          if (rule_i.stop) { // rule has a stop token, so add it to the stack
             state.stack.push([inlineSequence[i], {inline:true}]);
-            state.isBlock = false;
+            state.isBlock = false; // stack is now in inline mode
           }
-          if (typeof rule_i.style == 'string') {
-            return this.assignToken(stream, state, rule_i.style);
+          if (typeof rule_i.style == 'string') { // rule matches a single style
+            this.pushInlineToken(state, matches[0], rule_i.style);
           } else {
-            return this.multiMatchToQueue(stream, state, match, rule_i.style.slice(0));
-            return this.token(stream, state); // recurse to pop first token off generated queue
+            var multiMatch = this.processMultiMatch(stream, state, match, rule_i.style.slice(0));
+            for (var j = 0; j < multiMatch.length; j++) {
+              this.pushInlineToken(state, multiMatch[j][0], multiMatch[j][1]);
+            }
           }
+          return matches[0].length; // something matched, so return to caller
         }
       }
 
-      // if nothing matched the line, try matching against inline text
-      if (this.consumeInlineText(stream, state)) {
+      // if none of the inline styles matched, try matching against inline text
+      var startPosition = stream.current().length;
+      var nCaptured;
+      if (nCaptured = this.consumeInlineText(stream, state)) {
+        this.pushInlineToken(state, stream.string.slice(startPosition), null);
         state.isBlock = false;
-        return this.assignToken(stream, state, null);
+        stream.backUp(stream.current().length - startPosition);
+        return nCaptured;
       } else {
         // otherwise we have an error (style as an error instead??)
         throw new Error('Failed to consume an inline token!');
@@ -317,7 +338,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
       // empty stack and in inline mode (or in block mode and nothing matched)
       //  - perform inline lexing
       if (state.stack.length == 0) {
-        return this.inlineLex(this, stream, state);
+        this.inlineLex(this, stream, state); // tokenize inline text
+        return this.token(stream, state); // recurse to grab first token on stack
       }
 
       ///// EVERYTHING BELOW USES THE STACK /////
@@ -343,25 +365,20 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
       // if we are in a recursive inline mode, search for the closing tag,
       // or another inline opening tag
+      // ===> REWORK IF LOGIC TO REFLECT WHAT CAN ACTUALLY HAPPEN
       if (!state.isBlock && stackMeta.recursive) {
-        while (!stream.eol() && state.stack.length > 0 && state.stackPeek()[1].inline) {
+        if (!stream.eol() && state.stack.length > 0 && state.stackPeek()[1].inline) {
           var startPosition = stream.current().length;
-          if (stream.match(inlineData[state.stackPeek()[0]].stop)) {
-            state.queue.push([
-              stream.current().slice(startPosition),
-              this.cssStyle(state)
-            ])
+          var match;
+          if (match = stream.match(inlineData[state.stackPeek()[0]].stop, false)) {
+            this.pushInlineToken(state, match[0], null);
             state.stack.pop();
           } else {
             this.inlineLex(this, stream, state);
-            state.queue.push([
-              stream.current().slice(startPosition),
-              this.cssStyle(state)
-            ]);
           }
+          return this.token(stream,state);
         }
-        stream.backUp(stream.current().length);
-        return this.token(stream, state);
+        throw new Error('Should not be able to get here...');
       }
 
       // if we are in non-recursive inline mode, look for closing tag
