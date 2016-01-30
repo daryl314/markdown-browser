@@ -30,7 +30,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
     table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          }, // later in sequence??
     hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
     blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'solar-green'         },
-    list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.)/,   stop:null,        style:'solar-magenta'       },
+    list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.) /,  stop:null,        style:'solar-magenta'       },
     def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'solar-cyan'          }
   };
   var blockSequence = [];
@@ -43,25 +43,31 @@ CodeMirror.defineMode('gfm-expanded', function(){
   //  - 2+ newlines followed by a non-indented line
   blockData.list.init = function(obj, stream, state, match){
     state.stack = [['list', {
-      isFirstMatch: true
+      isFirstMatch:   true  // don't check for end of list if it's the first line
     }]];
   }
   blockData.list.process = function(obj, stream, state){
     var data = state.stack[state.stack.length-1][1];
-    if (data.isFirstMatch) {
-      data.isFirstMatch = false;
-      stream.match(/.*/);
-      return obj.assignToken(stream, state, blockData.list.style);
-    } else if (stream.match(blockData.def.start, false)     // HR block
-            || stream.match(blockData.hr .start, false)) {  // def block
-      state.stack = [];
-      return obj.token(stream, state);
-    } else if (!stream.match(/^ /, false) && state.blanks >= 1) { // non-indented line
-      state.stack = [];
-      return obj.token(stream, state);
+    if (!data.isFirstMatch && (                               // not first match
+            (stream.match(blockData.def.start, false))        // HR block
+        ||  (stream.match(blockData.hr .start, false))        // def block
+        ||  (!stream.match(/^ /, false) && state.blanks >= 1) // non-indented line
+    )) {
+      state.stack = []; // exit list mode
+      return obj.token(stream, state); // process token normally
     } else {
-      stream.match(/.*/);
-      return obj.assignToken(stream, state, blockData.list.style);
+      data.isFirstMatch = false; // enable search for end of list (no longer first line)
+      if (stream.sol() && stream.match(blockData.list.start)) {
+        return obj.assignToken(stream, state, blockData.list.style);
+      } else {
+        var inlineTok = obj.inlineLex(obj, stream, state);
+        if (state.stack[state.stack.length-1][0] == 'list') {
+          state.isBlock = true;
+        }
+        return inlineTok;
+        //stream.match(/.*/);
+        //return obj.assignToken(stream, state, null);
+      }
     }
   }
 
@@ -99,7 +105,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
       if (!cap[0].match(/\/>$/)) { // ignore self-closers
         state.isBlock = false;
         state.stack.push(['html', {
-          closingTag: cap[0].replace(/^<(\w+).*/, '</$1>')
+          closingTag: cap[0].replace(/^<(\w+).*/, '</$1>'),
+          inline:true
         }]);
       }
     }
@@ -134,7 +141,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
     // function to initialize mode state
     startState: function(basecolumn) {
-      return {
+      var obj = {
         isBlock:  true,   // are we in block mode (vs inline)?
         isList:   false,  // are we in block list mode? (block mode submode)
         isBQ:     false,  // are we in block quote mode? (block mode submode)
@@ -142,17 +149,22 @@ CodeMirror.defineMode('gfm-expanded', function(){
         stack:    [],     // mode data stack
         queue:    []      // queued up tokens for subsequent styling
       };
+      obj.stackPeek = function() { // return the token at the top of the stack
+        return this.stack[this.stack.length-1];
+      }
+      return obj;
     },
 
     // function to copy current state
     copyState: function(state) {
       return {
-        isBlock:  state.isBlock,
-        isList:   state.isList,
-        isBQ:     state.isBQ,
-        blanks:   state.blanks,
-        stack:    state.stack.slice(0), // copy of array
-        queue:    state.queue.slice(0)  // copy of array
+        isBlock:    state.isBlock,
+        isList:     state.isList,
+        isBQ:       state.isBQ,
+        blanks:     state.blanks,
+        stack:      state.stack.slice(0), // copy of array
+        queue:      state.queue.slice(0), // copy of array
+        stackPeek:  state.stackPeek
       }
     },
 
@@ -189,7 +201,6 @@ CodeMirror.defineMode('gfm-expanded', function(){
           str = str.slice(n);           //     remove text from string
         }                               //   ...
       }                                 // ...
-      return this.token(stream, state); // recurse to pop first token off generated queue
     },
 
     // function called when a style is assigned
@@ -206,7 +217,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
     consumeInlineText: function(stream, state) {
       var match;
       if (match = stream.match(markdown.regex.i_text)) {
-        var token_type = (state.stack[state.stack.length-1] || [''])[0];
+        var token_type = (state.stackPeek() || [''])[0];
         if (stream.peek() == '_') {
           if (token_type === 'em1' || token_type === 'strong2') {
             if (stream.match(inlineData[token_type].stop, false)) return true;
@@ -232,7 +243,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
     cssStyle: function(state) {
       var styles = [];
       for (var i = 0; i < state.stack.length; i++) {
-        styles.push(inlineData[state.stack[i][0]].style);
+        if (inlineData[state.stack[i][0]]) { // only push inline token styles
+          styles.push(inlineData[state.stack[i][0]].style);
+        }
       }
       return styles.join(' ');
     },
@@ -248,13 +261,14 @@ CodeMirror.defineMode('gfm-expanded', function(){
             rule_i.init(obj, stream, state, match);
           }
           if (rule_i.stop) {
-            state.stack.push([inlineSequence[i], {}]);
+            state.stack.push([inlineSequence[i], {inline:true}]);
             state.isBlock = false;
           }
           if (typeof rule_i.style == 'string') {
             return this.assignToken(stream, state, rule_i.style);
           } else {
             return this.multiMatchToQueue(stream, state, match, rule_i.style.slice(0));
+            return this.token(stream, state); // recurse to pop first token off generated queue
           }
         }
       }
@@ -275,11 +289,14 @@ CodeMirror.defineMode('gfm-expanded', function(){
       // check for queued tokens
       if (state.queue.length > 0) {
         var item = state.queue.shift(1);
-        stream.match(item[0]);
-        if (item[0].length == 0) {
-          return this.token(stream,state);
+        if (stream.match(item[0])) {
+          if (item[0].length == 0) {
+            return this.token(stream,state);
+          } else {
+            return this.assignToken(stream, state, item[1]);
+          }
         } else {
-          return this.assignToken(stream, state, item[1]);
+          throw new Error('Stream does not match token: ' + item[0]);
         }
       }
 
@@ -291,7 +308,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
           var match;
           if (rule_i.start) if (match = stream.match(rule_i.start)) {
             if (rule_i.init) rule_i.init(this, stream, state, match);
-            if (rule_i.stop) state.stack.push([blockSequence[i], {}]);
+            if (rule_i.stop) state.stack.push([blockSequence[i], {inline:false}]);
             return this.assignToken(stream, state, rule_i.style);
           }
         }
@@ -327,10 +344,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
       // if we are in a recursive inline mode, search for the closing tag,
       // or another inline opening tag
       if (!state.isBlock && stackMeta.recursive) {
-        while (!stream.eol() && state.stack.length > 0) {
-          var topOfStack = state.stack[state.stack.length-1];
+        while (!stream.eol() && state.stack.length > 0 && state.stackPeek()[1].inline) {
           var startPosition = stream.current().length;
-          if (stream.match(inlineData[topOfStack[0]].stop)) {
+          if (stream.match(inlineData[state.stackPeek()[0]].stop)) {
             state.queue.push([
               stream.current().slice(startPosition),
               this.cssStyle(state)
