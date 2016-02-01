@@ -363,6 +363,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
           if (match = stream.match(inlineData[state.stackPeek()[0]].stop, false)) {
             this.pushInlineToken(state, match[0], null);
             state.stack.pop();
+            if (state.stackPeek() && !state.stackPeek()[1].inline)
+              state.isBlock = true;
           } else {
             this.inlineLex(this, stream, state);
           }

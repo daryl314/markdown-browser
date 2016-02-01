@@ -28,6 +28,9 @@ Or a paragraph with the\n\
 <a href='test'>Test</a>\n\
 Hyperlink on a separate line\n\
 \n\
+* This is a **bold** entry\n\
+* in a list\n\
+\n\
 ";
 
 // github flavored markdown test text
