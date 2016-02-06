@@ -17,6 +17,35 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
   // mode-scope variables go here
 
+  // create a fake stream object
+  fakeStream = function(text) {
+    return {
+      pos:      0,
+      string:   text,
+      match:    function(pat, flag) {
+        if (typeof pat === 'string') {
+          if (this.string.slice(this.pos, this.pos+pat.length) === pat) {
+            if (!(flag === false))
+              this.pos += pat.length;
+            return pat;
+          } else {
+            return undefined;
+          }
+        } else { // regex match
+          var match = this.string.slice(this.pos).match(pat);
+          if (!(flag === false) && match)
+            this.pos += match[0].length;
+          return match;
+        }
+      },
+      eat:      function(pat) { return this.match(pat)                },
+      current:  function()    { return this.string.slice(0,this.pos)  },
+      peek:     function()    { return this.string[this.pos]          },
+      eol:      function()    { return this.pos >= this.string.length },
+      backUp:   function(n)   { this.pos -= n }
+    }
+  }
+
   // block mode data
   // blockquote, list are block recursive
   // inline lexing: heading, lheading, paragraph, b_text, html, listitem, table
@@ -56,9 +85,11 @@ CodeMirror.defineMode('gfm-expanded', function(){
       state.stack = []; // exit list mode
       return obj.token(stream, state); // process token normally
     } else {
-      data.isFirstMatch = false; // enable search for end of list (no longer first line)
-      if (stream.sol() && stream.match(blockData.list.start)) {
-        return obj.assignToken(stream, state, blockData.list.style);
+      if (data.isFirstMatch) {
+        data.isFirstMatch = false; // enable search for end of list (no longer first line)
+        return obj.assignToken(stream, state, blockData.list.style); // style the bullet
+      } else if (stream.sol() && stream.match(blockData.list.start)) {
+        return obj.assignToken(stream, state, blockData.list.style); // style the bullet
       } else {
         obj.inlineLex(obj, stream, state);
         if (state.stack[state.stack.length-1][0] == 'list') {
@@ -67,6 +98,25 @@ CodeMirror.defineMode('gfm-expanded', function(){
         return obj.token(stream, state);
       }
     }
+  }
+
+  // callback function for table mode: perform inline lexing of table cells
+  blockData.table.process = function(obj, stream, state) {
+    stream.backUp(stream.current().length); // reverse capture
+    var cols = stream.match(/.*/, false)[0].split('|'); // split row into cells
+    var queue = []; // queue for tokens
+    for (var i = 0, col = cols[0]; i < cols.length; i++, col = cols[i]) {
+      var fs = fakeStream(col);
+      while (!fs.eol()) {
+        var start = fs.pos;
+        var tok = obj.token(fs, state);
+        queue.push([col.slice(start, fs.pos), tok]);
+      }
+      if (i+1 < cols.length)
+        queue.push(['|', null]);
+    }
+    state.queue = queue;
+    return obj.token(stream, state);
   }
 
   // inline mode data
@@ -81,12 +131,12 @@ CodeMirror.defineMode('gfm-expanded', function(){
     link:     { seq:6,  start:markdown.regex.link,              recursive:false,  style:['solar-cyan','link solar-cyan','solar-cyan'] }, // text, href, title
     reflink:  { seq:7,  start:markdown.regex.reflink,           recursive:false,  style:['solar-cyan','link solar-cyan']              }, // text, href
     nolink:   { seq:8,  start:markdown.regex.nolink,            recursive:false,  style:'link solar-cyan'                             }, // href
-    strong1:  { seq:9,  start:/^\*\*/,      stop:/\*\*(?!\*)/,  recursive:true,   style:'strong solar-yellow'                         },
-    strong2:  { seq:10, start:/^__/,        stop:/__(?!_)/,     recursive:true,   style:'strong solar-yellow'                         },
-    em1:      { seq:11, start:/^\b_/,       stop:/_\b/,         recursive:true,   style:'em solar-yellow'                             },
-    em2:      { seq:12, start:/^\*/,        stop:/\*(?!\*)/,    recursive:true,   style:'em solar-yellow'                             },
+    strong1:  { seq:9,  start:/^\*\*/,      stop:/^\*\*(?!\*)/, recursive:true,   style:'strong solar-yellow'                         },
+    strong2:  { seq:10, start:/^__/,        stop:/^__(?!_)/,    recursive:true,   style:'strong solar-yellow'                         },
+    em1:      { seq:11, start:/^\b_/,       stop:/^_\b/,        recursive:true,   style:'em solar-yellow'                             },
+    em2:      { seq:12, start:/^\*/,        stop:/^\*(?!\*)/,   recursive:true,   style:'em solar-yellow'                             },
     i_code:   { seq:13, start:/^ *(`+)/,    stop:null,          recursive:false,  style:'solar-red'                                   },
-    del:      { seq:14, start:/^~~(?=\S)/,  stop:/\S~~/,        recursive:true,   style:'strikethrough solar-yellow'                  }
+    del:      { seq:14, start:/^~~(?=\S)/,  stop:/^\S~~/,       recursive:true,   style:'strikethrough solar-yellow'                  }
   }
   var inlineSequence = [];
   for (k in inlineData) inlineSequence[ inlineData[k].seq ] = k;
@@ -224,7 +274,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
           }
           if (stream.match(inlineData.strong2.start, false)) return true;
           if (match[0].match(/\w$/)) { // internal _
-            stream.eat(/_+/);  // consume to prevent identification as 'em'
+            stream.eat('_');  // consume to prevent identification as 'em'
             this.consumeInlineText(stream, state); // continue consumption
           }
         } else if (stream.peek() == '~' && token_type == 'del') {
@@ -247,7 +297,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
           styles.push(inlineData[state.stack[i][0]].style);
         }
       }
-      if (style != null) styles.push(style);
+      if (style != null && !(styles.indexOf(style))) styles.push(style);
       state.queue.push([
         text,
         styles.join(' ')
@@ -318,8 +368,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
         for (var i = 0; i < blockSequence.length; i++) {
           var rule_i = blockData[ blockSequence[i] ];
           if (rule_i.start && (match = stream.match(rule_i.start))) {
-            if (rule_i.init) rule_i.init(this, stream, state, match);
-            if (rule_i.stop) state.stack.push([blockSequence[i], {inline:false}]);
+            if (rule_i.init   ) rule_i.init(this, stream, state, match);
+            if (rule_i.stop   ) state.stack.push([blockSequence[i], {inline:false}]);
+            if (rule_i.process) return rule_i.process(this, stream, state);
             return this.assignToken(stream, state, rule_i.style);
           }
         }
