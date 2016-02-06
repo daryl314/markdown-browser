@@ -114,6 +114,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       }
       if (i+1 < cols.length)
         queue.push(['|', null]);
+      state.stopInline();
     }
     state.queue = queue;
     return obj.token(stream, state);
@@ -200,6 +201,12 @@ CodeMirror.defineMode('gfm-expanded', function(){
       obj.stackPeek = function() { // return the token at the top of the stack
         return this.stack[this.stack.length-1];
       }
+      obj.stopInline = function() { // break out of inline mode
+        this.isBlock = true;
+        while (this.stackPeek() && this.stackPeek()[1].inline) {
+          this.stack.pop(); // remove inline token
+        }
+      }
       return obj;
     },
 
@@ -212,7 +219,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
         blanks:     state.blanks,
         stack:      state.stack.slice(0), // copy of array
         queue:      state.queue.slice(0), // copy of array
-        stackPeek:  state.stackPeek
+        stackPeek:  state.stackPeek,
+        stopInline: state.stopInline
       }
     },
 
