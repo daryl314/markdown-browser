@@ -17,7 +17,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
   // mode-scope variables go here
 
-  // create a fake stream object
+  // function to create a fake stream object
   fakeStream = function(text) {
     return {
       pos:      0,
@@ -48,140 +48,171 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
   // block mode data
   // blockquote, list are block recursive
-  // inline lexing: heading, lheading, paragraph, b_text, html, listitem, table
   // sequence: 'b_code','fences','b_latex','heading','nptable','lheading','hr','blockquote','list','html','def','table','paragraph'
-  var blockData = {
-    b_code:     { seq:0,  start:/^ {4}.*/,              stop:null,        style:'solar-red'           },
-    fences1:    { seq:1,  start:/^ *`{3,}/,             stop:/.*`{3,}$/,  style:'solar-red'           },
-    fences2:    { seq:2,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'solar-red'           },
-    heading:    { seq:3,  start:/^ *#+.*/,              stop:null,        style:'header solar-violet' },
-    lheading:   { seq:4,  start:/^ *(=|-){2,}.*/,       stop:null,        style:'hr solar-violet'     },
-    table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          }, // later in sequence??
-    hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
-    blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'solar-green'         },
-    list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.) /,  stop:null,        style:'solar-magenta'       },
-    def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'solar-cyan'          }
-  };
-  var blockSequence = [];
-  for (k in blockData) blockSequence[ blockData[k].seq ] = k;
+  var blockData = function(){
+    var blockData = {
+      b_code:     { seq:0,  start:/^ {4}.*/,              stop:null,        style:'solar-red'           },
+      fences1:    { seq:1,  start:/^ *`{3,}/,             stop:/.*`{3,}$/,  style:'solar-red'           },
+      fences2:    { seq:2,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'solar-red'           },
+      heading:    { seq:3,  start:/^ *#+/,                stop:null,        style:'header solar-violet' },
+      lheading:   { seq:4,  start:/^ *(=|-){2,}.*/,       stop:null,        style:'hr solar-violet'     },
+      table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          }, // later in sequence??
+      hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
+      blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'solar-green'         },
+      list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.) /,  stop:null,        style:'solar-magenta'       },
+      def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'solar-cyan'          }
+    };
 
-  // callback functions for list mode
-  // a list is terminated by one of the following:
-  //  - HR block
-  //  - def block
-  //  - 2+ newlines followed by a non-indented line
-  blockData.list.init = function(obj, stream, state, match){
-    state.stack = [['list', {
-      isFirstMatch:   true  // don't check for end of list if it's the first line
-    }]];
-  }
-  blockData.list.process = function(obj, stream, state){
-    var data = state.stack[state.stack.length-1][1];
-    if (!data.isFirstMatch && (                               // not first match
-            (stream.match(blockData.def.start, false))        // HR block
-        ||  (stream.match(blockData.hr .start, false))        // def block
-        ||  (!stream.match(/^ /, false) && state.blanks >= 1) // non-indented line
-    )) {
-      state.stack = []; // exit list mode
-      return obj.token(stream, state); // process token normally
-    } else {
-      if (data.isFirstMatch) {
-        data.isFirstMatch = false; // enable search for end of list (no longer first line)
-        return obj.assignToken(stream, state, blockData.list.style); // style the bullet
-      } else if (stream.sol() && stream.match(blockData.list.start)) {
-        return obj.assignToken(stream, state, blockData.list.style); // style the bullet
+    // sequence of rules
+    var blockSequence = [];
+    for (k in blockData) blockSequence[ blockData[k].seq ] = k;
+    blockData.blockSequence = blockSequence;
+
+    // callback functions for list mode
+    // a list is terminated by one of the following:
+    //  - HR block
+    //  - def block
+    //  - 2+ newlines followed by a non-indented line
+    blockData.list.init = function(obj, stream, state, match){
+      state.stack = [['list', {
+        isFirstMatch:   true  // don't check for end of list if it's the first line
+      }]];
+    }
+    blockData.list.process = function(obj, stream, state){
+      var data = state.stack[state.stack.length-1][1];
+      if (!data.isFirstMatch && (                               // not first match
+              (stream.match(blockData.def.start, false))        // HR block
+          ||  (stream.match(blockData.hr .start, false))        // def block
+          ||  (!stream.match(/^ /, false) && state.blanks >= 1) // non-indented line
+      )) {
+        state.stack = []; // exit list mode
+        return obj.token(stream, state); // process token normally
       } else {
-        obj.inlineLex(obj, stream, state);
-        if (state.stack[state.stack.length-1][0] == 'list') {
-          state.isBlock = true;
+        if (data.isFirstMatch) {
+          data.isFirstMatch = false; // enable search for end of list (no longer first line)
+          return obj.assignToken(stream, state, blockData.list.style); // style the bullet
+        } else if (stream.sol() && stream.match(blockData.list.start)) {
+          return obj.assignToken(stream, state, blockData.list.style); // style the bullet
+        } else {
+          obj.inlineLex(obj, stream, state);
+          if (state.stack[state.stack.length-1][0] == 'list') {
+            state.isBlock = true;
+          }
+          return obj.token(stream, state);
         }
-        return obj.token(stream, state);
       }
     }
-  }
 
-  // callback function for table mode: perform inline lexing of table cells
-  blockData.table.process = function(obj, stream, state) {
-    stream.backUp(stream.current().length); // reverse capture
-    var cols = stream.match(/.*/, false)[0].split('|'); // split row into cells
-    var queue = []; // queue for tokens
-    for (var i = 0, col = cols[0]; i < cols.length; i++, col = cols[i]) {
-      var fs = fakeStream(col);
+    // callback function for table mode: perform inline lexing of table cells
+    blockData.table.process = function(obj, stream, state) {
+      stream.backUp(stream.current().length); // reverse capture
+      var cols = stream.match(/.*/, false)[0].split('|'); // split row into cells
+      var queue = []; // queue for tokens
+      for (var i = 0, col = cols[0]; i < cols.length; i++, col = cols[i]) {
+        var fs = fakeStream(col);
+        while (!fs.eol()) {
+          var start = fs.pos;
+          var tok = obj.token(fs, state);
+          queue.push([col.slice(start, fs.pos), tok]);
+        }
+        if (i+1 < cols.length)
+          queue.push(['|', null]);
+        state.stopInline();
+      }
+      state.queue = queue;
+      return obj.token(stream, state);
+    }
+
+    // callback function for heading mode: perform inline lexing of line
+    blockData.heading.process = function(obj, stream, state) {
+      var fs = fakeStream(stream.string.slice(stream.pos));
+      var queue = []; // queue for tokens
       while (!fs.eol()) {
         var start = fs.pos;
-        var tok = obj.token(fs, state);
-        queue.push([col.slice(start, fs.pos), tok]);
+        var tok = obj.token(fs, state) || blockData.heading.style;
+        queue.push([fs.string.slice(start,fs.pos), tok]);
       }
-      if (i+1 < cols.length)
-        queue.push(['|', null]);
       state.stopInline();
+      state.queue = queue;
+      return blockData.heading.style;
     }
-    state.queue = queue;
-    return obj.token(stream, state);
-  }
+
+    // return the object
+    return blockData;
+  }();
 
   // inline mode data
   // which are recursive??  strong/em/del/link(text)
-  var inlineData = {
-    i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,    recursive:false,  style:'solar-red'                                   },
-    b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,      recursive:false,  style:'solar-red'                                   },
-    escape:   { seq:2,  start:markdown.regex.escape,            recursive:false,  style:'escape solar-yellow'                         },
-    autolink: { seq:3,  start:markdown.regex.autolink,          recursive:false,  style:'link solar-cyan'                             },
-    url:      { seq:4,  start:markdown.regex.url,               recursive:false,  style:'link solar-cyan'                             },
-    html:     { seq:5,  start:markdown.regex.tag,               recursive:false,  style:'solar-orange'                                },
-    link:     { seq:6,  start:markdown.regex.link,              recursive:false,  style:['solar-cyan','link solar-cyan','solar-cyan'] }, // text, href, title
-    reflink:  { seq:7,  start:markdown.regex.reflink,           recursive:false,  style:['solar-cyan','link solar-cyan']              }, // text, href
-    nolink:   { seq:8,  start:markdown.regex.nolink,            recursive:false,  style:'link solar-cyan'                             }, // href
-    strong1:  { seq:9,  start:/^\*\*/,      stop:/^\*\*(?!\*)/, recursive:true,   style:'strong solar-yellow'                         },
-    strong2:  { seq:10, start:/^__/,        stop:/^__(?!_)/,    recursive:true,   style:'strong solar-yellow'                         },
-    em1:      { seq:11, start:/^\b_/,       stop:/^_\b/,        recursive:true,   style:'em solar-yellow'                             },
-    em2:      { seq:12, start:/^\*/,        stop:/^\*(?!\*)/,   recursive:true,   style:'em solar-yellow'                             },
-    i_code:   { seq:13, start:/^ *(`+)/,    stop:null,          recursive:false,  style:'solar-red'                                   },
-    del:      { seq:14, start:/^~~(?=\S)/,  stop:/^\S~~/,       recursive:true,   style:'strikethrough solar-yellow'                  }
-  }
-  var inlineSequence = [];
-  for (k in inlineData) inlineSequence[ inlineData[k].seq ] = k;
-
-  // callback function for inline code mode
-  inlineData.i_code.init = function(obj, stream, state, match) {
-    inlineData.i_code.stop = new RegExp('.*?[^`]\s*' + match[1] + '(?!`)');
-  }
-
-  // callback function for html mode
-  inlineData.html.init = function(obj, stream, state, match) {
-    var cap;
-    if (cap = match[0].match(/^<\w+.*?>/)) {
-      if (!cap[0].match(/\/>$/)) { // ignore self-closers
-        state.isBlock = false;
-        state.stack.push(['html', {
-          closingTag: cap[0].replace(/^<(\w+).*/, '</$1>'),
-          inline:true
-        }]);
-      }
+  var inlineData = function(){
+    var inlineData = {
+      i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,    recursive:false,  style:'solar-red'                                   },
+      b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,      recursive:false,  style:'solar-red'                                   },
+      escape:   { seq:2,  start:markdown.regex.escape,            recursive:false,  style:'escape solar-yellow'                         },
+      autolink: { seq:3,  start:markdown.regex.autolink,          recursive:false,  style:'link solar-cyan'                             },
+      url:      { seq:4,  start:markdown.regex.url,               recursive:false,  style:'link solar-cyan'                             },
+      html:     { seq:5,  start:markdown.regex.tag,               recursive:false,  style:'solar-orange'                                },
+      link:     { seq:6,  start:markdown.regex.link,              recursive:false,  style:['solar-cyan','link solar-cyan','solar-cyan'] }, // text, href, title
+      reflink:  { seq:7,  start:markdown.regex.reflink,           recursive:false,  style:['solar-cyan','link solar-cyan']              }, // text, href
+      nolink:   { seq:8,  start:markdown.regex.nolink,            recursive:false,  style:'link solar-cyan'                             }, // href
+      strong1:  { seq:9,  start:/^\*\*/,      stop:/^\*\*(?!\*)/, recursive:true,   style:'strong solar-yellow'                         },
+      strong2:  { seq:10, start:/^__/,        stop:/^__(?!_)/,    recursive:true,   style:'strong solar-yellow'                         },
+      em1:      { seq:11, start:/^\b_/,       stop:/^_\b/,        recursive:true,   style:'em solar-yellow'                             },
+      em2:      { seq:12, start:/^\*/,        stop:/^\*(?!\*)/,   recursive:true,   style:'em solar-yellow'                             },
+      i_code:   { seq:13, start:/^ *(`+)/,    stop:null,          recursive:false,  style:'solar-red'                                   },
+      del:      { seq:14, start:/^~~(?=\S)/,  stop:/^\S~~/,       recursive:true,   style:'strikethrough solar-yellow'                  }
     }
-  }
-  inlineData.html.process = function(obj, stream, state) {
-    var data = state.stack[state.stack.length-1][1];
-    stream.match(/[^<]*/);  // consume any non-tag text
-    if (!stream.eol()) {
+
+    // sequence of rules
+    var inlineSequence = [];
+    for (k in inlineData) inlineSequence[ inlineData[k].seq ] = k;
+    inlineData.inlineSequence = inlineSequence;
+
+    // callback function for inline code mode
+    inlineData.i_code.init = function(obj, stream, state, match) {
+      inlineData.i_code.stop = new RegExp('.*?[^`]\s*' + match[1] + '(?!`)');
+    }
+
+    // callback function for html mode
+    inlineData.html.init = function(obj, stream, state, match) {
       var cap;
-      if (cap = stream.match(/<\/\w+.*?>/)) {
-        while (state.stack.length > 0
-            && state.stack[state.stack.length-1][0] == 'html'
-            && state.stack[state.stack.length-1][1].closingTag !== cap[0]) {
-          state.stack.pop();
-        }
-        state.stack.pop();
-      } else if (cap = stream.match(this.start)) {
-        this.init(obj, stream, state, cap);
-      } else { // Isolated < that is not part of a tag
-        if (!stream.eat('<')) {
-          throw new Error('Failed to consume a token')
+      if (cap = match[0].match(/^<\w+.*?>/)) {
+        if (!cap[0].match(/\/>$/)) { // ignore self-closers
+          state.isBlock = false;
+          state.stack.push(['html', {
+            closingTag: cap[0].replace(/^<(\w+).*/, '</$1>'),
+            inline:true
+          }]);
         }
       }
     }
-    return obj.assignToken(stream, state, inlineData.html.style);
-  }
+    inlineData.html.process = function(obj, stream, state) {
+      var data = state.stack[state.stack.length-1][1];
+      stream.match(/[^<]*/);  // consume any non-tag text
+      if (!stream.eol()) {
+        var cap;
+        if (cap = stream.match(/<\/\w+.*?>/)) {
+          while (state.stack.length > 0
+              && state.stack[state.stack.length-1][0] == 'html'
+              && state.stack[state.stack.length-1][1].closingTag !== cap[0]) {
+            state.stack.pop();
+          }
+          state.stack.pop();
+        } else if (cap = stream.match(this.start)) {
+          this.init(obj, stream, state, cap);
+        } else { // Isolated < that is not part of a tag
+          if (!stream.eat('<')) {
+            throw new Error('Failed to consume a token')
+          }
+        }
+      }
+      return obj.assignToken(stream, state, inlineData.html.style);
+    }
+
+    // return the object
+    return inlineData;
+
+  }();
+
 
 
   ///// RETURN THE MODE OBJECT /////
@@ -316,14 +347,14 @@ CodeMirror.defineMode('gfm-expanded', function(){
     inlineLex: function(obj, stream, state) {
 
       var match;
-      for (var i = 0; i < inlineSequence.length; i++) {
-        var rule_i = inlineData[ inlineSequence[i] ];
+      for (var i = 0; i < inlineData.inlineSequence.length; i++) {
+        var rule_i = inlineData[ inlineData.inlineSequence[i] ];
         if (rule_i.start && (match = stream.match(rule_i.start, false))) { // rule matches stream
           if (rule_i.init) { // rule has an init callback, so call it
             rule_i.init(obj, stream, state, match);
           }
           if (rule_i.stop) { // rule has a stop token, so add it to the stack
-            state.stack.push([inlineSequence[i], {inline:true}]);
+            state.stack.push([inlineData.inlineSequence[i], {inline:true}]);
             state.isBlock = false; // stack is now in inline mode
           }
           if (typeof rule_i.style == 'string') { // rule matches a single style
@@ -373,11 +404,11 @@ CodeMirror.defineMode('gfm-expanded', function(){
       //  - search for block tokens
       if (state.stack.length == 0 && state.isBlock) {
         var match;
-        for (var i = 0; i < blockSequence.length; i++) {
-          var rule_i = blockData[ blockSequence[i] ];
+        for (var i = 0; i < blockData.blockSequence.length; i++) {
+          var rule_i = blockData[ blockData.blockSequence[i] ];
           if (rule_i.start && (match = stream.match(rule_i.start))) {
             if (rule_i.init   ) rule_i.init(this, stream, state, match);
-            if (rule_i.stop   ) state.stack.push([blockSequence[i], {inline:false}]);
+            if (rule_i.stop   ) state.stack.push([blockData.blockSequence[i], {inline:false}]);
             if (rule_i.process) return rule_i.process(this, stream, state);
             return this.assignToken(stream, state, rule_i.style);
           }
