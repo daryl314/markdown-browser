@@ -42,6 +42,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       current:  function()    { return this.string.slice(0,this.pos)  },
       peek:     function()    { return this.string[this.pos]          },
       eol:      function()    { return this.pos >= this.string.length },
+      sol:      function()    { return this.pos == 0                  },
       backUp:   function(n)   { this.pos -= n }
     }
   }
@@ -55,7 +56,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       fences1:    { seq:1,  start:/^ *`{3,}/,             stop:/.*`{3,}$/,  style:'solar-red'           },
       fences2:    { seq:2,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'solar-red'           },
       heading:    { seq:3,  start:/^ *#+/,                stop:null,        style:'header solar-violet' },
-      lheading:   { seq:4,  start:/^ *(=|-){2,}.*/,       stop:null,        style:'hr solar-violet'     },
+      lheading:   { seq:4,  start:/^ *(=|-){2,} *$/,      stop:null,        style:'hr solar-violet'     },
       table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          }, // later in sequence??
       hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
       blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'solar-green'         },
@@ -109,18 +110,19 @@ CodeMirror.defineMode('gfm-expanded', function(){
       var cols = stream.match(/.*/, false)[0].split('|'); // split row into cells
       var queue = []; // queue for tokens
       for (var i = 0, col = cols[0]; i < cols.length; i++, col = cols[i]) {
+        state.isBlock = false;
         var fs = fakeStream(col);
         while (!fs.eol()) {
           var start = fs.pos;
-          var tok = obj.token(fs, state);
+          var tok = obj.token(fs, state) || blockData.table.style;
           queue.push([col.slice(start, fs.pos), tok]);
         }
         if (i+1 < cols.length)
-          queue.push(['|', null]);
+          queue.push(['|', blockData.table.style]);
         state.stopInline();
       }
       state.queue = queue;
-      return obj.token(stream, state);
+      return blockData.table.style;
     }
 
     // callback function for heading mode: perform inline lexing of line
@@ -336,7 +338,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
           styles.push(inlineData[state.stack[i][0]].style);
         }
       }
-      if (style != null && !(styles.indexOf(style))) styles.push(style);
+      if (style != null && styles.indexOf(style) == -1) styles.push(style);
       state.queue.push([
         text,
         styles.join(' ')
@@ -402,7 +404,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
       // empty stack and in block mode: in base block mode
       //  - search for block tokens
-      if (state.stack.length == 0 && state.isBlock) {
+      if (state.stack.length == 0 && state.isBlock && stream.sol()) {
         var match;
         for (var i = 0; i < blockData.blockSequence.length; i++) {
           var rule_i = blockData[ blockData.blockSequence[i] ];
