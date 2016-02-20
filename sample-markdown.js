@@ -31,6 +31,10 @@ Hyperlink on a separate line\n\
 * This is a **bold** entry\n\
 * in a list\n\
 \n\
+> This is a blockquote list:\n\
+> * Item1\n\
+> * Item2\n\
+> > And a **nested** blockquote!\n\
 ";
 
 // github flavored markdown test text

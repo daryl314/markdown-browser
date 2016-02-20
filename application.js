@@ -55,7 +55,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       lheading:   { seq:4,  start:/^ *(=|-){2,} *$/,      stop:null,        style:'hr solar-violet'     },
       table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          },
       hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
-      blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'solar-green'         },
+      blockquote: { seq:7,  start:/^ *>/,                 stop:null,        style:'solar-green'         },
       list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.) /,  stop:null,        style:'solar-magenta'       },
       def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'solar-cyan'          }
     };
@@ -64,6 +64,40 @@ CodeMirror.defineMode('gfm-expanded', function(){
     var blockSequence = [];
     for (k in blockData) blockSequence[ blockData[k].seq ] = k;
     blockData.blockSequence = blockSequence;
+
+    // callback functions for blockquote mode
+    blockData.blockquote.init = function(obj, stream, state, match) {
+      state.stack = [['blockquote', obj.startState()]];
+    }
+    blockData.blockquote.process = function(obj, stream, state, match) {
+
+      // rewind match
+      stream.backUp(match ? match[0].length : 0);
+
+      // terminate blockquote if line doesn't match pattern
+      if (!stream.match(blockData.blockquote.start,false)) {
+        state.stack = [];                 // exit blockquote mode
+        return obj.token(stream, state);  // process token normally
+      }
+
+      // initialize queue of tokens for line with blockquote leader
+      var queue = [[
+        stream.match(blockData.blockquote.start, false)[0],
+        blockData.blockquote.style ]];
+
+      // process line in nested state to generate tokens for queue
+      var nested = state.stack[0][1];
+      var fs = fakeStream(stream.string.slice(queue[0][0].length)); // create a dummy stream object
+      while (!fs.eol()) {
+        var start = fs.pos;
+        var tok = obj.token(fs, nested);
+        queue.push([ fs.string.slice(start,fs.pos), tok ]);
+      }
+
+      // tokenize queue
+      state.queue = queue;
+      return obj.token(stream, state);
+    }
 
     // callback functions for list mode
     //
