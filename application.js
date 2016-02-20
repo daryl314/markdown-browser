@@ -254,6 +254,23 @@ CodeMirror.defineMode('gfm-expanded', function(){
       inlineData.i_code.stop = new RegExp('.*?[^`]\s*' + match[1] + '(?!`)');
     }
 
+    // callback function for recursive processing of link text
+    inlineData.link.process = function(obj, stream, state, match) {
+      var styleData = obj.processMultiMatch(stream, state, match, inlineData.link.style.slice(0));
+      var queue = []; // queue for tokens
+      var fs = fakeStream(styleData[1][0]); // pseudo-stream for link text
+      while (!fs.eol()) {
+        var start = fs.pos;
+        var tok = obj.token(fs, state) || inlineData.link.style[0];
+        queue.push([fs.string.slice(start,fs.pos), tok]);
+      }
+      var tokenData = [styleData[0]].concat(queue).concat(styleData.slice(2));
+      for (var i = 0; i < tokenData.length; i++) {
+        obj.pushInlineToken(state, tokenData[i][0], tokenData[i][1]);
+      }
+    }
+    inlineData.reflink.process = inlineData.link.process;
+
     // callback function for html mode
     inlineData.html.init = function(obj, stream, state, match) {
       var cap;
@@ -439,7 +456,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
             state.stack.push([inlineData.inlineSequence[i], {inline:true}]);
             state.isBlock = false; // stack is now in inline mode
           }
-          if (typeof rule_i.style == 'string') { // rule matches a single style
+          if (rule_i.process) {
+            rule_i.process(obj, stream, state, match);
+          } else if (typeof rule_i.style == 'string') { // rule matches a single style
             this.pushInlineToken(state, match[0], rule_i.style);
           } else {
             var multiMatch = this.processMultiMatch(stream, state, match, rule_i.style.slice(0));

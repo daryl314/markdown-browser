@@ -1,4 +1,4 @@
-var md_test = "[source of this content](https://raw.githubusercontent.com/divtxt/gfm-test/master/README.md)\n\
+var md_test = "[source of *this* content](https://raw.githubusercontent.com/divtxt/gfm-test/master/README.md)\n\
 \n\
 This is a test paragraph with some **bold** text, some _italic_ text, some **bold and _italic_ text**, some words_with_underlines, and some\n\
 \\\\(inline latex\\\\).\n\
