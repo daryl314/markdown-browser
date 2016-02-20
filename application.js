@@ -15,8 +15,6 @@
 // Define a CodeMirror mode for markdown editor
 CodeMirror.defineMode('gfm-expanded', function(){
 
-  // mode-scope variables go here
-
   // function to create a fake stream object
   fakeStream = function(text) {
     return {
@@ -48,8 +46,6 @@ CodeMirror.defineMode('gfm-expanded', function(){
   }
 
   // block mode data
-  // blockquote, list are block recursive
-  // sequence: 'b_code','fences','b_latex','heading','nptable','lheading','hr','blockquote','list','html','def','table','paragraph'
   var blockData = function(){
     var blockData = {
       b_code:     { seq:0,  start:/^ {4}.*/,              stop:null,        style:'solar-red'           },
@@ -57,7 +53,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       fences2:    { seq:2,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'solar-red'           },
       heading:    { seq:3,  start:/^ *#+/,                stop:null,        style:'header solar-violet' },
       lheading:   { seq:4,  start:/^ *(=|-){2,} *$/,      stop:null,        style:'hr solar-violet'     },
-      table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          }, // later in sequence??
+      table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          },
       hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
       blockquote: { seq:7,  start:/^ *>.*/,               stop:null,        style:'solar-green'         },
       list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.) /,  stop:null,        style:'solar-magenta'       },
@@ -144,7 +140,6 @@ CodeMirror.defineMode('gfm-expanded', function(){
   }();
 
   // inline mode data
-  // which are recursive??  strong/em/del/link(text)
   var inlineData = function(){
     var inlineData = {
       i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,    recursive:false,  style:'solar-red'                                   },
