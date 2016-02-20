@@ -51,7 +51,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       b_code:     { seq:0,  start:/^ {4}.*/,              stop:null,        style:'solar-red'           },
       fences1:    { seq:1,  start:/^ *`{3,}/,             stop:/.*`{3,}$/,  style:'solar-red'           },
       fences2:    { seq:2,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'solar-red'           },
-      heading:    { seq:3,  start:/^ *#+/,                stop:null,        style:'header solar-violet' },
+      heading:    { seq:3,  start:/^ *#+ /,               stop:null,        style:'header solar-violet' },
       lheading:   { seq:4,  start:/^ *(=|-){2,} *$/,      stop:null,        style:'hr solar-violet'     },
       table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          },
       hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
@@ -66,37 +66,88 @@ CodeMirror.defineMode('gfm-expanded', function(){
     blockData.blockSequence = blockSequence;
 
     // callback functions for list mode
+    //
     // a list is terminated by one of the following:
     //  - HR block
     //  - def block
     //  - 2+ newlines followed by a non-indented line
+    //
+    // a list item starts with an indented bullet and extends through the end
+    // of the line.  subsequent lines are added if they do not start with
+    // a matching bullet with the same indentation level
     blockData.list.init = function(obj, stream, state, match){
       state.stack = [['list', {
-        isFirstMatch:   true  // don't check for end of list if it's the first line
+        isFirstMatch:   true, // don't check for end of list if it's the first line
+        stack:          []    // stack for nested list items
       }]];
     }
-    blockData.list.process = function(obj, stream, state){
+    blockData.list.process = function(obj, stream, state, match){
       var data = state.stack[state.stack.length-1][1];
+
+      // terminate list if one of the conditions is met
       if (!data.isFirstMatch && (                               // not first match
               (stream.match(blockData.def.start, false))        // HR block
           ||  (stream.match(blockData.hr .start, false))        // def block
           ||  (!stream.match(/^ /, false) && state.blanks >= 1) // non-indented line
       )) {
-        state.stack = []; // exit list mode
-        return obj.token(stream, state); // process token normally
+        state.stack = [];                 // exit list mode
+        return obj.token(stream, state);  // process token normally
+
+      // otherwise process list item
       } else {
+
+        // if this is the first match of the list...
         if (data.isFirstMatch) {
-          data.isFirstMatch = false; // enable search for end of list (no longer first line)
-          return obj.assignToken(stream, state, blockData.list.style); // style the bullet
-        } else if (stream.sol() && stream.match(blockData.list.start)) {
-          return obj.assignToken(stream, state, blockData.list.style); // style the bullet
-        } else {
-          obj.inlineLex(obj, stream, state);
-          if (state.stack[state.stack.length-1][0] == 'list') {
-            state.isBlock = true;
-          }
-          return obj.token(stream, state);
+          data.isFirstMatch = false;      // enable search for end of list (no longer first line)
+          stream.backUp(match[0].length); // reverse capture of bullet
         }
+
+        // if we are inside a list item, check to see if current line terminates any existing items
+        if (data.stack.length > 0) {
+          for (var i = 0; i < data.stack.length; i++) {
+            var indentation = data.stack[i].indentation;
+            if (stream.match(indentation, false)) {   // matching bullet with same indentation
+              data.stack = data.stack.slice(0, i-1);  // terminate previous item
+              break;                                  // stop looping
+            }
+          }
+        }
+
+        // create a queue of tokens for line
+        var queue = [];
+
+        // reference to current nested state
+        var nested = data.stack[ data.stack.length - 1 ];
+
+        // if line starts with a bullet, create a new nested state
+        // otherwise match leading whitespace
+        var match;
+        if (match = stream.match(blockData.list.start, false)) {
+          queue.push([match[0], blockData.list.style]); // push styled bullet to queue
+          nested = {                          // create new nested state...
+            indentation: match[0],            //   leading bullet and whitespace
+            innerState: obj.startState(),     //   nested state object
+            regex: new RegExp(                //   regex to match whitespace
+              '^ {0,' + match[0].length + '}'
+            )
+          };
+          data.stack.push(nested);  // push new nested state to stack
+        } else {
+          match = stream.match(nested.regex, false);
+          queue.push([match[0], null]); // push whitespace to queue
+        }
+
+        // process line in nested state to generate tokens for queue
+        var fs = fakeStream(stream.string.slice(match[0].length)); // create a dummy stream object
+        while (!fs.eol()) {
+          var start = fs.pos;
+          var tok = obj.token(fs, nested.innerState);
+          queue.push([ fs.string.slice(start,fs.pos), tok ]);
+        }
+
+        // tokenize queue
+        state.queue = queue;
+        return obj.token(stream, state);
       }
     }
 
@@ -406,7 +457,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
           if (rule_i.start && (match = stream.match(rule_i.start))) {
             if (rule_i.init   ) rule_i.init(this, stream, state, match);
             if (rule_i.stop   ) state.stack.push([blockData.blockSequence[i], {inline:false}]);
-            if (rule_i.process) return rule_i.process(this, stream, state);
+            if (rule_i.process) return rule_i.process(this, stream, state, match);
             return this.assignToken(stream, state, rule_i.style);
           }
         }
@@ -427,7 +478,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
       // check for a special mode stack
       if (stackMeta && stackMeta.process) {
-        return stackMeta.process(this, stream, state);
+        return stackMeta.process(this, stream, state, match);
       }
 
       // if we are in block mode with a non-empty stack, search for the closing tag
