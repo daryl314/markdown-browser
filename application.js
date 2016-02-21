@@ -322,8 +322,6 @@ CodeMirror.defineMode('gfm-expanded', function(){
     startState: function(basecolumn) {
       var obj = {
         isBlock:  true,   // are we in block mode (vs inline)?
-        isList:   false,  // are we in block list mode? (block mode submode)
-        isBQ:     false,  // are we in block quote mode? (block mode submode)
         blanks:   0,      // number of blank lines
         stack:    [],     // mode data stack
         queue:    []      // queued up tokens for subsequent styling
@@ -344,8 +342,6 @@ CodeMirror.defineMode('gfm-expanded', function(){
     copyState: function(state) {
       return {
         isBlock:    state.isBlock,
-        isList:     state.isList,
-        isBQ:       state.isBQ,
         blanks:     state.blanks,
         stack:      state.stack.slice(0), // copy of array
         queue:      state.queue.slice(0), // copy of array
@@ -456,7 +452,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
             state.stack.push([inlineData.inlineSequence[i], {inline:true}]);
             state.isBlock = false; // stack is now in inline mode
           }
-          if (rule_i.process) {
+          if (rule_i.process && state.stack.length == 0) { // stack-specific processing later
             rule_i.process(obj, stream, state, match);
           } else if (typeof rule_i.style == 'string') { // rule matches a single style
             this.pushInlineToken(state, match[0], rule_i.style);
