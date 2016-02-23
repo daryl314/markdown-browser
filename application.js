@@ -36,12 +36,23 @@ CodeMirror.defineMode('gfm-expanded', function(){
           return match;
         }
       },
+      token:    function(obj, state, css) {
+        var queue = []; // queue for tokens
+        while (!this.eol()) {
+          var start = this.pos;
+          var tok = obj.token(this, state) || css;
+          queue.push([
+            this.string.slice(start, this.pos),
+            tok]);
+        }
+        return queue;
+      },
       eat:      function(pat) { return this.match(pat)                },
       current:  function()    { return this.string.slice(0,this.pos)  },
       peek:     function()    { return this.string[this.pos]          },
       eol:      function()    { return this.pos >= this.string.length },
       sol:      function()    { return this.pos == 0                  },
-      backUp:   function(n)   { this.pos -= n }
+      backUp:   function(n)   { this.pos -= n                         }
     }
   }
 
@@ -88,11 +99,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       // process line in nested state to generate tokens for queue
       var nested = state.stack[0][1];
       var fs = fakeStream(stream.string.slice(queue[0][0].length)); // create a dummy stream object
-      while (!fs.eol()) {
-        var start = fs.pos;
-        var tok = obj.token(fs, nested);
-        queue.push([ fs.string.slice(start,fs.pos), tok ]);
-      }
+      queue = queue.concat(fs.token(obj, nested));
 
       // tokenize queue
       state.queue = queue;
@@ -173,11 +180,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
         // process line in nested state to generate tokens for queue
         var fs = fakeStream(stream.string.slice(match[0].length)); // create a dummy stream object
-        while (!fs.eol()) {
-          var start = fs.pos;
-          var tok = obj.token(fs, nested.innerState);
-          queue.push([ fs.string.slice(start,fs.pos), tok ]);
-        }
+        queue = queue.concat(fs.token(obj, nested.innerState));
 
         // tokenize queue
         state.queue = queue;
@@ -193,11 +196,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       for (var i = 0, col = cols[0]; i < cols.length; i++, col = cols[i]) {
         state.isBlock = false;
         var fs = fakeStream(col);
-        while (!fs.eol()) {
-          var start = fs.pos;
-          var tok = obj.token(fs, state) || blockData.table.style;
-          queue.push([col.slice(start, fs.pos), tok]);
-        }
+        queue = queue.concat(fs.token(obj, state, blockData.table.style));
         if (i+1 < cols.length)
           queue.push(['|', blockData.table.style]);
         state.stopInline();
@@ -209,12 +208,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
     // callback function for heading mode: perform inline lexing of line
     blockData.heading.process = function(obj, stream, state) {
       var fs = fakeStream(stream.string.slice(stream.pos));
-      var queue = []; // queue for tokens
-      while (!fs.eol()) {
-        var start = fs.pos;
-        var tok = obj.token(fs, state) || blockData.heading.style;
-        queue.push([fs.string.slice(start,fs.pos), tok]);
-      }
+      var queue = fs.token(obj, state, blockData.heading.style);
       state.stopInline();
       state.queue = queue;
       return blockData.heading.style;
