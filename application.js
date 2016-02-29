@@ -306,10 +306,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
   }();
 
-
-
   ///// RETURN THE MODE OBJECT /////
-
   return {
 
     // function to initialize mode state
@@ -346,7 +343,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
     // function called when a blank line is passed over
     blankLine: function(state) {
-      state.blanks += 1;
+      state.blanks += 1; // increment the blank line counter
     },
 
     // create a multi-match list (multiple tokens to style in a single match)
@@ -384,40 +381,66 @@ CodeMirror.defineMode('gfm-expanded', function(){
     assignToken(stream, state, style) {
       if (stream.pos == stream.start) // check that a token was consumed
         throw new Error('Failed to consume anything!');
-      if (stream.eol() && state.stack.length == 0)               // return to block mode at end of line
+      if (stream.eol() && state.stack.length == 0) // return to block mode at end of line
         state.isBlock = true;
       state.blanks = 0;               // reset blank line counter
       return style;                   // return the style
     },
 
-    // consume inline text (and return the number of characters consumed)
+    // consume any tokens that match inline text regex at current stream position
+    // (and return the number of characters consumed)
     consumeInlineText: function(stream, state) {
+
+      // starting position of the stream
       var startPosition = stream.current().length;
+
+      // attempt to match inline text regex
       var match;
       if (match = stream.match(markdown.regex.i_text)) {
+
+        // type of token is the type at the top of the inline stack
         var token_type = (state.stackPeek() || [''])[0];
+
+        // if consumption stopped at an underscore...
         if (stream.peek() == '_') {
+
+          // if inside _xxx_ or __xxx__, check to see if stream matches a stop token
+          // if it does, stream is at a new token
           if (token_type === 'em1' || token_type === 'strong2') {
-            if (stream.match(inlineData[token_type].stop, false)) return true;
+            if (stream.match(inlineData[token_type].stop, false))
+              return stream.current().length - startPosition;; // stop inline text consumption
           }
-          if (stream.match(inlineData.strong2.start, false)) return true;
+
+          // if stream matches __, this is a new start token
+          if (stream.match(inlineData.strong2.start, false))
+            return stream.current().length - startPosition;; // stop inline text consumption
+
+          // otherwise if this is an internal underscore, continue consumption
           if (match[0].match(/\w$/)) { // internal _
             stream.eat('_');  // consume to prevent identification as 'em'
             this.consumeInlineText(stream, state); // continue consumption
           }
+
+        // if consumption stopped at a tilde and we are inside a 'del' token,
+        // try reversing to see if this is a 'del' stop token that should not
+        // be part of the inline text
         } else if (stream.peek() == '~' && token_type == 'del') {
-          // try reversing to see if this is an end token
-          stream.backUp(1);
+          stream.backUp(1); // reverse and check for 'del' end token match
           if (!stream.match(inlineData.del.stop, false))
-            stream.next(); // undo backUp operation
+            stream.next(); // undo backUp operation if not an end token
         }
+
+        // number of tokens consumed is difference between current position
+        // and starting position
         return stream.current().length - startPosition;
+
+      // if inline text regex didn't match, 0 characters were consumed
       } else {
         return 0;
       }
     },
 
-    // push an inline token to the token queue
+    // push an inline token to the token queue (including nested styles)
     pushInlineToken: function(state, text, style) {
       var styles = [];
       for (var i = 0; i < state.stack.length; i++) {
@@ -432,44 +455,73 @@ CodeMirror.defineMode('gfm-expanded', function(){
       ]);
     },
 
-    // perform inline lexing ===> MOVE TO MAIN TOKEN FUNCTION???
+    // perform inline lexing
     inlineLex: function(obj, stream, state) {
+      var match; // variable to store match data
 
-      var match;
+      // iterate over inline rules
       for (var i = 0; i < inlineData.inlineSequence.length; i++) {
         var rule_i = inlineData[ inlineData.inlineSequence[i] ];
-        if (rule_i.start && (match = stream.match(rule_i.start, false))) { // rule matches stream
-          if (rule_i.init) { // rule has an init callback, so call it
+
+        // if the stream matches current rule, perform processing
+        if (rule_i.start && (match = stream.match(rule_i.start, false))) {
+
+          // call init method if one is defined
+          if (rule_i.init) {
             rule_i.init(obj, stream, state, match);
           }
-          if (rule_i.stop) { // rule has a stop token, so add it to the stack
+
+          // if rule has a stop token, add it to the stack so that it can
+          // be processed on future function calls
+          if (rule_i.stop) {
             state.stack.push([inlineData.inlineSequence[i], {inline:true}]);
             state.isBlock = false; // stack is now in inline mode
           }
-          if (rule_i.process && state.stack.length == 0) { // stack-specific processing later
+
+          // if there is a process method without a stack, call it to process token
+          // (stack-specific processing occurs later in stack processing)
+          if (rule_i.process && state.stack.length == 0) {
             rule_i.process(obj, stream, state, match);
-          } else if (typeof rule_i.style == 'string') { // rule matches a single style
+
+          // if rule matches a single style, push the token to the token list
+          } else if (typeof rule_i.style == 'string') {
             this.pushInlineToken(state, match[0], rule_i.style);
+
+          // if rule matches multiple styles, push the tokens to the token list
           } else {
             var multiMatch = this.processMultiMatch(stream, state, match, rule_i.style.slice(0));
             for (var j = 0; j < multiMatch.length; j++) {
               this.pushInlineToken(state, multiMatch[j][0], multiMatch[j][1]);
             }
           }
-          return match[0].length; // something matched, so return to caller
+
+          // return length of the match to the caller
+          return match[0].length;
         }
       }
 
-      // if none of the inline styles matched, try matching against inline text
-      var startPosition = stream.current().length;
-      var nCaptured;
+      /***** No inline styles matched, so try matching against inline text *****/
+
+      var startPosition = stream.current().length; // pre-match position
+      var nCaptured; // number of characters captured
+
+      // if there is inline text to consume...
       if (nCaptured = this.consumeInlineText(stream, state)) {
+
+        // push an unstyled token to the token list
         this.pushInlineToken(state, stream.current().slice(startPosition), null);
+
+        // turn on inline mode
         state.isBlock = false;
+
+        // reverse match operation
         stream.backUp(stream.current().length - startPosition);
+
+        // return number of characters captured
         return nCaptured;
+
+      // otherwise we have an error (style as an error instead??)
       } else {
-        // otherwise we have an error (style as an error instead??)
         throw new Error('Failed to consume an inline token!');
       }
     },
@@ -561,11 +613,10 @@ CodeMirror.defineMode('gfm-expanded', function(){
           if (state.stack.length == 0 || blockData[stackKey]) {
             state.isBlock = true;
           }
-          return this.assignToken(stream, state, stackMeta.style);
         } else {
           stream.skipToEnd();
-          return this.assignToken(stream, state, stackMeta.style);
         }
+        return this.assignToken(stream, state, stackMeta.style);
       }
 
       // if we get here, it's because nothing matched (which shouldn't happen!)
