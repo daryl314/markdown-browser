@@ -311,33 +311,59 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
     // function to initialize mode state
     startState: function(basecolumn) {
+
+      // create a default object
       var obj = {
         isBlock:  true,   // are we in block mode (vs inline)?
         blanks:   0,      // number of blank lines
         stack:    [],     // mode data stack
         queue:    []      // queued up tokens for subsequent styling
       };
-      obj.stackPeek = function() { // return the token at the top of the stack
+
+      // attach function to return the token at the top of the stack
+      obj.stackPeek = function() {
         return this.stack[this.stack.length-1];
       }
-      obj.stopInline = function() { // break out of inline mode
-        this.isBlock = true;
-        while (this.stackPeek() && this.stackPeek()[1].inline) {
-          this.stack.pop(); // remove inline token
+
+      // attach function to break out of inline mode
+      obj.stopInline = function() {
+        this.isBlock = true;        // return to block mode
+        while (this.stackPeek() && !this.stackIsBlock()) {
+          this.stack.pop();         // remove inline tokens from top of stack
         }
       }
+
+      // attach function to push a state to the stack
+      obj.pushState = function(stateName, isBlock, stateData) {
+        this.stack.push([ stateName, isBlock, stateData||{} ]);
+      }
+
+      // attach function to return mode data at top of stack
+      obj.stackMeta = function() {
+        return (this.isBlock ? blockData : inlineData)[ this.stackPeek()[0] ];
+      }
+
+      // attach function to return true if current state is a block state
+      obj.stackIsBlock = function() {
+        return this.stackPeek()[1];
+      }
+
+      // return the object
       return obj;
     },
 
     // function to copy current state
     copyState: function(state) {
       return {
-        isBlock:    state.isBlock,
-        blanks:     state.blanks,
-        stack:      state.stack.slice(0), // copy of array
-        queue:      state.queue.slice(0), // copy of array
-        stackPeek:  state.stackPeek,
-        stopInline: state.stopInline
+        isBlock:      state.isBlock,
+        blanks:       state.blanks,
+        stack:        state.stack.slice(0), // copy of array
+        queue:        state.queue.slice(0), // copy of array
+        stackPeek:    state.stackPeek,
+        stopInline:   state.stopInline,
+        pushState:    state.pushState,
+        stackMeta:    state.stackMeta,
+        stackIsBlock: state.stackIsBlock
       }
     },
 
@@ -381,8 +407,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
     assignToken(stream, state, style) {
       if (stream.pos == stream.start) // check that a token was consumed
         throw new Error('Failed to consume anything!');
-      if (stream.eol() && state.stack.length == 0) // return to block mode at end of line
-        state.isBlock = true;
+      if (stream.eol() && state.stack.length == 0)
+        state.isBlock = true;         // return to block mode at end of line
       state.blanks = 0;               // reset blank line counter
       return style;                   // return the style
     },
@@ -408,12 +434,12 @@ CodeMirror.defineMode('gfm-expanded', function(){
           // if it does, stream is at a new token
           if (token_type === 'em1' || token_type === 'strong2') {
             if (stream.match(inlineData[token_type].stop, false))
-              return stream.current().length - startPosition;; // stop inline text consumption
+              return stream.current().length - startPosition; // stop inline text consumption
           }
 
           // if stream matches __, this is a new start token
           if (stream.match(inlineData.strong2.start, false))
-            return stream.current().length - startPosition;; // stop inline text consumption
+            return stream.current().length - startPosition; // stop inline text consumption
 
           // otherwise if this is an internal underscore, continue consumption
           if (match[0].match(/\w$/)) { // internal _
@@ -442,16 +468,25 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
     // push an inline token to the token queue (including nested styles)
     pushInlineToken: function(state, text, style) {
+
+      // list to collect styles
       var styles = [];
+
+      // iterate over inline styles on the stack and add their css classes to list
       for (var i = 0; i < state.stack.length; i++) {
         if (inlineData[state.stack[i][0]]) { // only push inline token styles
           styles.push(inlineData[state.stack[i][0]].style);
         }
       }
-      if (style != null && styles.indexOf(style) == -1) styles.push(style);
+
+      // add input style to list if it was given and it isn't in list already
+      if (style != null && styles.indexOf(style) == -1)
+        styles.push(style);
+
+      // push a token to the queue with styled text
       state.queue.push([
-        text,
-        styles.join(' ')
+        text,             // text to be styled
+        styles.join(' ')  // assembled CSS classes
       ]);
     },
 
@@ -474,7 +509,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
           // if rule has a stop token, add it to the stack so that it can
           // be processed on future function calls
           if (rule_i.stop) {
-            state.stack.push([inlineData.inlineSequence[i], {inline:true}]);
+            state.pushState(inlineData.inlineSequence[i], false);
             state.isBlock = false; // stack is now in inline mode
           }
 
@@ -526,101 +561,186 @@ CodeMirror.defineMode('gfm-expanded', function(){
       }
     },
 
+    // process next queued token
+    processTokenQueue: function(stream, state) {
+
+      // remove first item from queue
+      var item = state.queue.shift(1);
+
+      // match stream to item
+      if (stream.match(item[0])) {
+
+        // if a zero-length token, recurse to skip over it
+        if (item[0].length == 0)
+          return this.token(stream,state);
+
+        // otherwise call the assignToken function to assign token style
+        else
+          return this.assignToken(stream, state, item[1]);
+
+      // throw an exception if stream doesn't match queued token
+      } else {
+        throw new Error(
+          'Stream does not match token!\n' +
+          'Token: ' + item[0] + '\n' +
+          'Stream: ' + stream.string);
+      }
+    },
+
+    // perform block mode token processing
+    processBlockToken: function(stream, state) {
+
+      // variable to contain matched data
+      var match;
+
+      // iterate over block rules
+      for (var i = 0; i < blockData.blockSequence.length; i++) {
+        var rule_i = blockData[ blockData.blockSequence[i] ];
+
+        // if there is a defined start rule and the stream matches it ...
+        if (rule_i.start && (match = stream.match(rule_i.start))) {
+
+          // call init method if one is defined
+          if (rule_i.init)
+            rule_i.init(this, stream, state, match);
+
+          // if there is a stop rule, push it to the stack to start searching for it
+          if (rule_i.stop)
+            state.pushState(blockData.blockSequence[i], true);
+
+          // if there is a process method, call it to handle processing
+          if (rule_i.process)
+            return rule_i.process(this, stream, state, match);
+
+          // otherwise use normal assignToken path to set style for matched token
+          return this.assignToken(stream, state, rule_i.style);
+        }
+      }
+
+      // none of the rules matched, so return undefined results
+      return undefined;
+
+    },
+
+    // perform nested inline mode processing
+    processNestedInline: function(stream, state) {
+
+      // if in a recursive mode, search for closing tag or another inline opening tag
+      if (state.stackMeta().recursive) {
+
+        // confirm that this is an inline mode
+        if (state.stackIsBlock())
+          throw new Error('Internal algorithm failure')
+
+        // store current stream position
+        var startPosition = stream.current().length;
+
+        // try matching stream to stop token
+        var match = stream.match(state.stackMeta().stop, false);
+
+        // if match was successful...
+        if (match) {
+
+          // push the match to the inline token queue
+          this.pushInlineToken(state, match[0], null);
+
+          // close nested state
+          state.stack.pop();
+
+          // set global state to block mode if new nested state is a block state
+          // or if there are no more nested states
+          if (state.stack.length == 0 || state.stackIsBlock())
+            state.isBlock = true;
+
+        // if match was not successful, continue inline lexing
+        } else {
+          this.inlineLex(this, stream, state);
+        }
+
+        // recurse to process first token in queue
+        return this.token(stream,state);
+
+      // if in a non-recursive mode, look for closing tag
+      } else {
+
+        // capture current style (before potentially popping token)
+        var css = state.stackMeta().style;
+
+        // if the closing tag was found...
+        if (stream.match(state.stackMeta().stop)) {
+
+          // close nested state
+          state.stack.pop();
+
+          // set global state to block mode if new nested state is a block state
+          // or if there are no more nested states
+          if (state.stack.length == 0 || state.stackIsBlock())
+            state.isBlock = true;
+
+        // if no closing tag was found, consume entire line
+        } else {
+          stream.skipToEnd();
+        }
+
+        // style token with nested mode's style
+        return this.assignToken(stream, state, css);
+      }
+    },
+
     // main token processing function
     token: function(stream, state) {
 
-      // check for queued tokens
+      // if there are queued tokens, process the next token in queue
       if (state.queue.length > 0) {
-        var item = state.queue.shift(1);
-        if (stream.match(item[0])) {
-          if (item[0].length == 0) {
-            return this.token(stream,state);
-          } else {
-            return this.assignToken(stream, state, item[1]);
-          }
-        } else {
-          throw new Error('Stream does not match token: ' + item[0]);
-        }
+        return this.processTokenQueue(stream, state);
       }
 
-      // empty stack and in block mode: in base block mode
-      //  - search for block tokens
-      if (state.stack.length == 0 && state.isBlock && stream.sol()) {
-        var match;
-        for (var i = 0; i < blockData.blockSequence.length; i++) {
-          var rule_i = blockData[ blockData.blockSequence[i] ];
-          if (rule_i.start && (match = stream.match(rule_i.start))) {
-            if (rule_i.init   ) rule_i.init(this, stream, state, match);
-            if (rule_i.stop   ) state.stack.push([blockData.blockSequence[i], {inline:false}]);
-            if (rule_i.process) return rule_i.process(this, stream, state, match);
-            return this.assignToken(stream, state, rule_i.style);
-          }
-        }
-      }
-
-      // empty stack and in inline mode (or in block mode and nothing matched)
-      //  - perform inline lexing
+      // if there is no stack, we are are in base mode and are searching for
+      // a token to style.  a stack is used when we are in a nested mode and
+      // need to do non-default processing
       if (state.stack.length == 0) {
-        this.inlineLex(this, stream, state); // tokenize inline text
-        return this.token(stream, state); // recurse to grab first token on stack
+
+        // try searching for a block token first
+        // (if in block mode and at start of line)
+        if (state.isBlock && stream.sol()) {
+          var style = this.processBlockToken(stream, state);
+          if (style !== undefined) return style; // return token style if found
+        }
+
+        // otherwise perform inline lexing
+        this.inlineLex(this, stream, state);  // tokenize inline text
+        return this.token(stream, state);     // recurse to grab first token on stack
       }
 
-      ///// EVERYTHING BELOW USES THE STACK /////
+      // remainder of code in function uses the stack.  this is for processing
+      // of a nested mode that is a continuation of a token identified in
+      // base mode processing above.
 
-      var stackKey  = state.stack[state.stack.length-1][0];
-      var stackData = state.stack[state.stack.length-1][1];
-      var stackMeta = (state.isBlock ? blockData : inlineData)[stackKey];
+      // if the nested mode has a process method, call it
+      if (state.stackMeta() && state.stackMeta().process)
+        return state.stackMeta().process(this, stream, state);
 
-      // check for a special mode stack
-      if (stackMeta && stackMeta.process) {
-        return stackMeta.process(this, stream, state, match);
-      }
-
-      // if we are in block mode with a non-empty stack, search for the closing tag
+      // if we are in a nested block mode, search for the closing tag
       if (state.isBlock) {
-        if (stream.match(stackMeta.stop)) {
+
+        // save the current style (before potentially popping token)
+        var css = state.stackMeta().style;
+
+        // if the stream matches the closing tag, exit nested mode
+        // otherwise consume entire line and continue processing
+        if (stream.match(state.stackMeta().stop))
           state.stack.pop();
-        } else {
+        else
           stream.skipToEnd();
-        }
-        return this.assignToken(stream, state, stackMeta.style);
+
+        // apply block style to consumed token
+        return this.assignToken(stream, state, css);
       }
 
-      // if we are in a recursive inline mode, search for the closing tag,
-      // or another inline opening tag
-      // ===> REWORK IF LOGIC TO REFLECT WHAT CAN ACTUALLY HAPPEN
-      if (!state.isBlock && stackMeta.recursive) {
-        if (!stream.eol() && state.stack.length > 0 && state.stackPeek()[1].inline) {
-          var startPosition = stream.current().length;
-          var match;
-          if (match = stream.match(inlineData[state.stackPeek()[0]].stop, false)) {
-            this.pushInlineToken(state, match[0], null);
-            state.stack.pop();
-            if (state.stackPeek() && !state.stackPeek()[1].inline)
-              state.isBlock = true;
-          } else {
-            this.inlineLex(this, stream, state);
-          }
-          return this.token(stream,state);
-        }
-        throw new Error('Should not be able to get here...');
+      // otherwise perform nested inline processing
+      else {
+        return this.processNestedInline(stream, state);
       }
-
-      // if we are in non-recursive inline mode, look for closing tag
-      if (!state.isBlock && !stackMeta.recursive) {
-        if (stream.match(stackMeta.stop)) {
-          state.stack.pop();
-          if (state.stack.length == 0 || blockData[stackKey]) {
-            state.isBlock = true;
-          }
-        } else {
-          stream.skipToEnd();
-        }
-        return this.assignToken(stream, state, stackMeta.style);
-      }
-
-      // if we get here, it's because nothing matched (which shouldn't happen!)
-      throw new Error('Failed to consume a block token!');
     }
   }
 })
