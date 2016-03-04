@@ -747,57 +747,67 @@ CodeMirror.defineMode('gfm-expanded', function(){
     // main token processing function
     token: function(stream, state) {
 
-      // if there are queued tokens, process the next token in queue
-      if (state.queue.length > 0) {
-        return this.processTokenQueue(stream, state);
-      }
+      try {
 
-      // if there is no stack, we are are in base mode and are searching for
-      // a token to style.  a stack is used when we are in a nested mode and
-      // need to do non-default processing
-      if (!state.nested) {
-
-        // try searching for a block token first
-        // (if in block mode and at start of line)
-        if (state.isBlock && stream.sol()) {
-          var style = this.processBlockToken(stream, state);
-          if (style !== undefined) return style; // return token style if found
+        // if there are queued tokens, process the next token in queue
+        if (state.queue.length > 0) {
+          return this.processTokenQueue(stream, state);
         }
 
-        // otherwise perform inline lexing
-        this.inlineLex(this, stream, state);  // tokenize inline text
-        return this.token(stream, state);     // recurse to grab first token on stack
+        // if there is no stack, we are are in base mode and are searching for
+        // a token to style.  a stack is used when we are in a nested mode and
+        // need to do non-default processing
+        if (!state.nested) {
+
+          // try searching for a block token first
+          // (if in block mode and at start of line)
+          if (state.isBlock && stream.sol()) {
+            var style = this.processBlockToken(stream, state);
+            if (style !== undefined) return style; // return token style if found
+          }
+
+          // otherwise perform inline lexing
+          this.inlineLex(this, stream, state);  // tokenize inline text
+          return this.token(stream, state);     // recurse to grab first token on stack
+        }
+
+        // remainder of code in function uses the stack.  this is for processing
+        // of a nested mode that is a continuation of a token identified in
+        // base mode processing above.
+
+        // if the nested mode has a process method, call it
+        if (state.nested.metaData && state.nested.metaData.process)
+          return state.nested.metaData.process(this, stream, state);
+
+        // if we are in a nested block mode, search for the closing tag
+        if (state.isBlock) {
+
+          // save the current style (before potentially popping token)
+          var css = state.nested.metaData.style;
+
+          // if the stream matches the closing tag, exit nested mode
+          // otherwise consume entire line and continue processing
+          if (stream.match(state.nested.metaData.stop))
+            state.popState();
+          else
+            stream.skipToEnd();
+
+          // apply block style to consumed token
+          return this.assignToken(stream, state, css);
+        }
+
+        // otherwise perform nested inline processing
+        else {
+          return this.processNestedInline(stream, state);
+        }
+
+      } catch (ex) {
+        console.error(ex);
+        while (state.nested) state.popState();
+        stream.skipToEnd();
+        return 'error solar-bg-base03';
       }
 
-      // remainder of code in function uses the stack.  this is for processing
-      // of a nested mode that is a continuation of a token identified in
-      // base mode processing above.
-
-      // if the nested mode has a process method, call it
-      if (state.nested.metaData && state.nested.metaData.process)
-        return state.nested.metaData.process(this, stream, state);
-
-      // if we are in a nested block mode, search for the closing tag
-      if (state.isBlock) {
-
-        // save the current style (before potentially popping token)
-        var css = state.nested.metaData.style;
-
-        // if the stream matches the closing tag, exit nested mode
-        // otherwise consume entire line and continue processing
-        if (stream.match(state.nested.metaData.stop))
-          state.popState();
-        else
-          stream.skipToEnd();
-
-        // apply block style to consumed token
-        return this.assignToken(stream, state, css);
-      }
-
-      // otherwise perform nested inline processing
-      else {
-        return this.processNestedInline(stream, state);
-      }
     }
   }
 })
