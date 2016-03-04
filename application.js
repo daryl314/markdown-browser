@@ -21,31 +21,37 @@ CodeMirror.defineMode('gfm-expanded', function(){
       pos:      0,
       string:   text,
       match:    function(pat, flag) {
-        if (typeof pat === 'string') {
-          if (this.string.slice(this.pos, this.pos+pat.length) === pat) {
-            if (!(flag === false))
-              this.pos += pat.length;
-            return pat;
-          } else {
-            return undefined;
+        if (typeof pat === 'string') {    // does stream start with a string?
+          if (pat === this.string.slice(  //   compare search string to stream...
+                this.pos,                 //     from current position
+                this.pos+pat.length)      //     to offset matching pattern length
+              ) {                         //   and if comparison matched...
+            if (!(flag === false))        //     if flag is false...
+              this.pos += pat.length;     //       advance stream
+            return pat;                   //     return matched string
+          } else {                        //   otherwise...
+            return undefined;             //     return undefined
           }
-        } else { // regex match
-          var match = this.string.slice(this.pos).match(pat);
-          if (!(flag === false) && match)
-            this.pos += match[0].length;
-          return match;
+        } else {                          // does stream match a regular expression?
+          var match = this.string         //   match variable is stream...
+            .slice(this.pos)              //     starting from current position
+            .match(pat);                  //     matched to regex
+          if (!(flag === false) && match) //   if string matched and flag is false...
+            this.pos += match[0].length;  //     advance stream
+          return match;                   //   return regex match results
         }
       },
       token:    function(obj, state, css) {
-        var queue = []; // queue for tokens
-        while (!this.eol()) {
-          var start = this.pos;
-          var tok = obj.token(this, state) || css;
-          queue.push([
-            this.string.slice(start, this.pos),
-            tok]);
-        }
-        return queue;
+        var queue = [];                             // list of processed tokens
+        while (!this.eol()) {                       // while there is text to consume...
+          var start = this.pos;                     //   store starting position
+          var tok = obj.token(this, state)          //   call token method on stream to get style
+                    || css;                         //     with a default of the passed style
+          queue.push([                              //   add a token to the list...
+            this.string.slice(start, this.pos),     //     with the matched text
+            tok]);                                  //     and the identified style
+        }                                           //
+        return queue;                               // return the list of styled tokens
       },
       eat:      function(pat) { return this.match(pat)                },
       current:  function()    { return this.string.slice(0,this.pos)  },
@@ -71,14 +77,14 @@ CodeMirror.defineMode('gfm-expanded', function(){
       def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'solar-cyan'          }
     };
 
-    // sequence of rules
+    // sequence of rule names
     var blockSequence = [];
     for (k in blockData) blockSequence[ blockData[k].seq ] = k;
     blockData.blockSequence = blockSequence;
 
     // callback functions for blockquote mode
     blockData.blockquote.init = function(obj, stream, state, match) {
-      state.stack = [['blockquote', obj.startState()]];
+      state.pushState('blockquote', true, obj.startState());
     }
     blockData.blockquote.process = function(obj, stream, state, match) {
 
@@ -87,17 +93,19 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
       // terminate blockquote if line doesn't match pattern
       if (!stream.match(blockData.blockquote.start,false)) {
-        state.stack = [];                 // exit blockquote mode
+        while (state.nested)              // while there are states on stack...
+          state.popState()                //   remove state to clear stack
         return obj.token(stream, state);  // process token normally
       }
 
       // initialize queue of tokens for line with blockquote leader
       var queue = [[
         stream.match(blockData.blockquote.start, false)[0],
-        blockData.blockquote.style ]];
+        blockData.blockquote.style
+      ]];
 
       // process line in nested state to generate tokens for queue
-      var nested = state.stack[0][1];
+      var nested = state.stack[0].data;
       var fs = fakeStream(stream.string.slice(queue[0][0].length)); // create a dummy stream object
       queue = queue.concat(fs.token(obj, nested));
 
@@ -117,21 +125,22 @@ CodeMirror.defineMode('gfm-expanded', function(){
     // of the line.  subsequent lines are added if they do not start with
     // a matching bullet with the same indentation level
     blockData.list.init = function(obj, stream, state, match){
-      state.stack = [['list', {
+      state.pushState('list', true, {
         isFirstMatch:   true, // don't check for end of list if it's the first line
         stack:          []    // stack for nested list items
-      }]];
+      });
     }
     blockData.list.process = function(obj, stream, state, match){
-      var data = state.stack[state.stack.length-1][1];
+      var data = state.nested.data;
 
       // terminate list if one of the conditions is met
-      if (!data.isFirstMatch && (                               // not first match
-              (stream.match(blockData.def.start, false))        // HR block
-          ||  (stream.match(blockData.hr .start, false))        // def block
-          ||  (!stream.match(/^ /, false) && state.blanks >= 1) // non-indented line
+      if (!data.isFirstMatch && (                                 // not first match
+              (  stream.match(blockData.def.start, false))        // HR block
+          ||  (  stream.match(blockData.hr .start, false))        // def block
+          ||  (! stream.match(/^ /, false) && state.blanks >= 1)  // non-indented line
       )) {
-        state.stack = [];                 // exit list mode
+        while (state.nested)              // while there are states on stack...
+          state.popState()                //   remove state to clear stack
         return obj.token(stream, state);  // process token normally
 
       // otherwise process list item
@@ -164,7 +173,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
         // otherwise match leading whitespace
         var match;
         if (match = stream.match(blockData.list.start, false)) {
-          queue.push([match[0], blockData.list.style]); // push styled bullet to queue
+          queue.push([                        // push styled bullet to queue
+            match[0],                         //   text matching bullet
+            blockData.list.style]);           //   style for a bullet
           nested = {                          // create new nested state...
             indentation: match[0],            //   leading bullet and whitespace
             innerState: obj.startState(),     //   nested state object
@@ -180,7 +191,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
         // process line in nested state to generate tokens for queue
         var fs = fakeStream(stream.string.slice(match[0].length)); // create a dummy stream object
-        queue = queue.concat(fs.token(obj, nested.innerState));
+        queue = queue.concat(fs.token(obj, nested.innerState)); // append processed tokens to queue
 
         // tokenize queue
         state.queue = queue;
@@ -190,27 +201,54 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
     // callback function for table mode: perform inline lexing of table cells
     blockData.table.process = function(obj, stream, state) {
-      stream.backUp(stream.current().length); // reverse capture
+
+      // reverse capture
+      stream.backUp(stream.current().length);
+
+      // split row into cells
       var cols = stream.match(/.*/, false)[0].split('|'); // split row into cells
-      var queue = []; // queue for tokens
+
+      // queue for tokens
+      var queue = [];
+
+      // iterate over cells
       for (var i = 0, col = cols[0]; i < cols.length; i++, col = cols[i]) {
+
+        // switch to inline mode
         state.isBlock = false;
+
+        // create a dummy stream object with current cell
         var fs = fakeStream(col);
+
+        // tokenize cell and add tokens to queue
         queue = queue.concat(fs.token(obj, state, blockData.table.style));
+
+        // add stylized pipe after token unless final column
         if (i+1 < cols.length)
           queue.push(['|', blockData.table.style]);
+
+        // break out of inline mode
         state.stopInline();
       }
+
+      // assign list of tokens to state queue
       state.queue = queue;
+
+      // return table style for leading pipe
       return blockData.table.style;
     }
 
     // callback function for heading mode: perform inline lexing of line
     blockData.heading.process = function(obj, stream, state) {
+
+      // create a dummy stream, tokenize it, and add tokens to state queue
       var fs = fakeStream(stream.string.slice(stream.pos));
-      var queue = fs.token(obj, state, blockData.heading.style);
+      state.queue = fs.token(obj, state, blockData.heading.style);
+
+      // break out of inline mode
       state.stopInline();
-      state.queue = queue;
+
+      // return heading style
       return blockData.heading.style;
     }
 
@@ -238,7 +276,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       del:      { seq:14, start:/^~~(?=\S)/,  stop:/^\S~~/,       recursive:true,   style:'strikethrough solar-yellow'                  }
     }
 
-    // sequence of rules
+    // sequence of rule names
     var inlineSequence = [];
     for (k in inlineData) inlineSequence[ inlineData[k].seq ] = k;
     inlineData.inlineSequence = inlineSequence;
@@ -250,54 +288,79 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
     // callback function for recursive processing of link text
     inlineData.link.process = function(obj, stream, state, match) {
+
+      // process match to get a list of style data
       var styleData = obj.processMultiMatch(stream, state, match, inlineData.link.style.slice(0));
-      var queue = []; // queue for tokens
-      var fs = fakeStream(styleData[1][0]); // pseudo-stream for link text
-      while (!fs.eol()) {
-        var start = fs.pos;
-        var tok = obj.token(fs, state) || inlineData.link.style[0];
-        queue.push([fs.string.slice(start,fs.pos), tok]);
-      }
+
+      // set up pseudo-stream for link text
+      var fs = fakeStream(styleData[1][0]);
+
+      // tokenize link text
+      var queue = fs.token(obj, state, inlineData.link.style[0]);
+
+      // splice link text tokens into processed match data
       var tokenData = [styleData[0]].concat(queue).concat(styleData.slice(2));
+
+      // push link tokens to state queue
       for (var i = 0; i < tokenData.length; i++) {
         obj.pushInlineToken(state, tokenData[i][0], tokenData[i][1]);
       }
     }
+
+    // use link processing function for reflinks too
     inlineData.reflink.process = inlineData.link.process;
 
-    // callback function for html mode
+    // callback function for html mode initialization
     inlineData.html.init = function(obj, stream, state, match) {
-      var cap;
-      if (cap = match[0].match(/^<\w+.*?>/)) {
-        if (!cap[0].match(/\/>$/)) { // ignore self-closers
-          state.isBlock = false;
-          state.stack.push(['html', {
-            closingTag: cap[0].replace(/^<(\w+).*/, '</$1>'),
-            inline:true
-          }]);
-        }
+
+      // try matching to an html tag (ignoring self-closers)
+      var cap = match[0].match(/^<\w+.*?>/);
+      if (cap && !cap[0].match(/\/>$/)) {
+
+        // create a nested state for current tag
+        state.pushState('html', false, {
+          closingTag: cap[0].replace(/^<(\w+).*/, '</$1>')});
       }
     }
+
+    // callback function for html mode processing
     inlineData.html.process = function(obj, stream, state) {
-      var data = state.stack[state.stack.length-1][1];
-      stream.match(/[^<]*/);  // consume any non-tag text
+
+      // html mode data
+      var data = state.nested.data;
+
+      // consume any non-tag text
+      stream.match(/[^<]*/);
+
+      // if there is text to consume ...
       if (!stream.eol()) {
-        var cap;
+        var cap; // variable to hold captured matches
+
+        // if stream matches a closing tag...
         if (cap = stream.match(/<\/\w+.*?>/)) {
-          while (state.stack.length > 0
-              && state.stack[state.stack.length-1][0] == 'html'
-              && state.stack[state.stack.length-1][1].closingTag !== cap[0]) {
-            state.stack.pop();
+
+          // close nested html states that don't match closing tag
+          while (state.nested                                 // have a nested state
+              && state.nested.stateName == 'html'             // nested state is html state
+              && state.nested.data.closingTag !== cap[0]) {   // nested state closing tag doesn't match current tag
+            state.popState();                                 // remove nested state from stack
           }
-          state.stack.pop();
+
+          // close nested html state that does match closing tag
+          state.popState();
+
+        // if stream matches a new opening tag, create a new nested state
         } else if (cap = stream.match(this.start)) {
           this.init(obj, stream, state, cap);
-        } else { // Isolated < that is not part of a tag
-          if (!stream.eat('<')) {
+
+        // otherwise consume isolated < that is not part of a tag
+        } else {
+          if (!stream.eat('<'))
             throw new Error('Failed to consume a token')
-          }
         }
       }
+
+      // style matching text with html style
       return obj.assignToken(stream, state, inlineData.html.style);
     }
 
@@ -314,38 +377,38 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
       // create a default object
       var obj = {
-        isBlock:  true,   // are we in block mode (vs inline)?
-        blanks:   0,      // number of blank lines
-        stack:    [],     // mode data stack
-        queue:    []      // queued up tokens for subsequent styling
+        isBlock:  true,     // are we in block mode (vs inline)?
+        blanks:   0,        // number of blank lines
+        stack:    [],       // mode data stack
+        queue:    [],       // queued up tokens for subsequent styling
+        nested:   undefined // pointer to innermost nested state
       };
-
-      // attach function to return the token at the top of the stack
-      obj.stackPeek = function() {
-        return this.stack[this.stack.length-1];
-      }
 
       // attach function to break out of inline mode
       obj.stopInline = function() {
-        this.isBlock = true;        // return to block mode
-        while (this.stackPeek() && !this.stackIsBlock()) {
-          this.stack.pop();         // remove inline tokens from top of stack
+        while (this.nested && !this.isBlock) {
+          this.popState(); // remove nested inline states from top of stack
         }
       }
 
       // attach function to push a state to the stack
       obj.pushState = function(stateName, isBlock, stateData) {
-        this.stack.push([ stateName, isBlock, stateData||{} ]);
+        this.isBlock = isBlock;
+        this.nested = {
+          stateName:  stateName,
+          isBlock:    isBlock,
+          isInline:   !isBlock,
+          data:       stateData||{},
+          metaData:   (isBlock ? blockData : inlineData)[ stateName ]
+        }
+        this.stack.push(this.nested);
       }
 
-      // attach function to return mode data at top of stack
-      obj.stackMeta = function() {
-        return (this.isBlock ? blockData : inlineData)[ this.stackPeek()[0] ];
-      }
-
-      // attach function to return true if current state is a block state
-      obj.stackIsBlock = function() {
-        return this.stackPeek()[1];
+      // attach function to pop a state from the stack
+      obj.popState = function() {
+        this.stack.pop();
+        this.nested = this.stack[ this.stack.length - 1 ];
+        this.isBlock = !this.nested || this.nested.isBlock;
       }
 
       // return the object
@@ -354,17 +417,34 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
     // function to copy current state
     copyState: function(state) {
-      return {
+
+      // initialize new object with shallow field copies
+      var newState = {
         isBlock:      state.isBlock,
         blanks:       state.blanks,
         stack:        state.stack.slice(0), // copy of array
         queue:        state.queue.slice(0), // copy of array
-        stackPeek:    state.stackPeek,
         stopInline:   state.stopInline,
         pushState:    state.pushState,
-        stackMeta:    state.stackMeta,
-        stackIsBlock: state.stackIsBlock
+        popState:     state.popState
       }
+
+      // copy objects in stack
+      for (var i = 0; i < state.stack.length; i++) {
+        newState.stack[i] = {
+          stateName:  state.stack[i].stateName,
+          isBlock:    state.stack[i].isBlock,
+          isInline:   state.stack[i].isInline,
+          data:       state.stack[i].data,    // CAUTION: link, not deep copy
+          metaData:   state.stack[i].metaData // read-only so link okay
+        }
+      }
+
+      // set nested pointer
+      newState.nested = newState.stack[ newState.stack.length - 1 ];
+
+      // return new state
+      return newState;
     },
 
     // function called when a blank line is passed over
@@ -407,7 +487,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
     assignToken(stream, state, style) {
       if (stream.pos == stream.start) // check that a token was consumed
         throw new Error('Failed to consume anything!');
-      if (stream.eol() && state.stack.length == 0)
+      if (stream.eol() && !state.nested)
         state.isBlock = true;         // return to block mode at end of line
       state.blanks = 0;               // reset blank line counter
       return style;                   // return the style
@@ -425,7 +505,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       if (match = stream.match(markdown.regex.i_text)) {
 
         // type of token is the type at the top of the inline stack
-        var token_type = (state.stackPeek() || [''])[0];
+        var token_type = (state.nested || {stateName:''}).stateName;
 
         // if consumption stopped at an underscore...
         if (stream.peek() == '_') {
@@ -474,8 +554,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
       // iterate over inline styles on the stack and add their css classes to list
       for (var i = 0; i < state.stack.length; i++) {
-        if (inlineData[state.stack[i][0]]) { // only push inline token styles
-          styles.push(inlineData[state.stack[i][0]].style);
+        if (state.stack[i].isInline) { // only push inline token styles
+          styles.push(state.stack[i].metaData.style);
         }
       }
 
@@ -502,20 +582,17 @@ CodeMirror.defineMode('gfm-expanded', function(){
         if (rule_i.start && (match = stream.match(rule_i.start, false))) {
 
           // call init method if one is defined
-          if (rule_i.init) {
+          if (rule_i.init)
             rule_i.init(obj, stream, state, match);
-          }
 
           // if rule has a stop token, add it to the stack so that it can
           // be processed on future function calls
-          if (rule_i.stop) {
+          if (rule_i.stop)
             state.pushState(inlineData.inlineSequence[i], false);
-            state.isBlock = false; // stack is now in inline mode
-          }
 
           // if there is a process method without a stack, call it to process token
           // (stack-specific processing occurs later in stack processing)
-          if (rule_i.process && state.stack.length == 0) {
+          if (rule_i.process && !state.nested) {
             rule_i.process(obj, stream, state, match);
 
           // if rule matches a single style, push the token to the token list
@@ -626,34 +703,21 @@ CodeMirror.defineMode('gfm-expanded', function(){
     processNestedInline: function(stream, state) {
 
       // if in a recursive mode, search for closing tag or another inline opening tag
-      if (state.stackMeta().recursive) {
+      if (state.nested.metaData.recursive) {
 
         // confirm that this is an inline mode
-        if (state.stackIsBlock())
+        if (state.nested.isBlock)
           throw new Error('Internal algorithm failure')
 
         // store current stream position
         var startPosition = stream.current().length;
 
         // try matching stream to stop token
-        var match = stream.match(state.stackMeta().stop, false);
-
-        // if match was successful...
-        if (match) {
-
-          // push the match to the inline token queue
-          this.pushInlineToken(state, match[0], null);
-
-          // close nested state
-          state.stack.pop();
-
-          // set global state to block mode if new nested state is a block state
-          // or if there are no more nested states
-          if (state.stack.length == 0 || state.stackIsBlock())
-            state.isBlock = true;
-
-        // if match was not successful, continue inline lexing
-        } else {
+        var match = stream.match(state.nested.metaData.stop, false);
+        if (match) { // if match was successful...
+          this.pushInlineToken(state, match[0], null);  // push match to inline token queue
+          state.popState();                             // close nested state
+        } else { // otherwise continue inline lexing
           this.inlineLex(this, stream, state);
         }
 
@@ -664,18 +728,11 @@ CodeMirror.defineMode('gfm-expanded', function(){
       } else {
 
         // capture current style (before potentially popping token)
-        var css = state.stackMeta().style;
+        var css = state.nested.metaData.style;
 
-        // if the closing tag was found...
-        if (stream.match(state.stackMeta().stop)) {
-
-          // close nested state
-          state.stack.pop();
-
-          // set global state to block mode if new nested state is a block state
-          // or if there are no more nested states
-          if (state.stack.length == 0 || state.stackIsBlock())
-            state.isBlock = true;
+        // if the closing tag was found, close the nested state
+        if (stream.match(state.nested.metaData.stop)) {
+          state.popState();
 
         // if no closing tag was found, consume entire line
         } else {
@@ -698,7 +755,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       // if there is no stack, we are are in base mode and are searching for
       // a token to style.  a stack is used when we are in a nested mode and
       // need to do non-default processing
-      if (state.stack.length == 0) {
+      if (!state.nested) {
 
         // try searching for a block token first
         // (if in block mode and at start of line)
@@ -717,19 +774,19 @@ CodeMirror.defineMode('gfm-expanded', function(){
       // base mode processing above.
 
       // if the nested mode has a process method, call it
-      if (state.stackMeta() && state.stackMeta().process)
-        return state.stackMeta().process(this, stream, state);
+      if (state.nested.metaData && state.nested.metaData.process)
+        return state.nested.metaData.process(this, stream, state);
 
       // if we are in a nested block mode, search for the closing tag
       if (state.isBlock) {
 
         // save the current style (before potentially popping token)
-        var css = state.stackMeta().style;
+        var css = state.nested.metaData.style;
 
         // if the stream matches the closing tag, exit nested mode
         // otherwise consume entire line and continue processing
-        if (stream.match(state.stackMeta().stop))
-          state.stack.pop();
+        if (stream.match(state.nested.metaData.stop))
+          state.popState();
         else
           stream.skipToEnd();
 
