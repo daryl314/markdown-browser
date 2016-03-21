@@ -375,6 +375,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
     // function to initialize mode state
     startState: function(basecolumn) {
 
+      // reference to 'this'
+      var _this = this;
+
       // create a default object
       var obj = {
         isBlock:  true,     // are we in block mode (vs inline)?
@@ -411,6 +414,11 @@ CodeMirror.defineMode('gfm-expanded', function(){
         this.isBlock = !this.nested || this.nested.isBlock;
       }
 
+      // function to copy state
+      obj.copy = function() {
+        return _this.copyState(this);
+      }
+
       // return the object
       return obj;
     },
@@ -426,7 +434,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
         queue:        state.queue.slice(0), // copy of array
         stopInline:   state.stopInline,
         pushState:    state.pushState,
-        popState:     state.popState
+        popState:     state.popState,
+        copy:         state.copy
       }
 
       // copy objects in stack
@@ -435,8 +444,10 @@ CodeMirror.defineMode('gfm-expanded', function(){
           stateName:  state.stack[i].stateName,
           isBlock:    state.stack[i].isBlock,
           isInline:   state.stack[i].isInline,
-          data:       state.stack[i].data,    // CAUTION: link, not deep copy
-          metaData:   state.stack[i].metaData // read-only so link okay
+          data:       state.stack[i].data.copy
+                        ? state.stack[i].data.copy()  // use copy function if provided
+                        : state.stack[i].data,        // CAUTION: link, not deep copy
+          metaData:   state.stack[i].metaData         // read-only so link okay
         }
       }
 
