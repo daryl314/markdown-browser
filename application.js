@@ -127,7 +127,18 @@ CodeMirror.defineMode('gfm-expanded', function(){
     blockData.list.init = function(obj, stream, state, match){
       state.pushState('list', true, {
         isFirstMatch:   true, // don't check for end of list if it's the first line
-        stack:          []    // stack for nested list items
+        stack:          [],   // stack for nested list items
+        copy: function(){
+          var obj = { isFirstMatch: this.isFirstMatch, stack: [], copy:this.copy };
+          for (var i = 0; i < this.stack.length; i++) {
+            obj.stack.push({
+              indentation:  this.stack[i].indentation,
+              innerState:   this.stack[i].innerState.copy(),
+              regex:        this.stack[i].regex
+            });
+          }
+          return obj;
+        }
       });
     }
     blockData.list.process = function(obj, stream, state, match){
@@ -444,7 +455,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
           stateName:  state.stack[i].stateName,
           isBlock:    state.stack[i].isBlock,
           isInline:   state.stack[i].isInline,
-          data:       state.stack[i].data.copy
+          data:       (state.stack[i].data && state.stack[i].data.copy)
                         ? state.stack[i].data.copy()  // use copy function if provided
                         : state.stack[i].data,        // CAUTION: link, not deep copy
           metaData:   state.stack[i].metaData         // read-only so link okay
@@ -814,6 +825,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
       } catch (ex) {
         console.error(ex);
+        console.log(ex.stack);
         while (state.nested) state.popState();
         stream.skipToEnd();
         return 'error solar-bg-base03';
