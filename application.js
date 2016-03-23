@@ -336,16 +336,18 @@ CodeMirror.defineMode('gfm-expanded', function(){
 
     // callback function for html mode processing
     inlineData.html.process = function(obj, stream, state) {
+      var cap; // variable to hold captured matches
 
       // html mode data
       var data = state.nested.data;
 
       // consume any non-tag text
-      stream.match(/[^<]*/);
+      if (stream.match(/[^<]+/)) {
+        return obj.assignToken(stream, state, null);
+      }
 
       // if there is text to consume ...
       if (!stream.eol()) {
-        var cap; // variable to hold captured matches
 
         // if stream matches a closing tag...
         if (cap = stream.match(/<\/\w+.*?>/)) {
@@ -368,6 +370,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
         } else {
           if (!stream.eat('<'))
             throw new Error('Failed to consume a token')
+          else
+            return obj.assignToken(stream, state, null);
         }
       }
 
