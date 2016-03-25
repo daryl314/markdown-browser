@@ -17,14 +17,18 @@
   <!-- CODEMIRROR CSS -->
   <link rel="stylesheet" href="CodeMirror/lib/codemirror.css" />
   <link rel="stylesheet" href="CodeMirror/addon/fold/foldgutter.css" />
+  <link rel="stylesheet" href="CodeMirror/addon/dialog/dialog.css" />
 
   <!-- CODEMIRROR JS -->
   <script type="text/javascript" src="CodeMirror/lib/codemirror.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/dialog/dialog.js"></script>
   <script type="text/javascript" src="CodeMirror/addon/edit/continuelist.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/edit/matchbrackets.js"></script>
   <script type="text/javascript" src="CodeMirror/addon/fold/foldcode.js"></script>
   <script type="text/javascript" src="CodeMirror/addon/fold/foldgutter.js"></script>
-  <script type="text/javascript" src="CodeMirror/addon/fold/markdown-fold.js"></script>
-  <script type="text/javascript" src="CodeMirror/mode/xml/xml.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/search/searchcursor.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/selection/active-line.js"></script>
+  <script type="text/javascript" src="CodeMirror/keymap/vim.js"></script>
 
   <!-- LATEX RENDERING -->
   <link rel="stylesheet" href="katex-0.5.1/katex.min.css">
@@ -35,15 +39,15 @@
   <script type="text/javascript" src="markdown.js"></script>
   <script type="text/javascript" src="sample-markdown.js"></script>
   <script type="text/javascript" src="application.js"></script>
+
+  <!-- EDITOR STYLESHEET (adapted from CodeMirror solarized style)-->
   <style>
+
+    /* Editor window properties */
     .CodeMirror {
       border: 1px solid #eee;
       height: 100vh;
     }
-  </style>
-
-  <!-- EDITOR STYLESHEET (adapted from CodeMirror solarized style)-->
-  <style>
 
     /*
     Solarized color pallet
@@ -142,10 +146,12 @@
 
     .CodeMirror-cursor { border-left: 1px solid #819090; }
 
+    .cm-fat-cursor .CodeMirror-cursor { background: #002b36; }
+
     .CodeMirror-activeline-background {
       background: rgba(0, 0, 0, 0.10);
     }
-    
+
   </style>
 </head>
 <body>
