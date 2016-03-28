@@ -167,7 +167,12 @@
         }).toArray().join('\n'));
 
       // fill TOC elements
-      $el.find('toc').html(toc);
+      $el.find('toc').attr('id', 'toc').html(toc);
+
+      // add links back to TOC in mobile view
+      $('main#content').find('h1').add('h2').each(function(){
+        $(this).append('<a href="#toc" class="hidden-sm hidden-md hidden-lg" style="font-size: 0.8em;"><sup>[&uarr;]</sup></a>'); 
+      });
 
       // add latex processor if applicable
       if (latex) {
