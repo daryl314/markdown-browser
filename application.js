@@ -53,6 +53,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
         }                                           //
         return queue;                               // return the list of styled tokens
       },
+      skipToEnd:function()    { this.pos = this.string.length         },
       eat:      function(pat) { return this.match(pat)                },
       current:  function()    { return this.string.slice(0,this.pos)  },
       peek:     function()    { return this.string[this.pos]          },
@@ -270,8 +271,8 @@ CodeMirror.defineMode('gfm-expanded', function(){
   // inline mode data
   var inlineData = function(){
     var inlineData = {
-      i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*\\\\\)/,    recursive:false,  style:'solar-red'                                   },
-      b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*\$\$/,      recursive:false,  style:'solar-red'                                   },
+      i_latex:  { seq:0,  start:/^\\\\\(/,    stop:/.*?\\\\\)/,   recursive:false,  style:'solar-red'                                   },
+      b_latex:  { seq:1,  start:/^ *\$\$/,    stop:/.*?\$\$/,     recursive:false,  style:'solar-red'                                   },
       escape:   { seq:2,  start:markdown.regex.escape,            recursive:false,  style:'escape solar-yellow'                         },
       autolink: { seq:3,  start:markdown.regex.autolink,          recursive:false,  style:'link solar-cyan'                             },
       url:      { seq:4,  start:markdown.regex.url,               recursive:false,  style:'link solar-cyan'                             },
@@ -871,14 +872,19 @@ function latexToHTML(latex, isBlock) {
 // function to render markdown into the specified element
 renderMarkdown = function(x, $el) {
 
-  // populate specified element with text converted to markdown
-  $el.html(markdown.toHTML(x
-    .replace(/\[TOC\]/gi, '<toc></toc>') // TOC jQuery can find
-  ,{includeLines:true}));
+  // convert markdown to HTML
+  var html = markdown.toHTML(
+    x.replace(/\[TOC\]/gi, '<toc></toc>') // TOC jQuery can find
+    ,{includeLines:true}
+  );
 
-  // process <latex> tags in rendered markdown
-  $el.find('latex.block' ).each(function(){ $(this).html( latexToHTML($(this).html(), true ) ) });
-  $el.find('latex.inline').each(function(){ $(this).html( latexToHTML($(this).html(), false) ) });
+  // process <latex> tags
+  html = html.replace(/(<latex.*?>)([\s\S]*?)(<\/latex>)/g, function(match,p1,p2,p3){
+    return p1 + latexToHTML(p2) + p3;
+  })
+
+  // populate specified element with text converted to markdown
+  $el.html(html);
 
   // create a table of contents
   var toc = markdown.toHTML(
@@ -1208,29 +1214,7 @@ function registerCloseBrackets(){
 // LAUNCH EDITOR //
 ///////////////////
 
-$(function(){
-
-  // test function
-  window.test = function(){
-    var $el = $('section#viewer-container');
-    $el.html(mdToHTML(cm.getValue(), regex));
-
-    // style tables
-    $el.find('table').addClass('table table-striped table-hover table-condensed');
-    $el.find('thead').addClass('btn-primary');
-
-    // perform syntax highlighting
-    $el.find('pre code').each(function(i, block) { hljs.highlightBlock(block); });
-
-    // create bootstrap alert boxes
-    $el.find('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
-    $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
-
-    return mdToHTML(cm.getValue(), regex, true);
-  }
-
-  // starter text for editor
-  $('textarea#editor').text(md_test + gfm_test);
+function launchCodeMirror() {
 
   // add plugin to auto-close brackets
   registerCloseBrackets();
@@ -1303,5 +1287,29 @@ $(function(){
   scrollSync = _.debounce(function(a){scrollTo(visibleLines(a).top)}, 100, {maxWait:100});
   cm.on('scroll', scrollSync);
   cm.on('scroll', scrollSync);
+}
 
+$(function(){
+
+  // test function
+  window.test = function(){
+    var $el = $('section#viewer-container');
+    $el.html(mdToHTML(cm.getValue(), regex));
+
+    // style tables
+    $el.find('table').addClass('table table-striped table-hover table-condensed');
+    $el.find('thead').addClass('btn-primary');
+
+    // perform syntax highlighting
+    $el.find('pre code').each(function(i, block) { hljs.highlightBlock(block); });
+
+    // create bootstrap alert boxes
+    $el.find('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
+    $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
+
+    return mdToHTML(cm.getValue(), regex, true);
+  }
+
+  // starter text for editor
+  $('textarea#editor').text(md_test + gfm_test);
 });
