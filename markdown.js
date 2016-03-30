@@ -926,6 +926,17 @@ markdown.block = function(){
     for (var i = 0; i < cap.length; i++) {
       var item = cap[i];
 
+      // if there is unmatched latex, combine list items
+      while (
+        (i < cap.length && ( // there are tokens to join
+                (item.match(/\$\$/g) && item.match(/\$\$/g).length % 2 == 1) // unmatched block latex
+            ||  (item.match(/\\\\\(/) || []).length > (item.match(/\\\\\)/) || []).length // unmatched inline latex
+        ))
+      ) {
+        item = item + cap[i+1];
+        cap = cap.slice(0,i).concat(cap.slice(i+1))
+      }
+
       // remove bullet from current item for recursive processing
       var matchLength = item.match(/^ *([*+-]|\d+\.) +/)[0].length;
       item = item.slice(matchLength); // slice off bullet
