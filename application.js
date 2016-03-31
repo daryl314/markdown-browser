@@ -181,10 +181,21 @@ CodeMirror.defineMode('gfm-expanded', function(){
         // reference to current nested state
         var nested = data.stack[ data.stack.length - 1 ];
 
+        // check whether there is an open latex block on the stack.  symbols in latex can look like
+        // list markers, so new line detection needs to be turned off in this case
+        var openLatex =
+          nested != null                      // have nested...
+          && nested.innerState != null        // and nested.innerState...
+          && nested.innerState.nested != null // and nested.innerState.nested...
+          && (                                // and nested state is either...
+               nested.innerState.nested.stateName == 'i_latex'  // inline latex
+            || nested.innerState.nested.stateName == 'b_latex'  // or block latex
+          );
+
         // if line starts with a bullet, create a new nested state
         // otherwise match leading whitespace
         var match;
-        if (match = stream.match(blockData.list.start, false)) {
+        if (!openLatex && (match = stream.match(blockData.list.start, false))) {
           queue.push([                        // push styled bullet to queue
             match[0],                         //   text matching bullet
             blockData.list.style]);           //   style for a bullet
