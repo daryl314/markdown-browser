@@ -1002,21 +1002,24 @@ var scrollTo = function(line, marker) {
 // function to render markdown
 var render = function(){
 
+  // save cursor position
+  var currentScroll = $('section#viewer-container').scrollTop();
+
   // execute rendering
   renderMarkdown(cm.getValue(),$('#viewer'));
 
   // capture line numbers
   var x = [], y = [];
   var lineRefs = $('section#viewer-container [data-source-line]').each( function(){
-    x.push( parseInt($(this).attr('data-source-line')) );
-    y.push( $(this).position().top                     );
+    x.push( parseInt($(this).attr('data-source-line'))                          );
+    y.push( $(this).position().top + $('section#viewer-container').scrollTop()  );
   })
 
   // interpolate/extrapolate to create a line number lookup array
   lineMap = interpolate(x, y, 1, cm.lastLine());
 
   // scroll to the cursor location
-  scrollTo(visibleLines(cm).cursor, 'center');
+  $('section#viewer-container').scrollTop(currentScroll);
 
 }
 
