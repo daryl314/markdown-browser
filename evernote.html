@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Markdown Browser</title>
+  <script type="text/javascript" src="/lib/evernote-sdk-minified.js"></script>
+  <script type="text/javascript" src="/lib/jsOAuth-1.3.7.min.js"></script>
+  <script type="text/javascript">
+
+    if (localStorage.getItem('token') === null) {
+      alert('Token not set!')
+    } else {
+      var noteStoreURL = "/evernote/shard/s2/notestore";
+      var authenticationToken = localStorage.getItem('token');
+      var noteStoreTransport = new Thrift.BinaryHttpTransport(noteStoreURL);
+      var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
+      var noteStore = new NoteStoreClient(noteStoreProtocol);
+
+      noteStore.listNotebooks(authenticationToken, function (notebooks) {
+        console.log(notebooks);
+      }, function onerror(error) {
+        console.log(error);
+      });
+    }
+
+  </script>
+</head>
+<body data-spy="scroll" data-target="#toc">
+</body>
+</html>
