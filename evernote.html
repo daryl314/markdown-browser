@@ -11,17 +11,55 @@
     if (localStorage.getItem('token') === null) {
       alert('Token not set!')
     } else {
-      var noteStoreURL = "/evernote/shard/s2/notestore";
+      var noteStoreURL = "proxy-https/www.evernote.com/shard/s2/notestore";
       var authenticationToken = localStorage.getItem('token');
       var noteStoreTransport = new Thrift.BinaryHttpTransport(noteStoreURL);
       var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
       var noteStore = new NoteStoreClient(noteStoreProtocol);
 
-      noteStore.listNotebooks(authenticationToken, function (notebooks) {
+      /*noteStore.listNotebooks(authenticationToken, function (notebooks) {
         console.log(notebooks);
       }, function onerror(error) {
         console.log(error);
-      });
+      });*/
+
+      noteStore.listTags(authenticationToken, function (tags) {
+        console.log(tags);
+        var markdown_guid;
+        for (var i = 0; i < tags.length ; i++) {
+          if (tags[i].name == 'markdown') {
+            markdown_guid = tags[i].guid;
+          }
+        }
+        if (markdown_guid) {
+          noteFilter = new NoteFilter({
+            tagGuids: [markdown_guid]
+          });
+          resultsSpec = new NotesMetadataResultSpec({
+            includeTitle: true
+          });
+          noteStore.findNotesMetadata(
+            authenticationToken,
+            noteFilter,
+            0,
+            100,
+            resultsSpec,
+            function (notes) {
+              console.log(notes);
+              noteStore.getNoteContent(authenticationToken, notes.notes[0].guid, function(note) {
+                console.log(note);
+              }, function onerror(error) {
+                console.log(error);
+              })
+            },
+            function onerror(error) {
+              console.log(error);
+            }
+          )
+        }
+      }, function onerror(error) {
+        console.error(error);
+      })
     }
 
   </script>
