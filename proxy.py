@@ -15,7 +15,8 @@ mimeMap = {
     ".jpg"  : 'image/jpg',
     ".gif"  : 'image/gif',
     ".js"   : 'application/javascript',
-    ".css"  : 'text/css'
+    ".css"  : 'text/css',
+    ".md"   : 'text/plain'
 }
 
 class S(BaseHTTPRequestHandler):
@@ -60,7 +61,7 @@ class S(BaseHTTPRequestHandler):
             try:
                 ext = path.splitext(self.path)[1]
                 if ext in mimeMap:
-                    f = open(curdir + sep + self.path)
+                    f = open(curdir + sep + self.path.replace('%20', ' '))
                     self.send_response(200)
                     self.send_header('Content-type',mimeMap[ext])
                     self.end_headers()

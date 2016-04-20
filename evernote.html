@@ -4,66 +4,203 @@
   <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Markdown Browser</title>
+  <link rel="stylesheet" href="lib/bootswatch-cosmo.min.css" />
+  <script type="text/javascript" src="lib/jquery.min.js"></script>
+  <script type="text/javascript" src="markdown.js"></script>
   <script type="text/javascript" src="/lib/evernote-sdk-minified.js"></script>
   <script type="text/javascript" src="/lib/jsOAuth-1.3.7.min.js"></script>
   <script type="text/javascript">
 
-    if (localStorage.getItem('token') === null) {
-      alert('Token not set!')
-    } else {
-      var noteStoreURL = "proxy-https/www.evernote.com/shard/s2/notestore";
-      var authenticationToken = localStorage.getItem('token');
-      var noteStoreTransport = new Thrift.BinaryHttpTransport(noteStoreURL);
-      var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
-      var noteStore = new NoteStoreClient(noteStoreProtocol);
+    function stripFormatting(txt) {
+      return txt
+        .replace(/\s*<span.*?>([\S\s]*?)<\/span>\s*/g, '$1')  // clear span tags
+        .replace(/\n/g,'')                                    // clear newlines
+        .replace(/<\/div>[\s\n]*<div>/g,                      // clear whitespace between div tags
+          '</div><div>')
+        .replace(/(<\/?div>)+/g,'\n')                         // convert <div> boundaries to newlines
+        .replace(/<br.*?>/g,'\n')                             // convert <br> to newlines
+        .replace(/<.*?>/g,'')                                 // strip any remaining tags
+        .replace(/&nbsp;/g,' ')                               // &nbsp; -> ' '
+        .replace(/&lt;/g,'<')                                 // &lt;   -> '<'
+        .replace(/&gt;/g,'>')                                 // &gt;   -> '>'
+        .replace(/&apos;/g,"'")                               // &apos; -> "'"
+        .replace(/&quot;/g,'"')                               // &quot; -> '"'
+        .replace(/&#124;/g, '|')                              // &#124; -> '|'
+        .replace(/&amp;/g,'&')                                // &amp;  -> '&'
+    }
 
-      /*noteStore.listNotebooks(authenticationToken, function (notebooks) {
-        console.log(notebooks);
-      }, function onerror(error) {
-        console.log(error);
-      });*/
+    function addFormatting(txt) {
+      return '<?xml version="1.0" encoding="UTF-8"?>' +
+        '<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">' +
+        '<en-note>' +
+          txt
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/(.+)/mg, '<div>$1</div>')
+            .replace(/^$/mg, '<div><br /></div>')
+          +
+        '</en-note>'
+    }
 
+    function createNote(title, content, callback) {
+      if (title   === undefined) throw new Error('Title is required to create a note!');
+      if (content === undefined) throw new Error('Content is required to create a note!');
+      var note = new Note();
+      note.title = title;
+      note.content = addFormatting(content);
+      noteStore.createNote(authenticationToken, note, function(note, err) {
+        if (err) {
+          console.error('Note creation error!');
+          console.error(err);
+        } else {
+          console.log('Note created!');
+          console.log(note);
+          if (callback) callback(note);
+        }
+      });
+    }
+
+    function updateNote(title, content, guid, callback) {
+      if (guid === undefined) guid = "550e788f-d8b7-4c61-af7d-93a0d23c842b";
+
+      if (guid    === undefined) throw new Error('GUID is required to create a note!');
+      if (title   === undefined) throw new Error('Title is required to create a note!');
+      if (content === undefined) throw new Error('Content is required to create a note!');
+
+      var note = new Note();
+      note.guid = guid;
+      note.title = title;
+      note.content = addFormatting(content);
+      note.tagNames = ['markdown'];
+
+      noteStore.updateNote(authenticationToken, note, function(note, err) {
+        if (err) {
+          console.error('Note update error!');
+          console.error(err);
+        } else {
+          console.log('Note updated!');
+          console.log(note);
+          if (callback) callback(note);
+        }
+      });
+    }
+
+    function getTag(tagName, callback) {
       noteStore.listTags(authenticationToken, function (tags) {
-        console.log(tags);
         var markdown_guid;
         for (var i = 0; i < tags.length ; i++) {
-          if (tags[i].name == 'markdown') {
+          if (tags[i].name == tagName) {
             markdown_guid = tags[i].guid;
           }
         }
         if (markdown_guid) {
-          noteFilter = new NoteFilter({
-            tagGuids: [markdown_guid]
-          });
-          resultsSpec = new NotesMetadataResultSpec({
-            includeTitle: true
-          });
-          noteStore.findNotesMetadata(
-            authenticationToken,
-            noteFilter,
-            0,
-            100,
-            resultsSpec,
-            function (notes) {
-              console.log(notes);
-              noteStore.getNoteContent(authenticationToken, notes.notes[0].guid, function(note) {
-                console.log(note);
-              }, function onerror(error) {
-                console.log(error);
-              })
-            },
-            function onerror(error) {
-              console.log(error);
-            }
-          )
+          callback(markdown_guid)
         }
       }, function onerror(error) {
         console.error(error);
       })
     }
 
+    function fetchNotesByTag(guid, callback) {
+      noteFilter = new NoteFilter({
+        tagGuids: [guid],
+        order: NoteSortOrder.TITLE
+      });
+      resultsSpec = new NotesMetadataResultSpec({
+        includeTitle: true
+      });
+      noteStore.findNotesMetadata(
+        authenticationToken,
+        noteFilter,
+        0,
+        100,
+        resultsSpec,
+        callback,
+        function onerror(error) {
+          console.error(error);
+        }
+      )
+    }
+
+    function postFetch(notes) {
+      window.noteData = notes;
+      populateList(notes.notes);
+      noteStore.getNoteContent(authenticationToken, notes.notes[0].guid, function(note) {
+        $('main').html(markdown.toHTML(stripFormatting(note)));
+        window.noteText = note;
+      }, function onerror(error) {
+        console.error(error);
+      })
+    }
+
+    function fetchNote(guid) {
+      noteStore.getNoteContent(authenticationToken, guid, function(note) {
+        $('main').html(markdown.toHTML(stripFormatting(note)));
+        window.noteText = note;
+      }, function onerror(error) {
+        console.error(error);
+      })
+    }
+
+    function populateList(notes) {
+      for (var i = 0; i < notes.length; i++) {
+        var note = notes[i];
+        $('ul.list-group').prepend('<a href="#" class="list-group-item" data-guid="'+note.guid+'">' + note.title + '</a>');
+      }
+      $('ul.list-group').on('click', 'a', window.clickHandler);
+    }
+
+    function clickHandler() {
+      $('a.list-group-item.active').removeClass('active');
+      var guid = $(this).data('guid');
+      $(this).addClass('active');
+      console.log('Fetching note: '+guid);
+      fetchNote(guid);
+    }
+
+    /*
+     * Startup
+     */
+
+    if (localStorage.getItem('token') === null) {
+      alert('Token not set!')
+    } else {
+      var noteStoreURL = "proxy-https/www.evernote.com/shard/s2/notestore";
+      window.authenticationToken = localStorage.getItem('token');
+      var noteStoreTransport = new Thrift.BinaryHttpTransport(noteStoreURL);
+      var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
+      window.noteStore = new NoteStoreClient(noteStoreProtocol);
+
+      getTag('markdown', function(guid){
+        fetchNotesByTag(guid, postFetch)
+      })
+    }
+
   </script>
 </head>
 <body data-spy="scroll" data-target="#toc">
-</body>
+  <div class="container-fluid">
+    <div class="row">
+      <section id="nav-list" class="col-md-2" role="complientary">
+        <ul class="list-group">
+          <li class="list-group-item">
+            <span class="badge">14</span>
+            Cras justo odio
+          </li>
+          <li class="list-group-item">
+            <span class="badge">2</span>
+            Dapibus ac facilisis in
+          </li>
+          <li class="list-group-item">
+            <span class="badge">1</span>
+            Morbi leo risus
+          </li>
+        </ul>
+      </section>
+      <main id="content" class="col-md-8" role="main">
+        <textarea id="editor"></textarea>
+      </main>
+    </div>
+  </div></body>
 </html>
