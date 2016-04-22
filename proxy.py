@@ -11,12 +11,14 @@ import httplib
 
 # mime types associted with file extensions
 mimeMap = {
-    ".html" : 'text/html',
-    ".jpg"  : 'image/jpg',
-    ".gif"  : 'image/gif',
-    ".js"   : 'application/javascript',
-    ".css"  : 'text/css',
-    ".md"   : 'text/plain'
+    ".html"     : 'text/html',
+    ".jpg"      : 'image/jpg',
+    ".gif"      : 'image/gif',
+    ".js"       : 'application/javascript',
+    ".css"      : 'text/css',
+    ".md"       : 'text/plain',
+    ".woff"     : 'application/font-woff',
+    ".woff2"    : 'application/font-woff'
 }
 
 class S(BaseHTTPRequestHandler):

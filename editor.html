@@ -34,6 +34,11 @@
   <link rel="stylesheet" href="katex-0.5.1/katex.min.css">
   <script src="katex-0.5.1/katex.min.js"></script>
 
+  <!-- EVERNOTE CONNECTION RESOURCES -->
+  <script type="text/javascript" src="/lib/evernote-sdk-minified.js"></script>
+  <script type="text/javascript" src="/lib/jsOAuth-1.3.7.min.js"></script>
+  <script type="text/javascript" src="evernote.js"></script>
+
   <!-- APPLICATION RESOURCES -->
   <script type="text/javascript" src="marked.js"></script>
   <script type="text/javascript" src="markdown.js"></script>
@@ -44,10 +49,19 @@
   <style>
 
     /* Editor window properties */
+
     .CodeMirror {
       border: 1px solid #eee;
       height: 100vh;
     }
+
+    /* Shrink height of menu bar */
+    header .navbar-nav > li > a, .navbar-brand {
+      padding-top:4px !important;
+      padding-bottom:0 !important;
+      height: 28px;
+    }
+    header .navbar {min-height:28px !important;}
 
     /*
     Solarized color pallet
@@ -155,8 +169,34 @@
   </style>
 </head>
 <body>
+  <header class="hidden-print">
+    <nav class="navbar navbar-inverse">
+      <div class="container-fluid">
+        <div class="navbar-header">
+          <ul class="nav navbar-nav">
+            <li class="dropdown">
+              <a id="showNoteList" href="#" role="button" aria-expanded="false">
+                Load <span class="caret"></span>
+              </a>
+            </li>
+            <li><a href="#">Save</a></li>
+            <li><a href="#">Save As</a></li>
+            <li><a href="#">History</a></li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  </header>
   <div class="container-fluid">
     <div class="row">
+      <section id="nav-list" style="display:none" role="complientary">
+        <ul class="list-group">
+          <li class="list-group-item">
+            <span class="badge">1</span>
+            Loading data...
+          </li>
+        </ul>
+      </section>
       <main id="content" class="col-md-6" role="main">
         <textarea id="editor"></textarea>
       </main>

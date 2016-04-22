@@ -1303,6 +1303,57 @@ function launchCodeMirror() {
   cm.on('scroll', scrollSync);
 }
 
+// closure containing evernote connection code
+function connectToEvernote() {
+
+  function fetchNote(guid) {
+    EN.fetchNoteContent(guid, function(note){
+      cm.setValue(note);
+    })
+  }
+
+  function populateList(notes) {
+    var notebooks = _.chain(EN.getNoteData()).pluck('notebook').unique().sort().value();
+    var groupedNotes = _.groupBy(EN.getNoteData(), 'notebook');
+    $('ul.list-group').off('click').empty();
+    for (var i = 0; i < notebooks.length; i++) {
+      var notebook = notebooks[i];
+      $('ul.list-group').append('<li class="list-group-item active">' + notebook + '</li>');
+      var notes = _.sortBy(groupedNotes[notebook], 'title');
+      for (var j = 0; j < notes.length; j++) {
+        var note = notes[j];
+        $('ul.list-group').append('<a href="#" class="list-group-item" data-guid="'+note.guid+'" style="padding:2px 15px;">' + note.title + '</a>');
+      }
+    }
+    $('ul.list-group').on('click', 'a', clickHandler);
+  }
+
+  function clickHandler() {
+    $('a.list-group-item.disabled').removeClass('disabled');
+    var guid = $(this).data('guid');
+    $(this).addClass('disabled');
+    fetchNote(guid);
+  }
+
+  $('a#showNoteList').on('click', function toggleDropdown() {
+    $('a#showNoteList').toggleClass('active');
+    $('section#nav-list').toggle().addClass('col-md-2');
+    $('section#viewer-container').toggleClass('col-md-6').toggleClass('col-md-5');
+    $('main#content').toggleClass('col-md-6').toggleClass('col-md-5');
+    if (!window.EN) {
+      if (localStorage.getItem('token') === null) {
+        alert('Token not set!')
+      } else {
+        window.EN = new EvernoteConnection(localStorage.getItem('token'));
+        EN.fetchData(function(notes){
+          populateList(notes.notes);
+        })
+      }
+    }
+  });
+
+}
+
 $(function(){
 
   // test function
@@ -1325,5 +1376,12 @@ $(function(){
   }
 
   // starter text for editor
-  $('textarea#editor').text(md_test + gfm_test);
+  //$('textarea#editor').text(md_test + gfm_test);
+  $.ajax('Inbox/Linear%20Algebra.md').success(function(x){
+    $('textarea#editor').text(x);
+    launchCodeMirror();
+  })
+
+  // start evernote connection
+  connectToEvernote();
 });
