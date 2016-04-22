@@ -17,6 +17,7 @@ mimeMap = {
     ".js"       : 'application/javascript',
     ".css"      : 'text/css',
     ".md"       : 'text/plain',
+    ".ico"      : 'image/x-icon',
     ".woff"     : 'application/font-woff',
     ".woff2"    : 'application/font-woff'
 }
