@@ -1228,6 +1228,7 @@ function registerCloseBrackets(){
 // LAUNCH EDITOR //
 ///////////////////
 
+// function to initialize CodeMirror once startup text is available
 function launchCodeMirror() {
 
   // add plugin to auto-close brackets
@@ -1354,26 +1355,8 @@ function connectToEvernote() {
 
 }
 
+// set everything in motion once document is ready
 $(function(){
-
-  // test function
-  window.test = function(){
-    var $el = $('section#viewer-container');
-    $el.html(mdToHTML(cm.getValue(), regex));
-
-    // style tables
-    $el.find('table').addClass('table table-striped table-hover table-condensed');
-    $el.find('thead').addClass('btn-primary');
-
-    // perform syntax highlighting
-    $el.find('pre code').each(function(i, block) { hljs.highlightBlock(block); });
-
-    // create bootstrap alert boxes
-    $el.find('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
-    $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
-
-    return mdToHTML(cm.getValue(), regex, true);
-  }
 
   // starter text for editor
   //$('textarea#editor').text(md_test + gfm_test);
