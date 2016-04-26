@@ -1336,20 +1336,24 @@ function connectToEvernote() {
     fetchNote(guid);
   }
 
+  function updateToken() {
+    localStorage.setItem('token',
+      prompt('Please enter your Evernote developer token', localStorage.getItem('token'))
+    )
+  }
+
   $('a#showNoteList').on('click', function toggleDropdown() {
     $('a#showNoteList').toggleClass('active');
     $('section#nav-list').toggle().addClass('col-md-2');
     $('section#viewer-container').toggleClass('col-md-6').toggleClass('col-md-5');
     $('main#content').toggleClass('col-md-6').toggleClass('col-md-5');
     if (!window.EN) {
-      if (localStorage.getItem('token') === null) {
-        alert('Token not set!')
-      } else {
-        window.EN = new EvernoteConnection(localStorage.getItem('token'));
-        EN.fetchData(function(notes){
-          populateList(notes.notes);
-        })
-      }
+      if (localStorage.getItem('token') === null)
+        updateToken();
+      window.EN = new EvernoteConnection(localStorage.getItem('token'));
+      EN.fetchData(function(notes){
+        populateList(notes.notes);
+      });
     }
   });
 
@@ -1359,11 +1363,12 @@ function connectToEvernote() {
 $(function(){
 
   // starter text for editor
-  //$('textarea#editor').text(md_test + gfm_test);
-  $.ajax('Inbox/Linear%20Algebra.md').success(function(x){
-    $('textarea#editor').text(x);
-    launchCodeMirror();
-  })
+  $('textarea#editor').text(md_test + gfm_test);
+  launchCodeMirror();
+  // $.ajax('Inbox/Linear%20Algebra.md').success(function(x){
+  //   $('textarea#editor').text(x);
+  //   launchCodeMirror();
+  // })
 
   // start evernote connection
   connectToEvernote();

@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="lib/bootswatch-cosmo.min.css" />
   <link rel="stylesheet" href="lib/highlight-sunburst.min.css" />
   <script type="text/javascript" src="lib/jquery.min.js"></script>
+  <script type="text/javascript" src="lib/bootstrap-dropdown-3.3.4.js"></script>
   <script type="text/javascript" src="lib/lodash.min.js"></script>
   <script type="text/javascript" src="lib/highlight-9.1.0.min.js"></script>
   <script type="text/javascript">window.module={};//for diff.js node exports</script>
@@ -186,13 +187,17 @@
         <div class="navbar-header">
           <ul class="nav navbar-nav">
             <li class="dropdown">
-              <a id="showNoteList" href="#" role="button" aria-expanded="false">
-                Load <span class="caret"></span>
-              </a>
+              <a class="dropdown-toggle" role="button" data-toggle="dropdown">File
+              <span class="caret"></span></a>
+              <ul class="dropdown-menu">
+                <li><a id="showNoteList" href="#">Load</a></li>
+                <li><a href="#">Save</a></li>
+                <li><a href="#">Save As</a></li>
+                <li role="separator" class="divider"></li>
+                <li><a href="#">History</a></li>
+              </ul>
             </li>
-            <li><a href="#">Save</a></li>
-            <li><a href="#">Save As</a></li>
-            <li><a href="#">History</a></li>
+            <li><a href="#">Menu</a></li>
           </ul>
         </div>
       </div>
