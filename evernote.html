@@ -11,7 +11,224 @@
   <script type="text/javascript" src="/lib/evernote-sdk-minified.js"></script>
   <script type="text/javascript" src="/lib/jsOAuth-1.3.7.min.js"></script>
   <script type="text/javascript" src="evernote.js"></script>
+  <script type="text/javascript">window.module={};//for diff.js node exports</script><script type="text/javascript" src="diff.js"></script>
+
+  <style>
+
+      body {
+        padding: 1em;
+      }
+      table.text-diff {
+        white-space: pre;
+        font-family: monospace;
+        overflow-wrap: break-word;
+        font-size: 0.8em;
+      }
+      table.text-diff, table.text-diff th, table.text-diff td {
+        border: 1px solid grey;
+        border-collapse: collapse;
+      }
+      table.text-diff tr.line-equal {
+        background-color: whitesmoke
+      }
+      table.text-diff tr.line-insert {
+        background-color: lightgreen
+      }
+      table.text-diff tr.line-delete {
+        background-color: lightpink
+      }
+      table.text-diff tr.line-change {
+        background-color: lavender
+      }
+      table.text-diff span.chunk-equal {
+
+      }
+      table.text-diff span.chunk-insert {
+        background-color: lightgreen
+      }
+      table.text-diff span.chunk-delete {
+        background-color: lightpink
+      }
+
+
+
+
+      div.diff span.flag {
+        background-color: LightSteelBlue
+      }
+      div.diff span.add, span.pass {
+        background-color: PaleGreen
+      }
+      div.diff span.delete, span.fail {
+        background-color: red;
+        color: white;
+      }
+      div.diff span.skipped {
+        background-color: Gainsboro
+      }
+      table#line-check {
+        table-layout: fixed;
+        width: 98vw;
+      }
+      table#line-check td.line {
+        width: 3em;
+      }
+      table#line-check td.raw {
+        width: 40vw;
+      }
+      table#line-check td.rendered {
+        width: 40vw;
+      }
+
+  </style>
+
   <script type="text/javascript">
+
+  /////////////////////////////////////
+  // FUNCTION TO COMPARE TEXT BLOCKS //
+  /////////////////////////////////////
+
+    function createRow($el, rowClass, a, b, c, d) {
+      $el.append(
+        '<tr class="' + rowClass + '">' +
+          '<td>' + a + '</td>' +
+          '<td>' + b + '</td>' +
+          '<td>' + c + '</td>' +
+          '<td>' + d + '</td>' +
+        '</tr>'
+      );
+    }
+
+    function compareBlocks(text1, text2, title, $container) {
+
+      // function to remap diff format to line format
+      function remap(key) {
+        if (key == diff.INSERT) {
+          return 1;
+        } else if (key == diff.EQUAL) {
+          return 0;
+        } else if (key == diff.DELETE) {
+          return -1;
+        } else {
+          throw new Error('Invalid diff type');
+        }
+      }
+
+      // default to body for container
+      $container = $container || $('body');
+
+      // prepare text area
+      if (title) $('<h2>'+title+'</h2>').appendTo($container);
+      $table = $('<table class="text-diff">').appendTo($container);
+
+      // compare results
+      d = diff(text1, text2);
+
+      // convert diff to line-based format
+      var lineDiffs = [];
+      var currentLine = [];
+      for (var i = 0; i < d.length; i++) {
+
+        // split current diff into lines (without trailing newline)
+        var lineData = d[i][1].replace(/\n$/, '').split(/\n/);
+
+        // insert/equal/delete key in new format
+        var key = remap(d[i][0]);
+
+        // extend current line with new data
+        currentLine.push([key, lineData[0]]);
+
+        //
+        for (var j = 1; j < lineData.length; j++) {
+          lineDiffs.push(currentLine);
+          currentLine = [[key, lineData[j]]];
+        }
+
+        // terminate current line if block ends with a newline
+        if (d[i][1][ d[i][1].length-1 ] == '\n') {
+          lineDiffs.push(currentLine);
+          currentLine = [];
+        }
+      }
+
+      // initialize counters for LHS and RHS line number
+      var linesL = 0, linesR = 0;
+
+      // display output
+      for (var i = 0; i < lineDiffs.length; i++) {
+        var line = lineDiffs[i];
+        if (line.length == 1) {
+          if (line[0][0] == 0) {
+            createRow($table, 'line-equal', linesL++, line[0][1], linesR++, line[0][1]);
+          } else if (line[0][0] == 1) {
+            createRow($table, 'line-insert', linesL++, '', linesR, line[0][1]);
+          } else {
+            createRow($table, 'line-delete', linesL, line[0][1], linesR++, '');
+          }
+        } else {
+          var dataL = '', dataR = '';
+          for (var j = 0; j < line.length; j++) {
+            if (line[j][0] == 0) {
+              dataL += '<span class="chunk-equal">' + line[j][1] + '</span>';
+              dataR += '<span class="chunk-equal">' + line[j][1] + '</span>';
+            } else if (line[j][0] == -1) {
+              dataL += '<span class="chunk-delete">' + line[j][1] + '</span>';
+            } else {
+              dataR += '<span class="chunk-insert">' + line[j][1] + '</span>';
+            }
+          }
+          createRow($table, 'line-change', linesL++, dataL, linesR++, dataR);
+        }
+      }
+
+      // // prepare text areas
+      // if (title) $('<h2>'+title+'</h2>').appendTo($container);
+      // $container.append('<div class="container-fluid"><div class="row diff">');
+      // $container = $container.find('div.row').last();
+      // $el1 = $('<section class="col-md-6">').appendTo($container);
+      // $el2 = $('<section class="col-md-6">').appendTo($container);
+      //
+      // // compare results
+      // d = diff(text1, text2);
+      //
+      // // display output
+      // for (var i = 0; i < d.length; i++) {
+      //   if (d[i][0] == diff.EQUAL) {
+      //     if (d[i][1].match(/\n/)) {
+      //       var txt = d[i][1];
+      //       var cap = (i > 1 ?
+      //         /(.*\n)([\s\S]*\n)?(.*)/ :
+      //         /()([\s\S]*\n)(.*)/
+      //       ).exec(txt);
+      //       var block = (cap[2] || '').split(/\n/);
+      //       $('<span>').addClass('flag').text( cap[1] ).appendTo($el1);
+      //       $('<span>').addClass('flag').text( cap[1] ).appendTo($el2);
+      //       if (block.length < 5) {
+      //         $('<span>').text( cap[2] || '' ).appendTo($el1);
+      //         $('<span>').text( cap[2] || '' ).appendTo($el2);
+      //       } else {
+      //         $('<span>').text( block[1] + '\n' ).appendTo($el1);
+      //         $('<span>').text( block[1] + '\n' ).appendTo($el2);
+      //         $('<span>').addClass('skipped').text( '=== ' + (block.length-1) + ' lines ===\n' ).appendTo($el1);
+      //         $('<span>').addClass('skipped').text( '=== ' + (block.length-1) + ' lines ===\n' ).appendTo($el2);
+      //         $('<span>').text( block.slice(-2).join('\n') ).appendTo($el1);
+      //         $('<span>').text( block.slice(-2).join('\n') ).appendTo($el2);
+      //       }
+      //       $('<span>').addClass('flag').text( cap[3] ).appendTo($el1);
+      //       $('<span>').addClass('flag').text( cap[3] ).appendTo($el2);
+      //     } else {
+      //       $('<span>').addClass('flag').text( d[i][1] ).appendTo($el1);
+      //       $('<span>').addClass('flag').text( d[i][1] ).appendTo($el2);
+      //     }
+      //   } else if (d[i][0] == diff.DELETE) {
+      //     $('<span>').addClass('delete').text(d[i][1]).appendTo($el1);
+      //   } else {
+      //     $('<span>').addClass('add').text(d[i][1]).appendTo($el2);
+      //   }
+      // }
+    }
+
+
 
     /*
      * Startup
@@ -23,36 +240,74 @@
       })
     }
 
-    function populateList(notes) {
-      var notebooks = _.chain(EN.getNoteData()).pluck('notebook').unique().sort().value();
-      var groupedNotes = _.groupBy(EN.getNoteData(), 'notebook');
-      $('ul.list-group').off('click').empty();
-      for (var i = 0; i < notebooks.length; i++) {
-        var notebook = notebooks[i];
-        $('ul.list-group').append('<li class="list-group-item active">' + notebook + '</li>');
-        var notes = _.sortBy(groupedNotes[notebook], 'title');
-        for (var j = 0; j < notes.length; j++) {
-          var note = notes[j];
-          $('ul.list-group').append('<a href="#" class="list-group-item" data-guid="'+note.guid+'" style="padding:2px 15px;">' + note.title + '</a>');
-        }
+    function fetchVersions(guid, queue, callback, data) {
+      if (data === undefined) data = [];
+      if (queue.length == 0) {
+        callback(data);
+        return;
       }
-      $('ul.list-group').on('click', 'a', window.clickHandler);
+      EN.noteStore.getNoteVersion(
+        EN.authenticationToken,
+        guid,
+        queue[0],
+        false,
+        false,
+        false,
+        function(x){
+          data = data.concat(x);
+          if (queue.length > 1) {
+            fetchVersions(guid, queue.slice(1), callback, data);
+          } else {
+            callback(data);
+          }
+        }
+      );
     }
 
-    function clickHandler() {
-      $('a.list-group-item.disabled').removeClass('disabled');
-      var guid = $(this).data('guid');
-      $(this).addClass('disabled');
-      fetchNote(guid);
+    function doCompare() {
+      var selectedItems = $('ul.list-group a.active').map( function(){return $(this).data('sequence')} );
+      fetchVersions('4c337201-7320-4bf3-a646-ec096796ed16', selectedItems, function(data){
+        console.log(data);
+        window.noteData = data;
+        compareBlocks(
+          EN._stripFormatting(noteData[1].content),
+          EN._stripFormatting(noteData[0].content),
+          'foo',
+          $('main#content'))
+      })
     }
 
     if (localStorage.getItem('token') === null) {
       alert('Token not set!')
     } else {
       window.EN = new EvernoteConnection(localStorage.getItem('token'));
-      EN.fetchData(function(notes){
-        populateList(notes.notes);
+      // EN.fetchData(function(notes){
+      //   populateList(notes.notes);
+      // })
+      EN.noteStore.listNoteVersions(EN.authenticationToken, '4c337201-7320-4bf3-a646-ec096796ed16', function(versions){
+        window.v = versions;
+        _.each(versions, function(v){
+          $('ul.list-group').append('<a href="#" class="list-group-item" data-sequence="'+v.updateSequenceNum+'" style="padding:2px 15px;">' + new Date(v.updated) + '</a>');
+        });
+        $('ul.list-group a').on('click', $(this).toggleClass('active'));
       })
+
+      // undefined
+      // v
+      // [NoteVersionIdsaved: 1458916277000title: "vim"updateSequenceNum: 14094updated: 1455918883000__proto__: Object, NoteVersionIdsaved: 1455918883000title: "vim"updateSequenceNum: 14049updated: 1455723093000__proto__: Object, NoteVersionIdsaved: 1455723093000title: "vim"updateSequenceNum: 13985updated: 1455636661000__proto__: Object, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId, NoteVersionId]
+      // EN.noteStore.getNoteVersion(EN.authenticationToken, '4c337201-7320-4bf3-a646-ec096796ed16', 13985, false, false, false, function(x){ window.nv = x; })
+      // undefined
+      // nv
+      // Note {guid: "4c337201-7320-4bf3-a646-ec096796ed16", title: "vim", content: "<?xml version="1.0" encoding="UTF-8" standalone="n…goodies</span></div>↵<div><br/></div>↵</en-note>↵", contentHash: Uint8Array[16], contentLength: 44058…}active: nullattributes: NoteAttributescontent: "<?xml version="1.0" encoding="UTF-8" standalone="no"?>↵<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">↵<en-note style="word-wrap: break-word; -webkit-nbsp-mode: space; -webkit-line-break: after-white-space;">↵<div><span style="font-family: 'Courier New';"># Using vim #</span></div>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<div><span style="font-family: 'Courier New';">[TOC]</span></div>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<div><span style="font-family: 'Courier New';">## Tips and Tricks ##</span></div>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<div><span style="font-family: 'Courier New';">* vim can view jar and zip files</span></div>↵<div><span style="font-family: 'Courier New';">* `Ctrl-C` will also exit insert mode</span></div>↵<div><span style="font-family: 'Courier New';">* `vim {file1} {file2} ... -O` to open files side by side</span></div>↵<div><span style="font-family: 'Courier New';">* use `vimdiff {file1} {file2}` to compare 2 files:</span></div>↵<div><font face="Courier New">    * `do` to Obtain changes from other window</font></div>↵<div><span style="font-family: 'Courier New';">    * `dp` to Put changes from current window into other window</span></div>↵<div><span style="font-family: 'Courier New';">    * `]c` to jump to next change</span></div>↵<div><span style="font-family: 'Courier New';">    * `[c` to jump to previous change</span></div>↵<div><span style="font-family: 'Courier New';">    * `zo` to Open folded text</span></div>↵<div><span style="font-family: 'Courier New';">    * `zc` to Close folded text</span></div>↵<div><span style="font-family: 'Courier New';">    * `&lt;Ctrl-W&gt;&lt;Ctrl-W&gt;` to switch to other window</span></div>↵<div><span style="font-family: 'Courier New';">    * `:diffupdate` to refresh files</span></div>↵<div><span style="font-family: 'Courier New';">    * `:qa` to close both files</span></div>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<div><span style="font-family: 'Courier New';">## Vim Usage ##</span></div>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<span style="font-family: 'Courier New';">### Movement ###</span>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<span style="font-family: 'Courier New';">Command        | Action<br/>↵--------------:|:---------------------------------------------------------------<br/>↵`h, j, k, l   `| left, down, up, right<br/>↵`0, $         `| start/end of line<br/>↵`^            `| first nonblank character of current line<br/>↵`&lt;n&gt;`&lt;code&gt;&amp;#124;&lt;/code&gt;| to column `n` of current line<br/>↵`+, -         `| first character of next/previous line<br/>↵`[Enter]      `| first character of next line (same as +)<br/>↵`w, b         `| forward/backward by small words<br/>↵`W, B         `| forward/backward by big words<br/>↵`e, E         `| to end of small/big word<br/>↵`(, )         `| to beginning of current/next sentence<br/>↵`{, }         `| to beginning of current/next paragraph<br/>↵`[[, ]]       `| to beginning of current/next section<br/>↵`H, M, L      `| first (home), middle, last line on screen<br/>↵`&lt;n&gt;H, &lt;n&gt;L   `| to `n` lines from top/bottom line of screen<br/>↵`&lt;n&gt;G         `| go to line `n` or end of file if unspecified<br/>↵``` ``      ```| return to position before current jump/edit/search/mark<br/>↵`''           `| return to start of line before current jump/edit/search/mark<br/>↵`m&lt;x&gt;         `| mark current position with uppercase/lowercase letter `x`<br/>↵`` `&lt;x&gt;, '&lt;x&gt;``| move to marked position `x` or start of marked line `x`<br/>↵`Ctrl-[Home]  `| move to non-whitespace start of file<br/>↵`Ctrl-[End]   `| move to end of file<br/>↵`&lt;n&gt;%         `| go to line `n` percent into the file<br/>↵`:go &lt;n&gt;      `| go to `n`th byte in the buffer including newlines<br/>↵<br/>↵### Scrolling ###</span>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<span style="font-family: 'Courier New';">Command       | Action<br/>↵-------------:|:----------------------------------------------------------------<br/>↵`Ctrl-F      `| scroll forward one screen<br/>↵`Ctrl-B      `| scroll backward one screen<br/>↵`Ctrl-D      `| scroll down a half screen</span>↵<div><span style="font-family: 'Courier New';">`Ctrl-U      `| scroll up a half screen</span></div>↵<div><span style="font-family: 'Courier New';">`zt          `| scroll so that current line is at top of screen</span></div>↵<div><span style="font-family: 'Courier New';">`zz          `| scroll so that current line is at center of screen</span></div>↵<div><span style="font-family: 'Courier New';">`zb          `| scroll so that current line is at bottom of screen</span></div>↵<div><span style="font-family: 'Courier New';">`Ctrl-L      `| redraw screen</span></div>↵<span style="font-family: 'Courier New';"><br/>↵### Insertion ###</span>↵<div><span sty…ont-family: 'Courier New';">    Old text                  Command     New text</span></div>↵<div><span style="font-family: 'Courier New';">    &quot;Hello *world!&quot;           ds&quot;         Hello world!</span></div>↵<div><span style="font-family: 'Courier New';">    [123+4*56]/2              cs])        (123+456)/2</span></div>↵<div><span style="font-family: 'Courier New';">    &quot;Look ma, I'm *HTML!&quot;     cs&quot;&lt;q&gt;      &lt;q&gt;Look ma, I'm HTML!&lt;/q&gt;</span></div>↵<div><span style="font-family: 'Courier New';">    if *x&gt;3 {                 ysW(        if ( x&gt;3 ) {</span></div>↵<div><span style="font-family: 'Courier New';">    my $str = *whee!;         vllllS'     my $str = 'whee!';</span></div>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<div><span style="font-family: 'Courier New';">- `cs&lt;old&gt;&lt;new&gt;`: Change Surrounding from &lt;old&gt; to &lt;new&gt;. </span></div>↵<div><span style="font-family: 'Courier New';">  Use `cS` to put surrounded text on its own line.</span></div>↵<div><span style="font-family: 'Courier New';">- `ds&lt;sur&gt;`: Delete Surrounding text &lt;sur&gt;</span></div>↵<div><span style="font-family: 'Courier New';">- `ys&lt;motion&gt;&lt;sur&gt;`: You Surround text with &lt;motion&gt; with &lt;sur&gt;.</span></div>↵<div><span style="font-family: 'Courier New';">  Use `yss&lt;sur&gt;` to surround entire line. </span></div>↵<div><span style="font-family: 'Courier New';">  Use `yS` and `ySS` to put surrounded text on a new line. </span></div>↵<div><span style="font-family: 'Courier New';">- `S&lt;sur&gt;`: Surround text with &lt;sur&gt; **in visual mode**</span></div>↵<div><span style="font-family: 'Courier New';">- Opening braces trim whitespace, whereas closing braces keep it.</span></div>↵<div><br/></div>↵<div><span style="font-family: 'Courier New';">#### [Snipmate](https://github.com/garbas/vim-snipmate) ####</span></div>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<div><span style="font-family: 'Courier New';">- Type snippet name and press `&lt;tab&gt;` to insert snippet.  Further </span></div>↵<div><span style="font-family: 'Courier New';">  presses of `&lt;tab&gt;` jumps around snippet</span></div>↵<div><span style="font-family: 'Courier New';">- Depends on [tlib_vim](</span><span style="font-family: 'Courier New';">https://github.com/tomtom/tlib_vim),</span></div>↵<div><span style="font-family: 'Courier New';">  [vim-addon-mw-utils](</span><span style="font-family: 'Courier New';">https://github.com/MarcWeber/vim-addon-mw-utils),</span></div>↵<div><span style="font-family: 'Courier New';">  and [vim-snippets](</span><span style="font-family: 'Courier New';">https://github.com/honza/vim-snippets)</span></div>↵<div>↵<div><br/></div>↵</div>↵<div><span style="font-family: 'Courier New';">#### Miscellaneous Plugins ####</span></div>↵<div><span style="font-family: 'Courier New';"><br/></span></div>↵<div><span style="font-family: 'Courier New';">- **[Pathogen]</span><span style="font-family: 'Courier New';">(https://github.com/tpope/vim-pathogen)</span><span style="font-family: 'Courier New';">**: plugin manager</span></div>↵<div><span style="font-family: 'Courier New';">- **[CSApprox]</span><span style="font-family: 'Courier New';">(https://github.com/vim-scripts/CSApprox)</span><span style="font-family: 'Courier New';">**: approximate gvim colors in terminal vim</span></div>↵<div><span style="font-family: 'Courier New';">- **[Repeat]</span><span style="font-family: 'Courier New';">(https://</span><span style="font-family: 'Courier New';">github.com/tpope/vim-repeat)</span><span style="font-family: 'Courier New';">**: makes `.` command play nicely with plugins (such as vim-surround)</span></div>↵<div><span style="font-family: 'Courier New';">- **[Indexed Search]</span><span style="font-family: 'Courier New';">(https://</span><span style="font-family: 'Courier New';">github.com/henrik/vim-indexed-search</span><span style="font-family: 'Courier New';">)</span><span style="font-family: 'Courier New';">**: display &quot;x out of y&quot; text when searching</span></div>↵<div><span style="font-family: 'Courier New';">- **[Airline](https://</span><span style="font-family: 'Courier New';">github.com/bling/vim-airline</span><span style="font-family: 'Courier New';">)**: Enhanced status line w/ patched fonts</span></div>↵<div><span style="font-family: 'Courier New';">- **</span><span style="font-family: 'Courier New';">[CoffeeScript]</span><span style="font-family: 'Courier New';">(https://</span><span style="font-family: 'Courier New';">github.com/kchmck/vim-coffee-script</span><span style="font-family: 'Courier New';">)**: CoffeeScript syntax highlighting and compilation</span></div>↵<div><span style="font-family: 'Courier New';">- **</span><span style="font-family: 'Courier New';">[Fish](https://github.com/dag/vim-fish)**: Fish syntax highlighting and more goodies</span></div>↵<div><br/></div>↵</en-note>↵"contentHash: Uint8Array[16]contentLength: 44058created: 1403096612000deleted: nullguid: "4c337201-7320-4bf3-a646-ec096796ed16"notebookGuid: "7e75ccdb-bf02-4183-8a8e-8749c4911b33"resources: nulltagGuids: nulltagNames: nulltitle: "vim"updateSequenceNum: 13985updated: 1455636661000__proto__: Object
+    }
+
+    function test() {
+      $($('a.list-group-item')[0]).addClass('active');
+      $($('a.list-group-item')[4]).addClass('active');
+      doCompare();
+      t1 = "1234\n567\nasbd\nawefaw\nThis is\nsome test\ntest that\nis going\nto be\nrearranged\n1\n2\n3\n4\n5\n6\n7\n8\n8\n10\n11\n12\n13\n14\n15\n16\n17\n18\nfoo\n\n";
+      t2 = t2 = "1234\n567\nabbd\nawefaw\nwefawef\nThis is\nrearranged\nsome test\nis going\nto be\n1\n2\n3\n4\n5\n6\n7\n8\n8\n10\n11\n12\n13\n14\n15\n16\n17\n18\nbar\n\n";
+      compareBlocks(t1, t2, 'vim', $('main#content'));
     }
 
   </script>
@@ -60,7 +315,7 @@
 <body data-spy="scroll" data-target="#toc">
   <div class="container-fluid">
     <div class="row">
-      <section id="nav-list" class="col-md-2" role="complientary">
+      <section id="nav-list" class="col-md-3" role="complientary">
         <ul class="list-group">
           <li class="list-group-item">
             <span class="badge">14</span>
@@ -76,7 +331,7 @@
           </li>
         </ul>
       </section>
-      <main id="content" class="col-md-8" role="main">
+      <main id="content" class="col-md-7" role="main">
         <textarea id="editor"></textarea>
       </main>
     </div>
