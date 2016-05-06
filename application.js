@@ -1307,26 +1307,33 @@ function launchCodeMirror() {
 // closure containing evernote connection code
 function connectToEvernote() {
 
+  // gui elements
+  $historyList = $('#application-window section#history-list ul.list-group');
+  $noteList = $('#application-window section#nav-list ul.list-group');
+
   function fetchNote(guid) {
     EN.fetchNoteContent(guid, function(note){
       cm.setValue(note);
+      if ($('section#history-list').data('noteGuid') !== guid) {
+        $('section#history-list').data('noteGuid', guid).data('stale', true);
+      }
     })
   }
 
   function populateList(notes) {
     var notebooks = _.chain(EN.getNoteData()).pluck('notebook').unique().sort().value();
     var groupedNotes = _.groupBy(EN.getNoteData(), 'notebook');
-    $('ul.list-group').off('click').empty();
+    $noteList.off('click').empty();
     for (var i = 0; i < notebooks.length; i++) {
       var notebook = notebooks[i];
-      $('ul.list-group').append('<li class="list-group-item active">' + notebook + '</li>');
+      $noteList.append('<li class="list-group-item active">' + notebook + '</li>');
       var notes = _.sortBy(groupedNotes[notebook], 'title');
       for (var j = 0; j < notes.length; j++) {
         var note = notes[j];
-        $('ul.list-group').append('<a href="#" class="list-group-item" data-guid="'+note.guid+'" style="padding:2px 15px;">' + note.title + '</a>');
+        $noteList.append('<a href="#" class="list-group-item" data-guid="'+note.guid+'" style="padding:2px 15px;">' + note.title + '</a>');
       }
     }
-    $('ul.list-group').on('click', 'a', clickHandler);
+    $noteList.on('click', 'a', clickHandler);
   }
 
   function clickHandler() {
@@ -1334,6 +1341,28 @@ function connectToEvernote() {
     var guid = $(this).data('guid');
     $(this).addClass('disabled');
     fetchNote(guid);
+    toggleDropdown();
+  }
+
+  function doCompare() {
+    $('section#history-container').empty();
+    var selectedItems = $historyList.find('a.active').map( function(){return $(this).data('sequence')} );
+    EN.fetchNoteVersionList($('section#history-list').data('noteGuid'), selectedItems, function(data, meta){
+      if (data.length == 1) {
+        $('section#history-container')
+          .append('<h2>' + EN.dateString(meta[0].updated) + '</h2>')
+          .append('<div class="text-diff">' + escapeText(data[0]) + '</div>')
+      } else {
+        for (var i = data.length-2; i >= 0; i--) {
+          compareBlocks(data[i+1], data[i], {
+            title       : EN.dateString(meta[i+1].updated) + ' &rarr; ' + EN.dateString(meta[i].updated),
+            $container  : $('section#history-container'),
+            validate    : true,
+            style       : 'adjacent'
+          })
+        }
+      }
+    })
   }
 
   function updateToken() {
@@ -1342,7 +1371,7 @@ function connectToEvernote() {
     )
   }
 
-  $('a#showNoteList').on('click', function toggleDropdown() {
+  function toggleDropdown() {
     $('a#showNoteList').toggleClass('active');
     $('section#nav-list').toggle().addClass('col-md-2');
     $('section#viewer-container').toggleClass('col-md-6').toggleClass('col-md-5');
@@ -1355,7 +1384,33 @@ function connectToEvernote() {
         populateList(notes.notes);
       });
     }
-  });
+  }
+
+  $('a#showNoteList').on('click', toggleDropdown);
+
+  $('a#showNoteHistory').on('click', function(){
+    $(this).toggleClass('active');
+    $('section#history-list').toggle();
+    $('section#history-container').toggle();
+    $('section#viewer-container').toggle();
+    $('main#content').toggle();
+    if ($('section#history-list').data('stale')) {
+      $historyList.empty();
+      EN.listNoteVersions(
+        $('section#history-list').data('noteGuid'),
+        function(versions, dates){
+          for (var i = 0; i < versions.length; i++) {
+            $historyList.append('<a href="#" class="list-group-item" data-sequence="'+versions[i]+'" style="padding:2px 15px;">' + EN.dateString(dates[i]) + '</a>');
+          }
+          $('section#history-list').data('stale', false); // only trigger once
+          $historyList.find('a').on('click', function(){
+            $(this).toggleClass('active');
+            doCompare();
+          });
+        }
+      );
+    }
+  })
 
 }
 

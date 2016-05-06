@@ -5,12 +5,20 @@
   function createRow($el, rowClass, a, b, c, d) {
     $el.append(
       '<tr class="' + rowClass + '">' +
-        '<td>' + a + '</td>' +
-        '<td>' + b + '</td>' +
-        '<td>' + c + '</td>' +
-        '<td>' + d + '</td>' +
+        '<td class="row-number">' + a + '</td>' +
+        '<td class="row-data">' + b + '</td>' +
+        '<td class="row-number">' + c + '</td>' +
+        '<td class="row-data">' + d + '</td>' +
       '</tr>'
     );
+  }
+
+  function escapeText(txt) {
+    return txt
+      .replace(/&/g,  "&amp;")
+      .replace(/</g,  "&lt;" )
+      .replace(/>/g,  "&gt;" )
+      .replace(/\n/g, "<br/>");
   }
 
   // function to perform the diff operation
@@ -50,7 +58,7 @@
           d[i  ][1].replace(/[\s\S]*\n(.*)/,'$1') == d[i+1][1].replace(/[\s\S]*\n(.*)/,'$1')
       ) {
         var leader = /[\s\S]*\n(.*)/.exec(d[i][1])[1];
-        d[i][1] = d[i][1].replace(/([\s\S]*\n).*/, '$1');
+        d[i  ][1] =          d[i  ][1].replace(/([\s\S]*\n).*/, '$1');
         d[i+1][1] = leader + d[i+1][1].replace(/([\s\S]*\n).*/, '$1');
         d[i+2][1] = leader + d[i+2][1];
       }
@@ -102,10 +110,7 @@
       // process lines within diff
       var lines = d[i][1].split(/\n/);
       for (var j = 0; j < lines.length; j++) {
-        var line = lines[j]
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
+        var line = escapeText(lines[j]);
 
         // special case for a full line change
         if (txtL === '' && txtR === '' && j+1 < lines.length) {
@@ -189,11 +194,7 @@
 
     // display output as block
     for (var i = 0; i < d.length; i++) {
-      text = d[i][1]
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\n/g, '<br/>');
+      text = escapeText(d[i][1]);
       if (d[i][0] == diff.INSERT) {
         $span = $('<span class="chunk-insert">')
       } else if (d[i][0] == diff.DELETE) {

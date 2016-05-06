@@ -19,43 +19,8 @@
       body {
         padding: 1em;
       }
-      .text-diff {
-        white-space: pre;
-        font-family: monospace;
-        overflow-wrap: break-word;
-        font-size: 0.8em;
-      }
-      table.text-diff, table.text-diff th, table.text-diff td {
-        border: 1px solid grey;
-        border-collapse: collapse;
-      }
-      table.text-diff tr.line-equal {
-        background-color: whitesmoke
-      }
-      table.text-diff tr.line-insert {
-        background-color: lightgreen
-      }
-      table.text-diff tr.line-delete {
-        background-color: lightpink
-      }
-      table.text-diff tr.line-change {
-        background-color: lavender
-      }
-      table.text-diff tr.collapsed {
-        background-color: cornsilk
-      }
-      table.text-diff tr.collapsed td {
-        text-align: center
-      }
-      .text-diff span.chunk-equal {
 
-      }
-      .text-diff span.chunk-insert {
-        background-color: lightgreen
-      }
-      .text-diff span.chunk-delete {
-        background-color: lightpink
-      }
+
 
   </style>
 
@@ -69,85 +34,15 @@
      * Startup
      */
 
+    function
+
     function fetchNote(guid) {
       EN.fetchNoteContent(guid, function(note){
         $('main').html(markdown.toHTML(note));
       })
     }
 
-    var versionData = {};
 
-    function fetchVersions(guid, queue, callback, data) {
-      if (data === undefined) data = [];
-      if (versionData.guid != guid) versionData = {guid:guid};
-
-      if (queue.length == 0) {
-        callback(data);
-        return;
-      }
-
-      if (versionData[queue[0]]) {
-        data = data.concat(versionData[queue[0]]);
-        if (queue.length > 1) {
-          fetchVersions(guid, queue.slice(1), callback, data);
-        } else {
-          callback(data);
-        }
-        return;
-      }
-
-      EN.noteStore.getNoteVersion(
-        EN.authenticationToken,
-        guid,
-        queue[0],
-        false,
-        false,
-        false,
-        function(x){
-          versionData[queue[0]] = x;
-          data = data.concat(x);
-          if (queue.length > 1) {
-            fetchVersions(guid, queue.slice(1), callback, data);
-          } else {
-            callback(data);
-          }
-        }
-      );
-    }
-
-    function doCompare() {
-      var selectedItems = $('ul.list-group a.active').map( function(){return $(this).data('sequence')} );
-      fetchVersions('4c337201-7320-4bf3-a646-ec096796ed16', selectedItems, function(data){
-        console.log(data);
-        window.noteData = data;
-
-        if (data.length == 1) {
-          $('main#content')
-            .empty()
-            .append('<h2>' + new Date(data[0].updated) + '</h2>')
-            .append('<div class="text-diff">' +
-              EN._stripFormatting(data[0].content)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/\n/g, '<br/>') +
-            '</div>')
-        }
-
-        for (var i = data.length-2; i >= 0; i--) {
-          compareBlocks(
-            EN._stripFormatting(data[i+1].content),
-            EN._stripFormatting(data[i].content),
-            {
-              title: new Date(data[i+1].updated) + ' -> ' + new Date(data[i].updated),
-              $container: $('main#content'),
-              validate: true,
-              style: 'adjacent'
-            }
-          )
-        }
-      })
-    }
 
     if (localStorage.getItem('token') === null) {
       alert('Token not set!')
@@ -156,10 +51,11 @@
       EN.noteStore.listNoteVersions(EN.authenticationToken, '4c337201-7320-4bf3-a646-ec096796ed16', function(versions){
         window.v = versions;
         _.each(versions, function(v){
-          $('ul.list-group').append('<a href="#" class="list-group-item" data-sequence="'+v.updateSequenceNum+'" style="padding:2px 15px;">' + new Date(v.updated) + '</a>');
+          $('ul.list-group').append('<a href="#" class="list-group-item" data-sequence="'+v.updateSequenceNum+'" style="padding:2px 15px;">' + dateString(v.updated) + '</a>');
         });
         $('ul.list-group a').on('click', function(){
-          $(this).toggleClass('active')
+          $(this).toggleClass('active');
+          doCompare();
         });
       })
     }
@@ -169,7 +65,6 @@
   <div class="container-fluid">
     <div class="row">
       <section id="nav-list" class="col-md-3" role="complientary">
-        <button type="button" class="btn btn-default" onclick="doCompare()">Compare</button>
         <ul class="list-group">
         </ul>
       </section>

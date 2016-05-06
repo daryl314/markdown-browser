@@ -9,6 +9,7 @@ EvernoteConnection = function(){
     if (token === undefined) {
       throw new Error('Authentication token required!');
     } else {
+      this.versionCache = {};
       this.authenticationToken = token;
       var noteStoreURL = "proxy-https/www.evernote.com/shard/s2/notestore";
       var noteStoreTransport = new Thrift.BinaryHttpTransport(noteStoreURL);
@@ -20,6 +21,17 @@ EvernoteConnection = function(){
   // error handler
   EvernoteConnection.prototype._errorHandler = function(error) {
     console.error(error);
+  }
+
+  // helper function to format a date
+  EvernoteConnection.prototype.dateString = function(d) {
+    d = new Date(d);
+    return (d.getYear()+1900)                         +'-'+
+      ('0'+(d.getMonth()+1)).replace(/0(\d\d)/,'$1')  +'-'+
+      ('0'+(d.getDay()+1)  ).replace(/0(\d\d)/,'$1')  +' '+
+      ('0'+ d.getHours()   ).replace(/0(\d\d)/,'$1')  +':'+
+      ('0'+ d.getMinutes() ).replace(/0(\d\d)/,'$1')  +':'+
+      ('0'+ d.getSeconds() ).replace(/0(\d\d)/,'$1')
   }
 
   // return a filter for markdown notes
@@ -201,6 +213,82 @@ EvernoteConnection = function(){
       cb,
       this._errorHandler
     );
+  }
+
+  // function to get a list of note versions
+  EvernoteConnection.prototype.listNoteVersions = function(guid, callback) {
+    console.log('Fetching note version list for '+guid)
+    var cb = function(versions) {
+      this.versionData = versions;
+      var keys = [], updateTimes = [];
+      for (var i = 0; i < versions.length; i++) {
+        keys.push(versions[i].updateSequenceNum);
+        updateTimes.push(versions[i].updated);
+      }
+      if (callback)
+        callback(keys, updateTimes);
+    }
+    this.noteStore.listNoteVersions(
+      this.authenticationToken,
+      guid,
+      cb,
+      this._errorHandler
+    );
+  }
+
+  // function to fetch a note version (with cache)
+  EvernoteConnection.prototype.fetchNoteVersion = function(guid, version, callback) {
+    var _this = this;
+
+    // create a version cache entry for current guid if one doesn't existing
+    if (this.versionCache[guid] === undefined) {
+      this.versionCache[guid] = {};
+    }
+
+    // use cached version if available
+    if (this.versionCache[guid][version]) {
+      console.log('Using cached note version: '+guid+'['+version+']');
+      var x = this.versionCache[guid][version];
+      callback( this._stripFormatting(x.content), x );
+
+    // otherwise fetch from note store
+    } else {
+      console.log('Fetching note version: '+guid+'['+version+']');
+      this.noteStore.getNoteVersion(
+        this.authenticationToken, // token
+        guid,                     // guid of the note to fetch
+        version,                  // version number to fetch
+        false,                    // don't include resource data
+        false,                    // don't include resource recognition data
+        false,                    // don't include resource binary alternateData
+        function (x) {
+          _this.versionCache[guid][version] = x;
+          if (callback) callback( _this._stripFormatting(x.content), x );
+        }
+      );
+    }
+  }
+
+  // function to fetch a list of note versions
+  EvernoteConnection.prototype.fetchNoteVersionList = function(guid, versions, callback, data, meta) {
+    var _this = this;
+
+    // initialize output lists
+    if (data === undefined) data = [];
+    if (meta === undefined) meta = [];
+
+    // if done processing, run callback
+    if (versions.length == 0) {
+      callback(data, meta);
+
+    // otherwise fetch current version and recurse on version list tail
+    } else {
+      this.fetchNoteVersion(guid, versions[0], function(x, m) {
+        data = data.concat(x);
+        meta = meta.concat(m);
+        _this.fetchNoteVersionList(guid, versions.slice(1), callback, data, meta);
+      })
+    }
   }
 
   // return a map connecting guid's and notebooks

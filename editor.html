@@ -41,6 +41,7 @@
   <script type="text/javascript" src="evernote.js"></script>
 
   <!-- APPLICATION RESOURCES -->
+  <script type="text/javascript" src="text-diff.js"></script>
   <script type="text/javascript" src="marked.js"></script>
   <script type="text/javascript" src="markdown.js"></script>
   <script type="text/javascript" src="sample-markdown.js"></script>
@@ -57,13 +58,12 @@
       padding-top: 29px;
     }
 
-    section#viewer-container {
+    #application-window section {
       padding-top: 29px;
     }
 
     section#nav-list {
       height: 100vh;
-      padding-top: 29px;
       overflow: scroll;
     }
 
@@ -74,6 +74,34 @@
       height: 28px;
     }
     header .navbar {min-height:28px !important;}
+
+    /* Text diff styles */
+
+    .text-diff {
+      white-space: pre-wrap;
+      font-family: monospace;
+      overflow-wrap: break-word;
+      font-size: 0.8em;
+    }
+    table.text-diff, table.text-diff th, table.text-diff td {
+      border: 1px solid grey;
+      border-collapse: collapse;
+    }
+    table.text-diff tr.collapsed td {
+      text-align: center
+    }
+    table.text-diff tr td.row-number {
+      background-color: gray;
+      text-align: center;
+    }
+    table.text-diff tr.line-equal   { background-color: whitesmoke }
+    table.text-diff tr.line-insert  { background-color: lightgreen }
+    table.text-diff tr.line-delete  { background-color: lightpink  }
+    table.text-diff tr.line-change  { background-color: lavender   }
+    table.text-diff tr.collapsed    { background-color: cornsilk   }
+    .text-diff span.chunk-equal     { }
+    .text-diff span.chunk-insert    { background-color: lightgreen }
+    .text-diff span.chunk-delete    { background-color: lightpink  }
 
     /*
     Solarized color pallet
@@ -181,6 +209,8 @@
   </style>
 </head>
 <body>
+
+  <!-- APPLICATION MENU -->
   <header class="hidden-print">
     <nav class="navbar navbar-default navbar-fixed-top">
       <div class="container-fluid">
@@ -194,7 +224,7 @@
                 <li><a href="#">Save</a></li>
                 <li><a href="#">Save As</a></li>
                 <li role="separator" class="divider"></li>
-                <li><a href="#">History</a></li>
+                <li><a id="showNoteHistory" href="#">History</a></li>
               </ul>
             </li>
             <li><a href="#">Menu</a></li>
@@ -203,23 +233,41 @@
       </div>
     </nav>
   </header>
-  <div class="container-fluid">
-    <div class="row">
-      <section id="nav-list" style="display:none" role="complientary">
-        <ul class="list-group">
-          <li class="list-group-item">
-            <span class="badge">1</span>
-            Loading data...
-          </li>
-        </ul>
-      </section>
-      <main id="content" class="col-md-6" role="main">
-        <textarea id="editor"></textarea>
-      </main>
-      <section id="viewer-container" class="col-md-6" style="overflow-y: scroll; height:100vh;" role="complementary">
-        <div id="viewer"></div>
-      </section>
-    </div>
-  </div>
+
+  <!-- APPLICATION BODY -->
+  <div id="application-window" class="container-fluid"><div class="row">
+
+    <!-- FILE LOADING MENU -->
+    <section id="nav-list" style="display:none" role="complientary">
+      <ul class="list-group">
+        <li class="list-group-item">
+          <span class="badge">1</span>
+          Loading data...
+        </li>
+      </ul>
+    </section>
+
+    <!-- MAIN EDITOR WINDOW -->
+    <main id="content" class="col-md-6" role="main">
+      <textarea id="editor"></textarea>
+    </main>
+
+    <!-- MARKDOWN PREVIEW WINDOW -->
+    <section id="viewer-container" class="col-md-6" style="overflow-y: scroll; height:100vh;" role="complementary">
+      <div id="viewer"></div>
+    </section>
+
+    <!-- HISTORY WINDOWS -->
+    <section id="history-list" class="col-md-2" style="display:none" role="complientary">
+      <ul class="list-group">
+        <li class="list-group-item">
+          <span class="badge">1</span>
+          Loading data...
+        </li>
+      </ul>
+    </section>
+    <section id="history-container" class="col-md-10" style="display:none" role="complementary"></section>
+
+  </div></div> <!-- END APPLICATION BODY -->
 </body>
 </html>
