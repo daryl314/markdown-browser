@@ -1307,63 +1307,21 @@ function launchCodeMirror() {
 // closure containing evernote connection code
 function connectToEvernote() {
 
-  // gui elements
-  $historyList = $('#application-window section#history-list ul.list-group');
-  $noteList = $('#application-window section#nav-list ul.list-group');
+  ///// GUI ELEMENT REFERENCES /////
 
-  function fetchNote(guid) {
-    EN.fetchNoteContent(guid, function(note){
-      cm.setValue(note);
-      if ($('section#history-list').data('noteGuid') !== guid) {
-        $('section#history-list').data('noteGuid', guid).data('stale', true);
-      }
-    })
-  }
+  $mainMenu        = $('body > header#main-menu');
+  $loadMenuItem    = $('body > header#main-menu a#showNoteList');
+  $showHistoryItem = $('body > header#main-menu a#showNoteHistory');
+  $historyMenu     = $('#application-window section#history-list');
+  $historyList     = $('#application-window section#history-list ul.list-group');
+  $noteMenu        = $('#application-window section#nav-list');
+  $noteList        = $('#application-window section#nav-list ul.list-group');
+  $editorWindow    = $('#application-window main#content');
+  $previewWindow   = $('#application-window section#viewer-container');
+  $historyWindow   = $('#application-window section#history-container');
 
-  function populateList(notes) {
-    var notebooks = _.chain(EN.getNoteData()).pluck('notebook').unique().sort().value();
-    var groupedNotes = _.groupBy(EN.getNoteData(), 'notebook');
-    $noteList.off('click').empty();
-    for (var i = 0; i < notebooks.length; i++) {
-      var notebook = notebooks[i];
-      $noteList.append('<li class="list-group-item active">' + notebook + '</li>');
-      var notes = _.sortBy(groupedNotes[notebook], 'title');
-      for (var j = 0; j < notes.length; j++) {
-        var note = notes[j];
-        $noteList.append('<a href="#" class="list-group-item" data-guid="'+note.guid+'" style="padding:2px 15px;">' + note.title + '</a>');
-      }
-    }
-    $noteList.on('click', 'a', clickHandler);
-  }
 
-  function clickHandler() {
-    $('a.list-group-item.disabled').removeClass('disabled');
-    var guid = $(this).data('guid');
-    $(this).addClass('disabled');
-    fetchNote(guid);
-    toggleDropdown();
-  }
-
-  function doCompare() {
-    $('section#history-container').empty();
-    var selectedItems = $historyList.find('a.active').map( function(){return $(this).data('sequence')} );
-    EN.fetchNoteVersionList($('section#history-list').data('noteGuid'), selectedItems, function(data, meta){
-      if (data.length == 1) {
-        $('section#history-container')
-          .append('<h2>' + EN.dateString(meta[0].updated) + '</h2>')
-          .append('<div class="text-diff">' + escapeText(data[0]) + '</div>')
-      } else {
-        for (var i = data.length-2; i >= 0; i--) {
-          compareBlocks(data[i+1], data[i], {
-            title       : EN.dateString(meta[i+1].updated) + ' &rarr; ' + EN.dateString(meta[i].updated),
-            $container  : $('section#history-container'),
-            validate    : true,
-            style       : 'adjacent'
-          })
-        }
-      }
-    })
-  }
+  ///// DEVELOPER TOKEN HANDLING /////
 
   function updateToken() {
     localStorage.setItem('token',
@@ -1371,44 +1329,130 @@ function connectToEvernote() {
     )
   }
 
+
+  ///// NOTE DATA LOADING /////
+
+  // connect to evernote and populate the list of notes
+  function populateNoteList(notes) {
+    var notebooks = _.chain(EN.getNoteData()).pluck('notebook').unique().sort().value();
+    var groupedNotes = _.groupBy(EN.getNoteData(), 'notebook');
+
+    // clear click handler and reset note list
+    $noteList.off('click').empty();
+
+    // re-build note list
+    _.each(notebooks, function(notebook){
+      $noteList.append('<li class="list-group-item active">' + notebook + '</li>');
+      var notes = _.sortBy(groupedNotes[notebook], 'title');
+      _.each(notes, function(note) {
+        $noteList.append('<a href="#" class="list-group-item" data-guid="'+note.guid+'">' + note.title + '</a>');
+      });
+    });
+
+    // bind a handler for clicking on a note in the list (load the note)
+    $noteList.on('click', 'a', function(){
+      var guid = $(this).data('guid');
+
+      // indicate currently selected item
+      $noteList.find('a.list-group-item.selected').removeClass('selected');
+      $(this).addClass('selected');
+
+      // fetch note content
+      EN.fetchNoteContent(guid, function(note){
+
+        // put note content in editor
+        cm.setValue(note);
+
+        // if note has changed, flag note history list as stale and update its attached note guid
+        if ($historyMenu.data('noteGuid') !== guid) {
+          $historyMenu.data('noteGuid', guid).data('stale', true);
+        }
+      })
+
+      // hide the note menu
+      toggleDropdown();
+    });
+  }
+
+  // show or hide note menu
   function toggleDropdown() {
-    $('a#showNoteList').toggleClass('active');
-    $('section#nav-list').toggle().addClass('col-md-2');
-    $('section#viewer-container').toggleClass('col-md-6').toggleClass('col-md-5');
-    $('main#content').toggleClass('col-md-6').toggleClass('col-md-5');
+    $noteMenu.toggle().addClass('col-md-2');
+    $previewWindow.add($editorWindow).toggleClass('col-md-6').toggleClass('col-md-5');
     if (!window.EN) {
       if (localStorage.getItem('token') === null)
         updateToken();
       window.EN = new EvernoteConnection(localStorage.getItem('token'));
       EN.fetchData(function(notes){
-        populateList(notes.notes);
+        populateNoteList(notes.notes);
       });
     }
   }
 
-  $('a#showNoteList').on('click', toggleDropdown);
+  // bind 'Load' menu item to show/hide note menu
+  $loadMenuItem.on('click', toggleDropdown);
 
-  $('a#showNoteHistory').on('click', function(){
-    $(this).toggleClass('active');
-    $('section#history-list').toggle();
-    $('section#history-container').toggle();
-    $('section#viewer-container').toggle();
-    $('main#content').toggle();
-    if ($('section#history-list').data('stale')) {
-      $historyList.empty();
-      EN.listNoteVersions(
-        $('section#history-list').data('noteGuid'),
-        function(versions, dates){
-          for (var i = 0; i < versions.length; i++) {
-            $historyList.append('<a href="#" class="list-group-item" data-sequence="'+versions[i]+'" style="padding:2px 15px;">' + EN.dateString(dates[i]) + '</a>');
-          }
-          $('section#history-list').data('stale', false); // only trigger once
-          $historyList.find('a').on('click', function(){
-            $(this).toggleClass('active');
-            doCompare();
-          });
+
+  ///// NOTE HISTORY /////
+
+  $showHistoryItem.on('click', function(){
+
+    // helper function to create a history menu item
+    function historyItem(version, date) {
+      return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + EN.dateString(date) + '</a>'
+    }
+
+    // switch display
+    $historyMenu.add($historyWindow).add($previewWindow).add($editorWindow).toggle();
+
+    // if history is flagged as out-of-date, regenerate menu
+    if ($historyMenu.data('stale')) {
+      EN.listNoteVersions($historyMenu.data('noteGuid'), function(versions, dates){
+
+        // append menu entry for current version
+        var currentNote = EN.noteMap[$historyMenu.data('noteGuid')];
+        $historyList.empty().append(historyItem(currentNote.updateSequenceNum, currentNote.updated));
+
+        // append menu entries for older versions
+        for (var i = 0; i < versions.length; i++) {
+          $historyList.append(historyItem(versions[i], dates[i]));
         }
-      );
+
+        // history menu is no longer out-of-date
+        $historyMenu.data('stale', false);
+
+        // bind to click on history menu items
+        $historyList.find('a').on('click', function(){
+
+          // toggle selection status of current item and get selected item list
+          $(this).toggleClass('active');
+          var selectedItems = $historyList.find('a.active').map( function(){return $(this).data('sequence')} );
+
+          // clear history window
+          $historyWindow.empty();
+
+          // call function to fetch note history list
+          EN.fetchNoteVersionList($historyMenu.data('noteGuid'), selectedItems, function(data, meta){
+
+            // if only one version is selected, display the content of this version
+            if (data.length == 1) {
+              $historyWindow
+                .append('<h2>' + EN.dateString(meta[0].updated) + '</h2>')
+                .append('<div class="text-diff">' + escapeText(data[0]) + '</div>')
+
+            // otherwise show diffs between selected versions
+            } else {
+              for (var i = data.length-2; i >= 0; i--) {
+                compareBlocks(data[i+1], data[i], {
+                  title       : EN.dateString(meta[i+1].updated) + ' &rarr; ' + EN.dateString(meta[i].updated),
+                  $container  : $historyWindow,
+                  validate    : true,
+                  style       : 'adjacent'
+                })
+              }
+            }
+          })
+        });
+      });
     }
   })
 

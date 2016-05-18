@@ -62,6 +62,14 @@
       padding-top: 29px;
     }
 
+    #application-window section ul.list-group a.list-group-item {
+      padding: 2px 15px;
+    }
+
+    #application-window section ul.list-group a.selected {
+      background-color: green;
+    }
+
     section#nav-list {
       height: 100vh;
       overflow: scroll;
@@ -211,7 +219,7 @@
 <body>
 
   <!-- APPLICATION MENU -->
-  <header class="hidden-print">
+  <header id="main-menu" class="hidden-print">
     <nav class="navbar navbar-default navbar-fixed-top">
       <div class="container-fluid">
         <div class="navbar-header">

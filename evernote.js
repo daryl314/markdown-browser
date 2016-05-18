@@ -28,7 +28,7 @@ EvernoteConnection = function(){
     d = new Date(d);
     return (d.getYear()+1900)                         +'-'+
       ('0'+(d.getMonth()+1)).replace(/0(\d\d)/,'$1')  +'-'+
-      ('0'+(d.getDay()+1)  ).replace(/0(\d\d)/,'$1')  +' '+
+      ('0'+(d.getDate()   )).replace(/0(\d\d)/,'$1')  +' '+
       ('0'+ d.getHours()   ).replace(/0(\d\d)/,'$1')  +':'+
       ('0'+ d.getMinutes() ).replace(/0(\d\d)/,'$1')  +':'+
       ('0'+ d.getSeconds() ).replace(/0(\d\d)/,'$1')
@@ -78,6 +78,10 @@ EvernoteConnection = function(){
         if (_this.notes.length < notes.totalNotes) {
           _this._fetchNoteData(noteFilter, _this.notes.length, callback);
         } else {
+          _this.noteMap = {};
+          for (var i = 0; i < _this.notes.length; i++) {
+            _this.noteMap[_this.notes[i].guid] = _this.notes[i];
+          };
           if (callback) callback(notes);
         }
       }
@@ -86,17 +90,19 @@ EvernoteConnection = function(){
         this.notes = []; // clear list if starting a new fetch
       }
 
-      this.noteStore.findNotesMetadata(    // search for notes...
-        this.authenticationToken,     //   authentication token
-        noteFilter,                   //   passed note serach filter
-        start,                        //   starting index
-        100,                          //   max notes to return
-        new NotesMetadataResultSpec({ //   results to return...
-          includeTitle: true,         //     with the note title
-          includeNotebookGuid: true   //     with the notebook guid
-        }),                           //
-        cb,                           //   success callback
-        this._errorHandler            //   error callback
+      this.noteStore.findNotesMetadata(   // search for notes...
+        this.authenticationToken,         //   authentication token
+        noteFilter,                       //   passed note serach filter
+        start,                            //   starting index
+        100,                              //   max notes to return
+        new NotesMetadataResultSpec({     //   results to return...
+          includeTitle: true,             //     with the note title
+          includeUpdated: true,           //     with the update time
+          includeUpdateSequenceNum: true, //     with the update sequence number
+          includeNotebookGuid: true       //     with the notebook guid
+        }),                               //
+        cb,                               //   success callback
+        this._errorHandler                //   error callback
       )
   }
 
@@ -201,12 +207,29 @@ EvernoteConnection = function(){
   // function to fetch note content
   EvernoteConnection.prototype.fetchNoteContent = function(guid, callback) {
     var _this = this;
-    console.log('Fetching note: '+guid);
+
+    // create a version cache entry for current guid if one doesn't existing
+    if (this.versionCache[guid] === undefined) {
+      this.versionCache[guid] = {};
+    }
+
+    // callback function
     var cb = function(note) {
-      this.noteContent = note;
+      var n = _this.noteMap[guid];
+      _this.versionCache[guid][n.updateSequenceNum] = new Note({
+        guid:guid,
+        notebookGuid:n.notebookGuid,
+        title:n.title,
+        updateSequenceNum:n.updateSequenceNum,
+        updated:n.updated,
+        content:note
+      });
       if (callback)
         callback(_this._stripFormatting(note))
     }
+
+    // actually fetch the note
+    console.log('Fetching note: '+guid);
     this.noteStore.getNoteContent(
       this.authenticationToken,
       guid,
