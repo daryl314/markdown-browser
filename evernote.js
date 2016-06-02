@@ -120,11 +120,12 @@ EvernoteConnection = function(){
     return txt
       .replace(/\s*<span.*?>([\S\s]*?)<\/span>\s*/g, '$1')  // clear span tags
       .replace(/\n/g,'')                                    // clear newlines
-      .replace(/<\/div>[\s\n]*<div>/g,                      // clear whitespace between div tags
-        '</div><div>')
-      .replace(/(<\/?div>)+/g,'\n')                         // convert <div> boundaries to newlines
+      .replace(/<\/div>[\s\n]*<div>/g, '</div><div>')       // clear whitespace between div tags
+      .replace(/<div><br.*?><\/div>/g, '<div></div>')       // convert <div><br/></div> to <div></div>
+      .replace(/(<\/?div>){1,2}/g,'\n')                     // convert <div> boundaries to newlines
       .replace(/<br.*?>/g,'\n')                             // convert <br> to newlines
       .replace(/<.*?>/g,'')                                 // strip any remaining tags
+      .replace(/\u00A0/g, ' ')                              // non-breaking spaces to spaces
       .replace(/&nbsp;/g,' ')                               // &nbsp; -> ' '
       .replace(/&lt;/g,'<')                                 // &lt;   -> '<'
       .replace(/&gt;/g,'>')                                 // &gt;   -> '>'

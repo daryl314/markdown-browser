@@ -62,7 +62,8 @@
         d[i+1][1] = leader + d[i+1][1].replace(/([\s\S]*\n).*/, '$1');
         d[i+2][1] = leader + d[i+2][1];
       }
-    }
+
+    } // done standardizing current line
 
     // return results
     return d
@@ -88,9 +89,9 @@
         txt2 += d[i][1];
     }
     if (txt1 === text1 && txt2 === text2) {
-      console.log('Validation OK');
+      console.log('Diff Validation OK');
     } else {
-      console.error('Validation FAIL!');
+      console.error('Diff Validation FAIL!');
     }
   }
 
