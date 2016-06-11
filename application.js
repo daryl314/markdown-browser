@@ -1307,11 +1307,19 @@ function launchCodeMirror() {
 // closure containing evernote connection code
 function connectToEvernote() {
 
+  ///// APPLICATION STATE VARIABLES /////
+
+  var currentNote = undefined;
+
+
   ///// GUI ELEMENT REFERENCES /////
 
   $mainMenu        = $('body > header#main-menu');
   $loadMenuItem    = $('body > header#main-menu a#showNoteList');
   $showHistoryItem = $('body > header#main-menu a#showNoteHistory');
+  $saveNote        = $('body > header#main-menu a#saveNote');
+  $saveNoteAs      = $('body > header#main-menu a#saveNoteAs');
+  $newNote         = $('body > header#main-menu a#newNote');
   $historyMenu     = $('#application-window section#history-list');
   $historyList     = $('#application-window section#history-list ul.list-group');
   $noteMenu        = $('#application-window section#nav-list');
@@ -1319,6 +1327,17 @@ function connectToEvernote() {
   $editorWindow    = $('#application-window main#content');
   $previewWindow   = $('#application-window section#viewer-container');
   $historyWindow   = $('#application-window section#history-container');
+  $alertWindow     = $('#alertWindow');
+
+  // create a persistent alert window
+  function persistentAlert(message) {
+    $alertWindow.show().text(message);
+  }
+
+  // create a transient alert window (hide after 5 seconds)
+  function transientAlert(message) {
+    $alertWindow.show().text(message).delay(5000).slideUp();
+  }
 
 
   ///// DEVELOPER TOKEN HANDLING /////
@@ -1328,6 +1347,70 @@ function connectToEvernote() {
       prompt('Please enter your Evernote developer token', localStorage.getItem('token'))
     )
   }
+
+  function getConnection(callback) {
+    if (!window.EN) {
+      if (localStorage.getItem('token') === null)
+        updateToken();
+      persistentAlert('Connecting to Evernote...');
+      window.EN = new EvernoteConnection(localStorage.getItem('token'));
+      if (!window.EN) {
+        alert("Failed to connect to Evernote!");
+        throw new Error("Unable to connect to Evernote");
+      } else {
+        EN.fetchData(function(notes){
+          transientAlert("Connected to Evernote!");
+          populateNoteList(notes.notes);
+          if (callback) callback();
+        });
+      }
+    } else {
+      if (callback) callback();
+    }
+  }
+
+
+  ///// UPDATE A NOTE /////
+
+  $saveNote.on('click', function(){
+    if (currentNote === undefined) {
+      transientAlert("No note currently loaded!")
+    } else {
+      getConnection(function(){
+        var noteText = cm.getValue();
+        var noteTitle = EN.noteMap[currentNote].title;
+        EN.updateNote(noteTitle, noteText, currentNote, function() {
+          transientAlert("Note "+currentNote+" updated: "+noteTitle);
+          $historyMenu.data('stale', true);
+        })
+      });
+    }
+  });
+
+
+  ///// SAVE A NEW NOTE /////
+
+  $saveNoteAs.on('click', function(){
+    noteTitle = prompt('New note name', 'Untitled');
+    if (noteTitle !== null) {
+      getConnection(function(){
+        noteText = cm.getValue();
+        EN.createNote(noteTitle, noteText, function(note){
+          //TODO add markdown tag to note
+          $historyMenu.data('stale', true);
+        });
+      });
+    }
+  });
+
+
+  ///// CREATE A NEW NOTE /////
+
+  $newNote.on('click', function(){
+    currentNote = undefined;
+    $historyMenu.data('stale', true);
+    cm.setValue('');
+  })
 
 
   ///// NOTE DATA LOADING /////
@@ -1364,9 +1447,12 @@ function connectToEvernote() {
         cm.setValue(note);
 
         // if note has changed, flag note history list as stale and update its attached note guid
-        if ($historyMenu.data('noteGuid') !== guid) {
-          $historyMenu.data('noteGuid', guid).data('stale', true);
+        if (currentNote !== guid) {
+          $historyMenu.data('stale', true);
         }
+
+        // update GUID of current note
+        currentNote = guid;
       })
 
       // hide the note menu
@@ -1378,14 +1464,7 @@ function connectToEvernote() {
   function toggleDropdown() {
     $noteMenu.toggle().addClass('col-md-2');
     $previewWindow.add($editorWindow).toggleClass('col-md-6').toggleClass('col-md-5');
-    if (!window.EN) {
-      if (localStorage.getItem('token') === null)
-        updateToken();
-      window.EN = new EvernoteConnection(localStorage.getItem('token'));
-      EN.fetchData(function(notes){
-        populateNoteList(notes.notes);
-      });
-    }
+    getConnection();
   }
 
   // bind 'Load' menu item to show/hide note menu
@@ -1395,6 +1474,12 @@ function connectToEvernote() {
   ///// NOTE HISTORY /////
 
   $showHistoryItem.on('click', function(){
+
+    // nothing to do if no note is loaded
+    if (currentNote === undefined) {
+      alert("A note must be loaded first!");
+      return
+    }
 
     // helper function to create a history menu item
     function historyItem(version, date) {
@@ -1406,11 +1491,11 @@ function connectToEvernote() {
 
     // if history is flagged as out-of-date, regenerate menu
     if ($historyMenu.data('stale')) {
-      EN.listNoteVersions($historyMenu.data('noteGuid'), function(versions, dates){
+      EN.listNoteVersions(currentNote, function(versions, dates){
 
         // append menu entry for current version
-        var currentNote = EN.noteMap[$historyMenu.data('noteGuid')];
-        $historyList.empty().append(historyItem(currentNote.updateSequenceNum, currentNote.updated));
+        var noteData = EN.noteMap[currentNote];
+        $historyList.empty().append(historyItem(noteData.updateSequenceNum, noteData.updated));
 
         // append menu entries for older versions
         for (var i = 0; i < versions.length; i++) {
@@ -1431,7 +1516,7 @@ function connectToEvernote() {
           $historyWindow.empty();
 
           // call function to fetch note history list
-          EN.fetchNoteVersionList($historyMenu.data('noteGuid'), selectedItems, function(data, meta){
+          EN.fetchNoteVersionList(currentNote, selectedItems, function(data, meta){
 
             // if only one version is selected, display the content of this version
             if (data.length == 1) {

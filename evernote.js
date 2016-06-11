@@ -34,6 +34,22 @@ EvernoteConnection = function(){
       ('0'+ d.getSeconds() ).replace(/0(\d\d)/,'$1')
   }
 
+  // helper function to convert a Note to NoteMetadata
+  EvernoteConnection.prototype._noteToMetadata = function(note) {
+    return new NoteMetadata({
+      guid              : note.guid               ,
+      title             : note.title              ,
+      contentLength     : note.contentLength      ,
+      created           : note.created            ,
+      updated           : note.updated            ,
+      deleted           : note.deleted            ,
+      updateSequenceNum : note.updateSequenceNum  ,
+      notebookGuid      : note.notebookGuid       ,
+      tagGuids          : note.tagGuids           ,
+      attributes        : note.attributes
+    });
+  }
+
   // return a filter for markdown notes
   EvernoteConnection.prototype._markdownFilter = function() {
     return new NoteFilter({
@@ -154,16 +170,20 @@ EvernoteConnection = function(){
   EvernoteConnection.prototype.createNote = function(title, content, callback) {
     if (title   === undefined) throw new Error('Title is required to create a note!');
     if (content === undefined) throw new Error('Content is required to create a note!');
+    var _this = this;
     var note = new Note();
     note.title = title;
     note.content = this._addFormatting(content);
     this.noteStore.createNote(this.authenticationToken, note, function(note, err) {
       if (err) {
-        console.error('Note creation error!');
+        console.error('Error creating note: '+title);
         console.error(err);
       } else {
-        console.log('Note created!');
+        console.log('Created note '+note.guid+': '+note.title);
         console.log(note);
+        _this.noteMap[note.guid] = _this._noteToMetadata(note);
+        _this.versionCache[note.guid] = {};
+        _this.versionCache[note.guid][note.updateSequenceNum] = note;
         if (callback) callback(note);
       }
     });
@@ -171,10 +191,11 @@ EvernoteConnection = function(){
 
   // update an existing note
   EvernoteConnection.prototype.updateNote = function(title, content, guid, callback) {
-    if (guid    === undefined) throw new Error('GUID is required to create a note!');
-    if (title   === undefined) throw new Error('Title is required to create a note!');
-    if (content === undefined) throw new Error('Content is required to create a note!');
+    if (guid    === undefined) throw new Error('GUID is required to update a note!');
+    if (title   === undefined) throw new Error('Title is required to update a note!');
+    if (content === undefined) throw new Error('Content is required to update a note!');
 
+    var _this = this;
     var note = new Note();
     note.guid = guid;
     note.title = title;
@@ -183,11 +204,13 @@ EvernoteConnection = function(){
 
     this.noteStore.updateNote(this.authenticationToken, note, function(note, err) {
       if (err) {
-        console.error('Note update error!');
+        console.error('Error updating note '+note.guid+': '+note.title);
         console.error(err);
       } else {
-        console.log('Note updated!');
+        console.log('Updated note '+note.guid+': '+note.title);
         console.log(note);
+        _this.noteMap[note.guid] = _this._noteToMetadata(note);
+        _this.versionCache[note.guid][note.updateSequenceNum] = note;
         if (callback) callback(note);
       }
     });

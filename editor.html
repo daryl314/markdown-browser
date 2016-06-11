@@ -75,6 +75,14 @@
       overflow: scroll;
     }
 
+    #alertWindow {
+      position:fixed;
+      bottom:0;
+      width:100%;
+      z-index:999;
+      margin-bottom:0;
+    }
+
     /* Shrink height of menu bar */
     header .navbar-nav > li > a, .navbar-brand {
       padding-top:4px !important;
@@ -229,8 +237,9 @@
               <span class="caret"></span></a>
               <ul class="dropdown-menu">
                 <li><a id="showNoteList" href="#">Load</a></li>
-                <li><a href="#">Save</a></li>
-                <li><a href="#">Save As</a></li>
+                <li><a id="newNote" href="#">New</a></li>
+                <li><a id="saveNote" href="#">Save</a></li>
+                <li><a id="saveNoteAs" href="#">Save As</a></li>
                 <li role="separator" class="divider"></li>
                 <li><a id="showNoteHistory" href="#">History</a></li>
               </ul>
@@ -241,6 +250,9 @@
       </div>
     </nav>
   </header>
+
+  <!-- ALERT WINDOW -->
+  <div id="alertWindow" class="alert alert-info" style="display:none" role="alert">Alert info...</div>
 
   <!-- APPLICATION BODY -->
   <div id="application-window" class="container-fluid"><div class="row">
