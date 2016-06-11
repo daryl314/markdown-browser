@@ -252,7 +252,12 @@
   </header>
 
   <!-- ALERT WINDOW -->
-  <div id="alertWindow" class="alert alert-info" style="display:none" role="alert">Alert info...</div>
+  <div id="alertWindow" class="alert alert-info alert-dismissible" style="display:none" role="alert">
+    <button type="button" class="close" data-dismiss="alert" aria-label="Close" onclick="$(this).parent().hide()">
+      <span aria-hidden="true">&times;</span>
+    </button>
+    Alert info...
+  </div>
 
   <!-- APPLICATION BODY -->
   <div id="application-window" class="container-fluid"><div class="row">
