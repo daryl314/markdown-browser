@@ -1037,13 +1037,22 @@ var render = function(){
 //     mod(CodeMirror);
 // })(function(CodeMirror) {
 function registerCloseBrackets(){
+
+  // configuration options (to remove eventually...)
   var defaults = {
     pairs: "()[]{}''\"\"",
     triples: "",
     explode: "[]{}"
   };
 
+  // CodeMirror class to contain a cursor position
   var Pos = CodeMirror.Pos;
+
+  // configure a key map for bracket handler
+  var bind = defaults.pairs + "`";
+  var keyMap = {Backspace: handleBackspace, Enter: handleEnter};
+  for (var i = 0; i < bind.length; i++)
+    keyMap["'" + bind.charAt(i) + "'"] = handler(bind.charAt(i));
 
   CodeMirror.defineOption("autoCloseBrackets", false, function(cm, val, old) {
     if (old && old != CodeMirror.Init) {
@@ -1062,11 +1071,6 @@ function registerCloseBrackets(){
     return defaults[name];
   }
 
-  var bind = defaults.pairs + "`";
-  var keyMap = {Backspace: handleBackspace, Enter: handleEnter};
-  for (var i = 0; i < bind.length; i++)
-    keyMap["'" + bind.charAt(i) + "'"] = handler(bind.charAt(i));
-
   function handler(ch) {
     return function(cm) { return handleChar(cm, ch); };
   }
@@ -1084,11 +1088,13 @@ function registerCloseBrackets(){
 
     var pairs = getOption(conf, "pairs");
     var ranges = cm.listSelections();
+
     for (var i = 0; i < ranges.length; i++) {
       if (!ranges[i].empty()) return CodeMirror.Pass;
       var around = charsAround(cm, ranges[i].head);
       if (!around || pairs.indexOf(around) % 2 != 0) return CodeMirror.Pass;
     }
+
     for (var i = ranges.length - 1; i >= 0; i--) {
       var cur = ranges[i].head;
       cm.replaceRange("", Pos(cur.line, cur.ch - 1), Pos(cur.line, cur.ch + 1), "+delete");
