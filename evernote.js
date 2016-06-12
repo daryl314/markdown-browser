@@ -115,6 +115,7 @@ EvernoteConnection = function(){
           includeTitle: true,             //     with the note title
           includeUpdated: true,           //     with the update time
           includeUpdateSequenceNum: true, //     with the update sequence number
+          includeTagGuids: true,          //     with the list of tag guids
           includeNotebookGuid: true       //     with the notebook guid
         }),                               //
         cb,                               //   success callback
@@ -174,6 +175,7 @@ EvernoteConnection = function(){
     var note = new Note();
     note.title = title;
     note.content = this._addFormatting(content);
+    note.tagGuids = [ this._getTag('markdown') ];
     this.noteStore.createNote(this.authenticationToken, note, function(note, err) {
       if (err) {
         console.error('Error creating note: '+title);

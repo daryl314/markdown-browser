@@ -1396,8 +1396,8 @@ function connectToEvernote() {
       getConnection(function(){
         noteText = cm.getValue();
         EN.createNote(noteTitle, noteText, function(note){
-          //TODO add markdown tag to note
           $historyMenu.data('stale', true);
+          currentNote = note.guid;
         });
       });
     }
