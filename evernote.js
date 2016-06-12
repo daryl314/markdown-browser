@@ -179,6 +179,7 @@ EvernoteConnection = function(){
         console.error('Error creating note: '+title);
         console.error(err);
       } else {
+        note.content = _this._addFormatting(cm.getValue()); // content not returned by API
         console.log('Created note '+note.guid+': '+note.title);
         console.log(note);
         _this.noteMap[note.guid] = _this._noteToMetadata(note);
@@ -207,6 +208,7 @@ EvernoteConnection = function(){
         console.error('Error updating note '+note.guid+': '+note.title);
         console.error(err);
       } else {
+        note.content = _this._addFormatting(cm.getValue()); // content not returned by API
         console.log('Updated note '+note.guid+': '+note.title);
         console.log(note);
         _this.noteMap[note.guid] = _this._noteToMetadata(note);
