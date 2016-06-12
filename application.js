@@ -1327,16 +1327,50 @@ function connectToEvernote() {
   $editorWindow    = $('#application-window main#content');
   $previewWindow   = $('#application-window section#viewer-container');
   $historyWindow   = $('#application-window section#history-container');
-  $alertWindow     = $('#alertWindow');
+  $alertContainer  = $('#alertContainer');
+  $alertTemplate   = $('#alertTemplate');
+
+
+  ///// DIALOG BOXES /////
+
+  // create a new notification window
+  function createNotification(message) {
+    return $alertTemplate
+      .clone()
+      .appendTo($alertContainer)
+      .attr('id','')
+      .show()
+      .append(message);
+  }
 
   // create a persistent alert window
   function persistentAlert(message) {
-    $alertWindow.show().text(message);
+    return createNotification(message).addClass('alert-info');
   }
 
   // create a transient alert window (hide after 5 seconds)
   function transientAlert(message) {
-    $alertWindow.show().text(message).delay(5000).slideUp();
+    $el = createNotification(message).addClass('alert-info').delay(5000).slideUp();
+    window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
+    return $el;
+  }
+
+  // create a persistent warning window
+  function persistentWarning(message) {
+    return createNotification(message).addClass('alert-danger');
+  }
+
+  // create a transient warning window (hide after 5 seconds)
+  function transientWarning(message) {
+    $el = createNotification(message).addClass('alert-danger').delay(5000).slideUp();
+    window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
+    return $el;
+  }
+
+  // prompt user for input
+  // TODO: make this something more styled
+  function promptForInput(message, default_entry) {
+    return prompt(message, default_entry);
   }
 
 
@@ -1344,7 +1378,7 @@ function connectToEvernote() {
 
   function updateToken() {
     localStorage.setItem('token',
-      prompt('Please enter your Evernote developer token', localStorage.getItem('token'))
+      promptForInput('Please enter your Evernote developer token', localStorage.getItem('token'))
     )
   }
 
@@ -1352,13 +1386,14 @@ function connectToEvernote() {
     if (!window.EN) {
       if (localStorage.getItem('token') === null)
         updateToken();
-      persistentAlert('Connecting to Evernote...');
+      var $el = persistentAlert('Connecting to Evernote...');
       window.EN = new EvernoteConnection(localStorage.getItem('token'));
       if (!window.EN) {
-        alert("Failed to connect to Evernote!");
+        persistentWarning("Failed to connect to Evernote!");
         throw new Error("Unable to connect to Evernote");
       } else {
         EN.fetchData(function(notes){
+          $el.remove();
           transientAlert("Connected to Evernote!");
           populateNoteList(notes.notes);
           if (callback) callback();
@@ -1391,7 +1426,7 @@ function connectToEvernote() {
   ///// SAVE A NEW NOTE /////
 
   $saveNoteAs.on('click', function(){
-    noteTitle = prompt('New note name', 'Untitled');
+    noteTitle = promptForInput('New note name', 'Untitled');
     if (noteTitle !== null) {
       getConnection(function(){
         noteText = cm.getValue();
@@ -1477,7 +1512,7 @@ function connectToEvernote() {
 
     // nothing to do if no note is loaded
     if (currentNote === undefined) {
-      alert("A note must be loaded first!");
+      persistentWarning("A note must be loaded first!");
       return
     }
 
