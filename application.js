@@ -1515,7 +1515,7 @@ function connectToEvernote() {
 
   // connect to evernote and populate the list of notes
   function populateNoteList(notes) {
-    var notebooks = _.chain(EN.getNoteData()).pluck('notebook').unique().sort().value();
+    var notebooks = _.chain(EN.getNoteData()).pluck('notebook').unique().sortBy(function(x){return x.toLowerCase()}).value();
     var groupedNotes = _.groupBy(EN.getNoteData(), 'notebook');
 
     // clear click handler and reset note list
@@ -1524,7 +1524,7 @@ function connectToEvernote() {
     // re-build note list
     _.each(notebooks, function(notebook){
       $noteList.append('<li class="list-group-item active">' + notebook + '</li>');
-      var notes = _.sortBy(groupedNotes[notebook], 'title');
+      var notes = _.sortBy(groupedNotes[notebook], function(n){return n.title.toLowerCase()});
       _.each(notes, function(note) {
         $noteList.append('<a href="#" class="list-group-item" data-guid="'+note.guid+'">' + note.title + '</a>');
       });
