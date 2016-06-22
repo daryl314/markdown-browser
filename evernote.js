@@ -150,6 +150,7 @@ EvernoteConnection = function(){
       .replace(/&quot;/g,'"')                               // &quot; -> '"'
       .replace(/&#124;/g, '|')                              // &#124; -> '|'
       .replace(/&amp;/g,'&')                                // &amp;  -> '&'
+      .replace(/^\n/, '')                                   // clear leading newline
   }
 
   // convert plain text to Evernote note format

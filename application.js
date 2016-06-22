@@ -1307,19 +1307,34 @@ function launchCodeMirror() {
 // closure containing evernote connection code
 function connectToEvernote() {
 
-  ///// APPLICATION STATE VARIABLES /////
+  ///// APPLICATION STATE VARIABLES AND CONFIGURATION /////
 
+  // GUID for current note
   var currentNote = undefined;
+
+  // options to pass to diff function
+  function diffOptions(title) {
+    return {
+      title       : title,
+      $container  : $historyWindow,
+      validate    : true,
+      style       : 'adjacent'
+    }
+  }
 
 
   ///// GUI ELEMENT REFERENCES /////
 
   $mainMenu        = $('body > header#main-menu');
   $loadMenuItem    = $('body > header#main-menu a#showNoteList');
-  $showHistoryItem = $('body > header#main-menu a#showNoteHistory');
   $saveNote        = $('body > header#main-menu a#saveNote');
   $saveNoteAs      = $('body > header#main-menu a#saveNoteAs');
   $newNote         = $('body > header#main-menu a#newNote');
+  $previewChanges  = $('body > header#main-menu a#previewChanges');
+
+  $viewEditor      = $('body > header#main-menu a#viewEditor');
+  $viewHistory     = $('body > header#main-menu a#viewHistory');
+
   $historyMenu     = $('#application-window section#history-list');
   $historyList     = $('#application-window section#history-list ul.list-group');
   $noteMenu        = $('#application-window section#nav-list');
@@ -1327,6 +1342,7 @@ function connectToEvernote() {
   $editorWindow    = $('#application-window main#content');
   $previewWindow   = $('#application-window section#viewer-container');
   $historyWindow   = $('#application-window section#history-container');
+
   $alertContainer  = $('#alertContainer');
   $alertTemplate   = $('#alertTemplate');
 
@@ -1374,6 +1390,35 @@ function connectToEvernote() {
   }
 
 
+  ///// GUI HANDLERS /////
+
+  function showEditorWindow() {
+    $viewHistory.removeClass('btn-primary');
+    $viewEditor.addClass('btn-primary');
+    $historyMenu.add($historyWindow).hide();
+    $editorWindow.add($previewWindow).show();
+  }
+
+  function showHistoryWindow() {
+    $viewEditor.removeClass('btn-primary');
+    $viewHistory.addClass('btn-primary');
+    $historyMenu.add($historyWindow).show();
+    $editorWindow.add($previewWindow).hide();
+  }
+
+  $viewHistory.on('click', function(){
+    if ($(this).hasClass('btn-primary') == false) {
+      showHistoryWindow();
+      showNoteHistory();
+    }
+  });
+  $viewEditor.on('click', function(){
+    if ($(this).hasClass('btn-primary') == false) {
+      showEditorWindow();
+    }
+  });
+
+
   ///// DEVELOPER TOKEN HANDLING /////
 
   function updateToken() {
@@ -1403,6 +1448,24 @@ function connectToEvernote() {
       if (callback) callback();
     }
   }
+
+
+  ///// PREVIEW NOTE CHANGES /////
+
+  $previewChanges.on('click', function(){
+    if (currentNote === undefined) {
+      transientAlert("No note currently loaded!")
+    } else {
+      var oldContent = EN.versionCache[currentNote][EN.noteMap[currentNote].updateSequenceNum].content;
+      var oldTitle   = EN.versionCache[currentNote][EN.noteMap[currentNote].updateSequenceNum].title;
+      var oldText = EN._stripFormatting(oldContent);
+      var newText = cm.getValue();
+      showHistoryWindow();
+      $historyWindow.empty();
+      $historyMenu.hide();
+      compareBlocks(oldText, newText, diffOptions(oldTitle));
+    }
+  })
 
 
   ///// UPDATE A NOTE /////
@@ -1508,7 +1571,7 @@ function connectToEvernote() {
 
   ///// NOTE HISTORY /////
 
-  $showHistoryItem.on('click', function(){
+  function showNoteHistory(){
 
     // nothing to do if no note is loaded
     if (currentNote === undefined) {
@@ -1520,9 +1583,6 @@ function connectToEvernote() {
     function historyItem(version, date) {
       return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + EN.dateString(date) + '</a>'
     }
-
-    // switch display
-    $historyMenu.add($historyWindow).add($previewWindow).add($editorWindow).toggle();
 
     // if history is flagged as out-of-date, regenerate menu
     if ($historyMenu.data('stale')) {
@@ -1562,19 +1622,15 @@ function connectToEvernote() {
             // otherwise show diffs between selected versions
             } else {
               for (var i = data.length-2; i >= 0; i--) {
-                compareBlocks(data[i+1], data[i], {
-                  title       : EN.dateString(meta[i+1].updated) + ' &rarr; ' + EN.dateString(meta[i].updated),
-                  $container  : $historyWindow,
-                  validate    : true,
-                  style       : 'adjacent'
-                })
+                var diffTitle = EN.dateString(meta[i+1].updated) + ' &rarr; ' + EN.dateString(meta[i].updated);
+                compareBlocks(data[i+1], data[i], diffOptions(diffTitle));
               }
             }
           })
         });
       });
     }
-  })
+  }
 
 }
 
