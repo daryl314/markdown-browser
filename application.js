@@ -1419,33 +1419,37 @@ function connectToEvernote() {
   });
 
 
-  ///// DEVELOPER TOKEN HANDLING /////
+  ///// SERVER CONNECTIVITY /////
 
+  // prompt user to update developer token
   function updateToken() {
     localStorage.setItem('token',
       promptForInput('Please enter your Evernote developer token', localStorage.getItem('token'))
     )
   }
 
+  // alias to WrappedNote class
+  var WN = EvernoteConnection.WrappedNote;
+
+  // function to use server connection
   function getConnection(callback) {
-    if (!window.EN) {
+    if (!WN.hasConnection()) {
       if (localStorage.getItem('token') === null)
         updateToken();
       var $el = persistentAlert('Connecting to Evernote...');
-      window.EN = new EvernoteConnection(localStorage.getItem('token'));
-      if (!window.EN) {
-        persistentWarning("Failed to connect to Evernote!");
-        throw new Error("Unable to connect to Evernote");
-      } else {
-        EN.fetchData(function(notes){
+      WN.connect(localStorage.getItem('token'), function() {
+        if (!WN.hasConnection()) {
+          persistentWarning("Failed to connect to Evernote!");
+          throw new Error("Unable to connect to Evernote");
+        } else {
           $el.remove();
           transientAlert("Connected to Evernote!");
-          populateNoteList(notes.notes);
-          if (callback) callback();
-        });
-      }
+          populateNoteList(WN.getNoteData());
+          if (callback) callback(WN);
+        }
+      })
     } else {
-      if (callback) callback();
+      if (callback) callback(WN);
     }
   }
 
@@ -1458,7 +1462,7 @@ function connectToEvernote() {
     } else {
       var oldContent = EN.versionCache[currentNote][EN.noteMap[currentNote].updateSequenceNum].content;
       var oldTitle   = EN.versionCache[currentNote][EN.noteMap[currentNote].updateSequenceNum].title;
-      var oldText = EN._stripFormatting(oldContent);
+      var oldText = EvernoteConnection.stripFormatting(oldContent);
       var newText = cm.getValue();
       showHistoryWindow();
       $historyWindow.empty();
@@ -1496,6 +1500,7 @@ function connectToEvernote() {
         EN.createNote(noteTitle, noteText, function(note){
           $historyMenu.data('stale', true);
           currentNote = note.guid;
+          populateNoteList(EN.notes);
         });
       });
     }
@@ -1515,8 +1520,8 @@ function connectToEvernote() {
 
   // connect to evernote and populate the list of notes
   function populateNoteList(notes) {
-    var notebooks = _.chain(EN.getNoteData()).pluck('notebook').unique().sort().value();
-    var groupedNotes = _.groupBy(EN.getNoteData(), 'notebook');
+    var notebooks = _.chain(notes).pluck('notebook').unique().sortBy(function(x){return x.toLowerCase()}).value();
+    var groupedNotes = _.groupBy(notes, 'notebook');
 
     // clear click handler and reset note list
     $noteList.off('click').empty();
@@ -1524,7 +1529,7 @@ function connectToEvernote() {
     // re-build note list
     _.each(notebooks, function(notebook){
       $noteList.append('<li class="list-group-item active">' + notebook + '</li>');
-      var notes = _.sortBy(groupedNotes[notebook], 'title');
+      var notes = _.sortBy(groupedNotes[notebook], function(n){return n.title.toLowerCase()});
       _.each(notes, function(note) {
         $noteList.append('<a href="#" class="list-group-item" data-guid="'+note.guid+'">' + note.title + '</a>');
       });
@@ -1539,18 +1544,20 @@ function connectToEvernote() {
       $(this).addClass('selected');
 
       // fetch note content
-      EN.fetchNoteContent(guid, function(note){
+      getConnection(function(conn){
+        conn.getNote(guid).fetchContent(function(content){
 
-        // put note content in editor
-        cm.setValue(note);
+          // put note content in editor
+          cm.setValue(content);
 
-        // if note has changed, flag note history list as stale and update its attached note guid
-        if (currentNote !== guid) {
-          $historyMenu.data('stale', true);
-        }
+          // if note has changed, flag note history list as stale and update its attached note guid
+          if (currentNote !== guid) {
+            $historyMenu.data('stale', true);
+          }
 
-        // update GUID of current note
-        currentNote = guid;
+          // update GUID of current note
+          currentNote = guid;
+        })
       })
 
       // hide the note menu
@@ -1581,7 +1588,7 @@ function connectToEvernote() {
 
     // helper function to create a history menu item
     function historyItem(version, date) {
-      return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + EN.dateString(date) + '</a>'
+      return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + EvernoteConnection.dateString(date) + '</a>'
     }
 
     // if history is flagged as out-of-date, regenerate menu
@@ -1616,13 +1623,13 @@ function connectToEvernote() {
             // if only one version is selected, display the content of this version
             if (data.length == 1) {
               $historyWindow
-                .append('<h2>' + EN.dateString(meta[0].updated) + '</h2>')
+                .append('<h2>' + EvernoteConnection.dateString(meta[0].updated) + '</h2>')
                 .append('<div class="text-diff">' + escapeText(data[0]) + '</div>')
 
             // otherwise show diffs between selected versions
             } else {
               for (var i = data.length-2; i >= 0; i--) {
-                var diffTitle = EN.dateString(meta[i+1].updated) + ' &rarr; ' + EN.dateString(meta[i].updated);
+                var diffTitle = EvernoteConnection.dateString(meta[i+1].updated) + ' &rarr; ' + EvernoteConnection.dateString(meta[i].updated);
                 compareBlocks(data[i+1], data[i], diffOptions(diffTitle));
               }
             }
