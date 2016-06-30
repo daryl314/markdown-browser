@@ -577,13 +577,14 @@ EvernoteConnection = function(){
 
   // update note content
   WrappedNote.prototype.update = function(content, callback) {
+    var _this = this;
     this._conn.updateNote(
       this.title(),
       EvernoteConnection.addFormatting(content),
       this.guid(),
       function(note) {
-        this._note = EvernoteConnection.noteToMetadata(note);
-        if (callback) callback(this);
+        _this._note = EvernoteConnection.noteToMetadata(note);
+        if (callback) callback(_this);
       }
     )
   }
