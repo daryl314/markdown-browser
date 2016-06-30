@@ -100,6 +100,32 @@ EvernoteConnection = function(){
     }
   }
 
+  // helper function to copy NoteMetadata
+  EvernoteConnection.copyMetadata = function(obj) {
+    if (!(obj instanceof NoteMetadata)) {
+      throw new Error('Input is not a NoteMetadata object!')
+    } else {
+      tagGuids = [];
+      for (var i = 0; i < obj.tagGuids.length; i++) {
+        tagGuids.push(obj.tagGuids[i]);
+      }
+      return new NoteMetadata({
+        guid                : obj.guid                 ,
+        title               : obj.title                ,
+        contentLength       : obj.contentLength        ,
+        created             : obj.created              ,
+        updated             : obj.updated              ,
+        deleted             : obj.deleted              ,
+        updateSequenceNum   : obj.updateSequenceNum    ,
+        notebookGuid        : obj.notebookGuid         ,
+        tagGuids            : tagGuids                ,
+        attributes          : obj.attributes           ,
+        largestResourceMime : obj.largestResourceMime  ,
+        largestResourceSize : obj.largestResourceSize
+      })
+    }
+  }
+
   // convert Evernote note content to plain text
   EvernoteConnection.stripFormatting = function(txt) {
     return txt
@@ -466,22 +492,54 @@ EvernoteConnection = function(){
     return this._conn._notebookMap[ this._note.notebookGuid ];
   }
 
+  // return the current version number
+  WrappedNote.prototype.version = function() {
+    return this._note.updateSequenceNum;
+  }
+
+  // return the update time
+  WrappedNote.prototype.updated = function() {
+    return this._note.updated;
+  }
+
   // return the note as an object
   WrappedNote.prototype.asObject = function() {
     return {
       title:    this._note.title,
       guid:     this._note.guid,
-      notebook: this._conn._notebookMap[ this._note.notebookGuid ]
+      notebook: this._conn._notebookMap[ this._note.notebookGuid ],
+      version:  this._note.updateSequenceNum,
+      updated:  this._note.updated
     }
   }
 
-  // return a list of note versions
-  WrappedNote.prototype.versions = function() {
+  // return a copy of the note
+  WrappedNote.prototype.copy = function() {
+    return new WrappedNote(
+      this._conn,
+      EvernoteConnection.copyMetadata(this._note)
+    )
+  }
 
+  // return a list of note versions
+  WrappedNote.prototype.versions = function(callback) {
+    var _this = this;
+    var cb = function(versionList) {
+      var noteList = [];
+      for (var i = 0; i < versionList.length; i++) {
+        var note = _this.copy();
+        note._note.updateSequenceNum = versionList[i].updateSequenceNum;
+        note._note.title             = versionList[i].title;
+        note._note.updated           = versionList[i].updated;
+        noteList.push(note);
+      }
+      if (callback) callback(noteList);
+    }
+    this._conn.listNoteVersions(this._note.guid, cb);
   }
 
   // return note content (with optional version number)
-  WrappedNote.prototype.fetchContent = function(version, callback) {
+  WrappedNote.prototype.fetchContent = function(version, callback, data) {
 
     // if only one argument, this is the callback
     if (callback === undefined) {
@@ -504,7 +562,22 @@ EvernoteConnection = function(){
       })
     }
 
-    // fetch with a version number
+    // fetch with a list of version numbers
+    else if (version instanceof Array) {
+      var _this = this;
+      if (data === undefined)
+        data = [];
+      if (version.length == 0) {
+        if (callback) callback(data);
+      } else {
+        this._conn.fetchNoteVersion(this._note.guid, version[0], function(note) {
+          data.push(EvernoteConnection.stripFormatting(note.content));
+          _this.fetchContent(version.slice(1), callback, data);
+        })
+      }
+    }
+
+    // fetch with a single version number
     else {
       this._conn.fetchNoteVersion(this._note.guid, version, function(note) {
         if (callback) callback(EvernoteConnection.stripFormatting(note.content))
@@ -513,7 +586,7 @@ EvernoteConnection = function(){
   }
 
   // update note content
-  WrappedNote.prototype.update = function(content) {
+  WrappedNote.prototype.update = function(content, callback) {
 
   }
 
@@ -585,7 +658,7 @@ EvernoteConnection = function(){
   }
 
   // create a new note
-  WrappedNote.newNote = function(conn, title, content, callback) {
+  WrappedNote.newNote = function(title, content, callback) {
 
   }
 

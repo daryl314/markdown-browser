@@ -1460,14 +1460,15 @@ function connectToEvernote() {
     if (currentNote === undefined) {
       transientAlert("No note currently loaded!")
     } else {
-      var oldContent = EN.versionCache[currentNote][EN.noteMap[currentNote].updateSequenceNum].content;
-      var oldTitle   = EN.versionCache[currentNote][EN.noteMap[currentNote].updateSequenceNum].title;
-      var oldText = EvernoteConnection.stripFormatting(oldContent);
-      var newText = cm.getValue();
-      showHistoryWindow();
-      $historyWindow.empty();
-      $historyMenu.hide();
-      compareBlocks(oldText, newText, diffOptions(oldTitle));
+      getConnection(function(conn) {
+        var note = conn.getNote(currentNote);
+        note.fetchContent(function(oldContent) {
+          showHistoryWindow();
+          $historyWindow.empty();
+          $historyMenu.hide();
+          compareBlocks(oldContent, cm.getValue(), diffOptions(note.title()));
+        })
+      })
     }
   })
 
@@ -1478,11 +1479,10 @@ function connectToEvernote() {
     if (currentNote === undefined) {
       transientAlert("No note currently loaded!")
     } else {
-      getConnection(function(){
-        var noteText = cm.getValue();
-        var noteTitle = EN.noteMap[currentNote].title;
-        EN.updateNote(noteTitle, noteText, currentNote, function() {
-          transientAlert("Note "+currentNote+" updated: "+noteTitle);
+      getConnection(function(conn) {
+        var note = conn.getNote(currentNote);
+        note.update(cm.getValue(), function() {
+          transientAlert("Note "+currentNote+" updated: "+note.title());
           $historyMenu.data('stale', true);
         })
       });
@@ -1495,13 +1495,12 @@ function connectToEvernote() {
   $saveNoteAs.on('click', function(){
     noteTitle = promptForInput('New note name', 'Untitled');
     if (noteTitle !== null) {
-      getConnection(function(){
-        noteText = cm.getValue();
-        EN.createNote(noteTitle, noteText, function(note){
+      getConnection(function(conn) {
+        conn.newNote(noteTitle, cm.getValue(), function(note) {
           $historyMenu.data('stale', true);
           currentNote = note.guid;
-          populateNoteList(EN.notes);
-        });
+          populateNoteList(conn.getNoteData());
+        })
       });
     }
   });
@@ -1591,51 +1590,63 @@ function connectToEvernote() {
       return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + EvernoteConnection.dateString(date) + '</a>'
     }
 
+    // callback function for clicking on a history menu item
+    function clickHandler() {
+      $el = $(this);
+
+      // toggle selection status of current item and get selected item list
+      $(this).toggleClass('active');
+      var $el = $historyList.find('a.active');
+      var selectedItems = $el.map( function(){return $(this).data('sequence')} ).toArray();
+
+      // clear history window
+      $historyWindow.empty();
+
+      // call function to fetch note history list
+      getConnection(function(conn) {
+        conn.getNote(currentNote).fetchContent(selectedItems, function(contentArr) {
+
+          // if only one version is selected, display the content of this version
+          if (contentArr.length == 1) {
+            $historyWindow
+              .append('<h2>' + $($el[0]).text() + '</h2>')
+              .append('<div class="text-diff">' + escapeText(contentArr[0]) + '</div>')
+
+          // otherwise show diffs between selected versions
+          } else {
+            for (var i = contentArr.length-2; i >= 0; i--) {
+              var diffTitle = $($el[i+1]).text() + ' &rarr; ' + $($el[i]).text();
+              compareBlocks(contentArr[i+1], contentArr[i], diffOptions(diffTitle));
+            }
+          }
+        })
+      })
+    }
+
     // if history is flagged as out-of-date, regenerate menu
     if ($historyMenu.data('stale')) {
-      EN.listNoteVersions(currentNote, function(versions, dates){
+      getConnection(function(conn) {
 
-        // append menu entry for current version
-        var noteData = EN.noteMap[currentNote];
-        $historyList.empty().append(historyItem(noteData.updateSequenceNum, noteData.updated));
+        // fetch version list for current note
+        var note = conn.getNote(currentNote);
+        note.versions(function(versionData) {
 
-        // append menu entries for older versions
-        for (var i = 0; i < versions.length; i++) {
-          $historyList.append(historyItem(versions[i], dates[i]));
-        }
+          // append menu entry for current version
+          $historyList.empty().append(historyItem(note.version(), note.updated()));
 
-        // history menu is no longer out-of-date
-        $historyMenu.data('stale', false);
+          // append menu entries for older versions
+          // NOTE: this should be returning wrapped Notes
+          for (var i = 0; i < versionData.length; i++) {
+            $historyList.append(historyItem(versionData[i].version(), versionData[i].updated()));
+          }
 
-        // bind to click on history menu items
-        $historyList.find('a').on('click', function(){
+          // history menu is no longer out-of-date
+          $historyMenu.data('stale', false);
 
-          // toggle selection status of current item and get selected item list
-          $(this).toggleClass('active');
-          var selectedItems = $historyList.find('a.active').map( function(){return $(this).data('sequence')} );
-
-          // clear history window
-          $historyWindow.empty();
-
-          // call function to fetch note history list
-          EN.fetchNoteVersionList(currentNote, selectedItems, function(data, meta){
-
-            // if only one version is selected, display the content of this version
-            if (data.length == 1) {
-              $historyWindow
-                .append('<h2>' + EvernoteConnection.dateString(meta[0].updated) + '</h2>')
-                .append('<div class="text-diff">' + escapeText(data[0]) + '</div>')
-
-            // otherwise show diffs between selected versions
-            } else {
-              for (var i = data.length-2; i >= 0; i--) {
-                var diffTitle = EvernoteConnection.dateString(meta[i+1].updated) + ' &rarr; ' + EvernoteConnection.dateString(meta[i].updated);
-                compareBlocks(data[i+1], data[i], diffOptions(diffTitle));
-              }
-            }
-          })
-        });
-      });
+          // bind to click on history menu items
+          $historyMenu.find('a').on('click', clickHandler);
+        })
+      })
     }
   }
 
