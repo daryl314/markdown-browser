@@ -15,10 +15,6 @@ EvernoteConnection = function(){
       throw new Error('Authentication token required!');
     } else {
 
-      // "public" members
-      this.wrappedNoteList = [];
-      this.wrappedNoteMap = {};
-
       //this.notes=...
       this.versionCache = {};
       this.noteMap = {};
@@ -244,8 +240,7 @@ EvernoteConnection = function(){
       // clear list if starting a new fetch
       if (start == 0) {
         this.notes = [];
-        this.wrappedNoteList = [];
-        this.wrappedNoteMap = [];
+        this.noteMap = {};
       }
 
       // execute search in noteStore
@@ -391,8 +386,6 @@ EvernoteConnection = function(){
   }
 
 
-
-
   //////////////////////
   // UPDATE FUNCTIONS //
   //////////////////////
@@ -404,19 +397,17 @@ EvernoteConnection = function(){
     var _this = this;
     var note = new Note();
     note.title = title;
-    note.content = EvernoteConnection.addFormatting(content);
+    note.content = content;
     note.tagGuids = [ this._tagMap['markdown'] ];
     this.noteStore.createNote(this.authenticationToken, note, function(note, err) {
       if (err) {
-        console.error('Error creating note: '+title);
-        console.error(err);
+        _this._errorHandler('Error creating note: '+title);
+        _this._errorHandler(err);
       } else {
-        note.content = EvernoteConnection.addFormatting(cm.getValue()); // content not returned by API
-        console.log('Created note '+note.guid+': '+note.title);
-        console.log(note);
-        var noteMeta = EvernoteConnection.noteToMetadata(note)
-        _this.notes = _this.notes.concat(noteMeta);
-        _this.noteMap[note.guid] = noteMeta;
+        note.content = content; // content not returned by API
+        _this._logHandler('Created note '+note.guid+': '+note.title);
+        _this._logHandler(note);
+        _this._addNoteMetadata(EvernoteConnection.noteToMetadata(note));
         _this.versionCache[note.guid] = {};
         _this.versionCache[note.guid][note.updateSequenceNum] = note;
         if (callback) callback(note);
@@ -434,17 +425,17 @@ EvernoteConnection = function(){
     var note = new Note();
     note.guid = guid;
     note.title = title;
-    note.content = EvernoteConnection.addFormatting(content);
+    note.content = content;
     note.tagNames = ['markdown'];
 
     this.noteStore.updateNote(this.authenticationToken, note, function(note, err) {
       if (err) {
-        console.error('Error updating note '+note.guid+': '+note.title);
-        console.error(err);
+        _this._errorHandler('Error updating note '+note.guid+': '+note.title);
+        _this._errorHandler(err);
       } else {
-        note.content = EvernoteConnection.addFormatting(cm.getValue()); // content not returned by API
-        console.log('Updated note '+note.guid+': '+note.title);
-        console.log(note);
+        note.content = content; // content not returned by API
+        _this._logHandler('Updated note '+note.guid+': '+note.title);
+        _this._logHandler(note);
         _this.noteMap[note.guid] = EvernoteConnection.noteToMetadata(note);
         _this.versionCache[note.guid][note.updateSequenceNum] = note;
         if (callback) callback(note);
@@ -468,8 +459,7 @@ EvernoteConnection = function(){
 
     // recurse with metadata if a Note was passed
     if (note instanceof Note) {
-      WrappedNote(EvernoteConnection.noteToMetadata(note));
-      return
+      return new WrappedNote(conn, EvernoteConnection.noteToMetadata(note));
     }
 
     // attach inputs
@@ -587,7 +577,22 @@ EvernoteConnection = function(){
 
   // update note content
   WrappedNote.prototype.update = function(content, callback) {
+    this._conn.updateNote(
+      this.title(),
+      EvernoteConnection.addFormatting(content),
+      this.guid(),
+      function(note) {
+        this._note = EvernoteConnection.noteToMetadata(note);
+        if (callback) callback(this);
+      }
+    )
+  }
 
+  // add note to data structures
+  WrappedNote.prototype._add = function() {
+    WrappedNote._noteData.push(this.asObject());
+    WrappedNote._noteList.push(this);
+    WrappedNote._noteMap[this.guid()] = this;
   }
 
   ///// STATIC METHODS /////
@@ -619,9 +624,7 @@ EvernoteConnection = function(){
     WrappedNote._noteMap = {};
     for (var i = 0; i < WrappedNote._conn.notes.length; i++) {
       var wNote = new WrappedNote(WrappedNote._conn, WrappedNote._conn.notes[i]);
-      WrappedNote._noteData.push(wNote.asObject());
-      WrappedNote._noteList.push(wNote);
-      WrappedNote._noteMap[wNote.guid()] = wNote;
+      wNote._add();
     }
   }
 
@@ -659,7 +662,16 @@ EvernoteConnection = function(){
 
   // create a new note
   WrappedNote.newNote = function(title, content, callback) {
-
+    WrappedNote._checkConnection();
+    WrappedNote._conn.createNote(
+      title,
+      EvernoteConnection.addFormatting(content),
+      function(note) {
+        var wNote = new WrappedNote(WrappedNote._conn, note);
+        wNote._add();
+        if (callback) callback(wNote);
+      }
+    );
   }
 
 
