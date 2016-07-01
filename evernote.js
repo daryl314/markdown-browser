@@ -10,10 +10,15 @@ EvernoteConnection = function(){
   /////////////////
 
   // constructor
-  var EvernoteConnection = function(token) {
+  var EvernoteConnection = function(token, opt) {
     if (token === undefined) {
       throw new Error('Authentication token required!');
     } else {
+
+      // process optional arguments
+      this.opt = opt || {};
+      this.opt.searchTags = opt.searchTags || [];
+      this.opt.saveTags   = opt.saveTags   || [];
 
       // "public" members
       this.notes        = null;   // list of notes
@@ -31,14 +36,16 @@ EvernoteConnection = function(){
       this._errorHandler  = EvernoteConnection.errorHandler;
       this._logHandler    = EvernoteConnection.logHandler;
 
-      // default note filter is to return markdown notes
+      // default note filter is notes sorted by title w/ specified tags
       this._noteFilter = function() {
-        return new NoteFilter({
-          tagGuids: [
-            this._tagMap['markdown']
-          ],
-          order: NoteSortOrder.TITLE
-        });
+        var filterOptions = { order : NoteSortOrder.TITLE };
+        if (this.opt.searchTags.length > 0) {
+          filterOptions.tagGuids = [];
+          for (var i = 0; i < this.opt.searchTags.length; i++) {
+            filterOptions.tagGuids.push(this._tagMap[this.opt.searchTags[i]]);
+          }
+        }
+        return new NoteFilter(filterOptions);
       }
 
       // instantiate Evernote connection objects
@@ -398,7 +405,10 @@ EvernoteConnection = function(){
     var note = new Note();
     note.title = title;
     note.content = content;
-    note.tagGuids = [ this._tagMap['markdown'] ];
+    note.tagGuids = [];
+    for (var i = 0; i < this.opt.saveTags.length; i++) {
+      note.tagGuids.push(this._tagMap[ this.opt.saveTags[i] ]);
+    }
     this.noteStore.createNote(this.authenticationToken, note, function(note, err) {
       if (err) {
         _this._errorHandler('Error creating note: '+title);
@@ -426,7 +436,7 @@ EvernoteConnection = function(){
     note.guid = guid;
     note.title = title;
     note.content = content;
-    note.tagNames = ['markdown'];
+    note.tagNames = this.opt.saveTags;
 
     this.noteStore.updateNote(this.authenticationToken, note, function(note, err) {
       if (err) {
@@ -599,8 +609,8 @@ EvernoteConnection = function(){
   ///// STATIC METHODS /////
 
   // create a connection
-  WrappedNote.connect = function(token, callback) {
-    WrappedNote._conn = new EvernoteConnection(token);
+  WrappedNote.connect = function(token, opt, callback) {
+    WrappedNote._conn = new EvernoteConnection(token, opt);
     WrappedNote._conn.fetchMetaData(callback);
   }
 

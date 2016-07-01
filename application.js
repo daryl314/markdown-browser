@@ -1437,7 +1437,11 @@ function connectToEvernote() {
       if (localStorage.getItem('token') === null)
         updateToken();
       var $el = persistentAlert('Connecting to Evernote...');
-      WN.connect(localStorage.getItem('token'), function() {
+      var opt = {
+        searchTags : ['markdown'],
+        saveTags   : ['markdown']
+      }
+      WN.connect(localStorage.getItem('token'), opt, function() {
         if (!WN.hasConnection()) {
           persistentWarning("Failed to connect to Evernote!");
           throw new Error("Unable to connect to Evernote");
