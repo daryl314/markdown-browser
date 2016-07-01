@@ -15,21 +15,21 @@ EvernoteConnection = function(){
       throw new Error('Authentication token required!');
     } else {
 
-      //this.notes=...
-      this.versionCache = {};
-      this.noteMap = {};
-      this._notebooks = null;
+      // "public" members
+      this.notes        = null;   // list of notes
+      this.noteMap      = {};     // map of notes by guid
+      this.versionCache = {};     // map of note version data
+      this.notebookMap  = {};     // map of notebooks by guid
 
       // "private" members
-      this._hasData = false; // haven't fetched any data yet
-      this._notebookMap = {};
-      this._tagMap = {};
-      this._noteData = null;
-
+      this._hasData   = false;    // haven't fetched any data yet
+      this._tags      = null;     // tag data returned by server
+      this._tagMap    = {};       // map of tags by guid
+      this._notebooks = null;     // notebook data returned by server
 
       // assign default handler functions
-      this._errorHandler = EvernoteConnection.errorHandler;
-      this._logHandler = EvernoteConnection.logHandler;
+      this._errorHandler  = EvernoteConnection.errorHandler;
+      this._logHandler    = EvernoteConnection.logHandler;
 
       // default note filter is to return markdown notes
       this._noteFilter = function() {
@@ -185,7 +185,7 @@ EvernoteConnection = function(){
     var cb = function(notebooks) {
       _this._notebooks = notebooks;
       for (var i = 0; i < _this._notebooks.length; i++) {
-        _this._notebookMap[ _this._notebooks[i].guid ] = _this._notebooks[i].name;
+        _this.notebookMap[ _this._notebooks[i].guid ] = _this._notebooks[i].name;
       }
       _this._logHandler('Fetched Evernote notebook data');
       if (callback) callback(notebooks);
@@ -479,7 +479,7 @@ EvernoteConnection = function(){
 
   // return the notebook
   WrappedNote.prototype.notebook = function() {
-    return this._conn._notebookMap[ this._note.notebookGuid ];
+    return this._conn.notebookMap[ this._note.notebookGuid ];
   }
 
   // return the current version number
@@ -497,7 +497,7 @@ EvernoteConnection = function(){
     return {
       title:    this._note.title,
       guid:     this._note.guid,
-      notebook: this._conn._notebookMap[ this._note.notebookGuid ],
+      notebook: this._conn.notebookMap[ this._note.notebookGuid ],
       version:  this._note.updateSequenceNum,
       updated:  this._note.updated
     }
