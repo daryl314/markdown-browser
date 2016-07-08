@@ -919,7 +919,7 @@ renderMarkdown = function(x, $el) {
   $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
 
   // open hyperlinks in a new tab
-  $el.find('a').attr({target: '_blank'});
+  $el.find('a').filter(function(){ return $(this).attr('href') && $(this).attr('href')[0] != '#' }).attr({target: '_blank'});
 
   // return data to caller
   return {
