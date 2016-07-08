@@ -1441,8 +1441,10 @@ function connectToEvernote() {
         updateToken();
       var $el = persistentAlert('Connecting to Evernote...');
       var opt = {
-        searchTags : ['markdown'],
-        saveTags   : ['markdown']
+        searchTags    : ['markdown'],
+        saveTags      : ['markdown'],
+        errorLogger   : persistentWarning,
+        messageLogger : transientAlert
       }
       WN.connect(localStorage.getItem('token'), opt, function() {
         if (!WN.hasConnection()) {

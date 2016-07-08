@@ -14,11 +14,34 @@ EvernoteConnection = function(){
     if (token === undefined) {
       throw new Error('Authentication token required!');
     } else {
+      _this = this;
 
       // process optional arguments
       this.opt = opt || {};
-      this.opt.searchTags = opt.searchTags || [];
-      this.opt.saveTags   = opt.saveTags   || [];
+      this.opt.searchTags     = opt.searchTags    || [];
+      this.opt.saveTags       = opt.saveTags      || [];
+      this.opt.errorLogger    = opt.errorLogger   || function(){};
+      this.opt.messageLogger  = opt.messageLogger || function(){};
+
+      // assign error handler
+      if (opt.errorHandler) {
+        this._errorHandler = EvernoteConnection.errorHandler;
+      } else {
+        this._errorHandler = function(err) {
+          _this.opt.errorLogger(err);
+          EvernoteConnection.errorHandler(err);
+        }
+      }
+
+      // assign log handler
+      if (opt.logHandler) {
+        this._logHandler = EvernoteConnection.logHandler;
+      } else {
+        this._logHandler = function(msg) {
+          _this.opt.messageLogger(msg);
+          EvernoteConnection.logHandler(msg);
+        }
+      }
 
       // "public" members
       this.notes        = null;   // list of notes
@@ -31,10 +54,6 @@ EvernoteConnection = function(){
       this._tags      = null;     // tag data returned by server
       this._tagMap    = {};       // map of tags by guid
       this._notebooks = null;     // notebook data returned by server
-
-      // assign default handler functions
-      this._errorHandler  = EvernoteConnection.errorHandler;
-      this._logHandler    = EvernoteConnection.logHandler;
 
       // default note filter is notes sorted by title w/ specified tags
       this._noteFilter = function() {
@@ -64,12 +83,24 @@ EvernoteConnection = function(){
 
   // default error handler
   EvernoteConnection.errorHandler = function(error) {
-    console.error(error);
+    if (error instanceof Array) {
+      for (var i = 0; i < error.length; i++) {
+        console.error(error[i]);
+      }
+    } else {
+      console.error(error);
+    }
+    throw new Error('EvernoteConnection failure');
   }
 
   // default log handler
   EvernoteConnection.logHandler = function(msg) {
     console.log(msg);
+  }
+
+  // return true if an input is an array of the specified type
+  EvernoteConnection.isArrayOf = function(arr, c) {
+    return (arr instanceof Array) && (arr.length == 0 || arr[0] instanceof c)
   }
 
   // helper function to format a date
@@ -190,6 +221,7 @@ EvernoteConnection = function(){
   EvernoteConnection.prototype._fetchNotebookData = function(callback) {
     var _this = this;
     var cb = function(notebooks) {
+      _this._checkArray(notebooks, Notebook);
       _this._notebooks = notebooks;
       for (var i = 0; i < _this._notebooks.length; i++) {
         _this.notebookMap[ _this._notebooks[i].guid ] = _this._notebooks[i].name;
@@ -204,6 +236,7 @@ EvernoteConnection = function(){
   EvernoteConnection.prototype._fetchTagData = function(callback) {
     var _this = this;
     var cb = function(tags) {
+      _this._checkArray(tags, Tag);
       _this._tags = tags;
       _this._logHandler('Fetched Evernote tag data');
       for (var i = 0; i < tags.length ; i++) {
@@ -232,8 +265,14 @@ EvernoteConnection = function(){
   EvernoteConnection.prototype._fetchNoteMetaData = function(noteFilter, start, callback) {
       var _this = this;
 
+      // check inputs
+      _this._checkObject(noteFilter, NoteFilter);
+      if (typeof start !== 'number' || start < 0)
+        _this._errorHandler('Start index >= 0 required');
+
       // callback function
       var cb = function(metaList) {
+        _this._checkObject(metaList, NotesMetadataList);
         var nextNote = start + metaList.notes.length;
         _this._addNoteMetadata(metaList.notes);
         _this._logHandler('Fetched Evernote note data starting from '+start);
@@ -275,6 +314,7 @@ EvernoteConnection = function(){
 
   // function to fetch note content
   EvernoteConnection.prototype.fetchNoteContent = function(guid, callback) {
+    this._checkConnection();
     var _this = this;
 
     // create a version cache entry for current guid if one doesn't existing
@@ -319,6 +359,7 @@ EvernoteConnection = function(){
 
   // function to get a list of note versions
   EvernoteConnection.prototype.listNoteVersions = function(guid, callback) {
+    this._checkConnection();
     this._logHandler('Fetching note version list for '+guid);
     this.noteStore.listNoteVersions(
       this.authenticationToken,
@@ -330,6 +371,7 @@ EvernoteConnection = function(){
 
   // function to fetch a note version (with cache)
   EvernoteConnection.prototype.fetchNoteVersion = function(guid, version, callback) {
+    this._checkConnection();
     var _this = this;
 
     // create a version cache entry for current guid if one doesn't exist
@@ -354,6 +396,7 @@ EvernoteConnection = function(){
         false,                    // don't include resource recognition data
         false,                    // don't include resource binary alternateData
         function (x) {
+          _this._checkObject(x, Note);
           _this.versionCache[guid][version] = x;
           if (callback) callback(x);
         }
@@ -363,6 +406,7 @@ EvernoteConnection = function(){
 
   // function to fetch a list of note versions
   EvernoteConnection.prototype.fetchNoteVersionList = function(guid, versions, callback, data) {
+    this._checkConnection();
     var _this = this;
 
     // initialize output list
@@ -392,6 +436,27 @@ EvernoteConnection = function(){
     if (!this._hasData) this._errorHandler('Not connected!')
   }
 
+  // type check an array
+  EvernoteConnection.prototype._checkArray = function(arr, c) {
+    if (!EvernoteConnection.isArrayOf(arr,c)) {
+      this._errorHandler('Invalid array type.  Expected Array<'+c.name+'>')
+    }
+  }
+
+  // type check an object
+  EvernoteConnection.prototype._checkObject = function(obj, c) {
+    if (!(obj instanceof c)) {
+      this._errorHandler('Invalid object type.  Expected '+c.name)
+    }
+  }
+
+  // type check a string
+  EvernoteConnection.prototype._checkString = function(str) {
+    if (typeof str !== 'string') {
+      this._errorHandler('Invalid string type')
+    }
+  }
+
 
   //////////////////////
   // UPDATE FUNCTIONS //
@@ -399,8 +464,11 @@ EvernoteConnection = function(){
 
   // create a new note
   EvernoteConnection.prototype.createNote = function(title, content, callback) {
+    this._checkConnection();
     if (title   === undefined) throw new Error('Title is required to create a note!');
     if (content === undefined) throw new Error('Content is required to create a note!');
+    this._checkString(title);
+    this._checkString(content);
     var _this = this;
     var note = new Note();
     note.title = title;
@@ -411,8 +479,7 @@ EvernoteConnection = function(){
     }
     this.noteStore.createNote(this.authenticationToken, note, function(note, err) {
       if (err) {
-        _this._errorHandler('Error creating note: '+title);
-        _this._errorHandler(err);
+        _this._errorHandler(['Error creating note: '+title, err]);
       } else {
         note.content = content; // content not returned by API
         _this._logHandler('Created note '+note.guid+': '+note.title);
@@ -427,9 +494,12 @@ EvernoteConnection = function(){
 
   // update an existing note
   EvernoteConnection.prototype.updateNote = function(title, content, guid, callback) {
+    this._checkConnection();
     if (guid    === undefined) throw new Error('GUID is required to update a note!');
     if (title   === undefined) throw new Error('Title is required to update a note!');
     if (content === undefined) throw new Error('Content is required to update a note!');
+    this._checkString(title);
+    this._checkString(content);
 
     var _this = this;
     var note = new Note();
@@ -440,8 +510,7 @@ EvernoteConnection = function(){
 
     this.noteStore.updateNote(this.authenticationToken, note, function(note, err) {
       if (err) {
-        _this._errorHandler('Error updating note '+note.guid+': '+note.title);
-        _this._errorHandler(err);
+        _this._errorHandler(['Error updating note '+note.guid+': '+note.title, err]);
       } else {
         note.content = content; // content not returned by API
         _this._logHandler('Updated note '+note.guid+': '+note.title);
