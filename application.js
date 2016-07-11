@@ -1315,10 +1315,14 @@ function connectToEvernote() {
   // GUID for current note
   var currentNote = undefined;
 
+  // cached version diff data
+  var diffCache = {}
+
   // options to pass to diff function
-  function diffOptions(title) {
+  function diffOptions(title, d) {
     return {
       title       : title,
+      diffData    : d,
       $container  : $historyWindow,
       validate    : true,
       style       : 'adjacent'
@@ -1599,6 +1603,58 @@ function connectToEvernote() {
       return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + EvernoteConnection.dateString(date) + '</a>'
     }
 
+    // helper function to return true if all diff data are available
+    function diffReady() {
+      var selectedItems = $historyList.find('a.active').map( function(){return $(this).data('sequence')} ).toArray();
+      if (selectedItems.length < 2) {
+        return true
+      } else {
+        for (var i = 0; i < selectedItems.length-1; i++) {
+          if (!(
+              diffCache[selectedItems[i+1]] &&
+              diffCache[selectedItems[i+1]][selectedItems[i]]
+          )) {
+            return false
+          }
+        }
+        return true
+      }
+    }
+
+    // helper function to perform the rendering
+    // rendering only happens once all data are available in case the function is backlogged with clicks
+    function doRendering() {
+      if (diffReady()) {
+
+        // get selected item list
+        var $el = $historyList.find('a.active');
+        var selectedItems = $el.map( function(){return $(this).data('sequence')} ).toArray();
+
+        // clear history window
+        $historyWindow.empty();
+
+        // if only one version is selected, display the content of this version
+        if (selectedItems.length == 1) {
+          $historyWindow
+            .append('<h2>' + $($el[0]).text() + '</h2>')
+            .append('<div class="text-diff">' + escapeText(diffCache[selectedItems[0]][null]) + '</div>')
+
+        // otherwise show diffs between selected versions
+        } else {
+          for (var i = selectedItems.length-2; i >= 0; i--) {
+            compareBlocks(
+              diffCache[ selectedItems[i+1] ][ null ],
+              diffCache[ selectedItems[i]   ][ null ],
+              diffOptions(
+                $($el[i+1]).text() + ' &rarr; ' + $($el[i]).text(),
+                diffCache[ selectedItems[i+1] ][ selectedItems[i] ]
+              )
+            );
+          }
+        }
+      }
+    }
+
     // callback function for clicking on a history menu item
     function clickHandler() {
       $el = $(this);
@@ -1615,19 +1671,27 @@ function connectToEvernote() {
       getConnection(function(conn) {
         conn.getNote(currentNote).fetchContent(selectedItems, function(contentArr) {
 
-          // if only one version is selected, display the content of this version
-          if (contentArr.length == 1) {
-            $historyWindow
-              .append('<h2>' + $($el[0]).text() + '</h2>')
-              .append('<div class="text-diff">' + escapeText(contentArr[0]) + '</div>')
+          // cache version data
+          for (var i = 0; i < contentArr.length; i++) {
+            if (!diffCache[selectedItems[i]])
+              diffCache[selectedItems[i]] = {null : contentArr[i]};
+          }
 
-          // otherwise show diffs between selected versions
-          } else {
-            for (var i = contentArr.length-2; i >= 0; i--) {
-              var diffTitle = $($el[i+1]).text() + ' &rarr; ' + $($el[i]).text();
-              compareBlocks(contentArr[i+1], contentArr[i], diffOptions(diffTitle));
+          // compute diffs between versions
+          for (var i = contentArr.length-2; i >= 0; i--) {
+            var oldVersion = selectedItems[i+1];
+            var newVersion = selectedItems[i];
+            var oldContent = contentArr[i+1];
+            var newContent = contentArr[i];
+            if(! diffCache[oldVersion][newVersion] ) {
+              diffCache[oldVersion][newVersion] = compareBlocks(oldContent, newContent, {
+                $container : null
+              });
             }
           }
+
+          // render results
+          doRendering();
         })
       })
     }
@@ -1635,6 +1699,9 @@ function connectToEvernote() {
     // if history is flagged as out-of-date, regenerate menu
     if ($historyMenu.data('stale')) {
       getConnection(function(conn) {
+
+        // clear cache
+        diffCache = {};
 
         // fetch version list for current note
         var note = conn.getNote(currentNote);
