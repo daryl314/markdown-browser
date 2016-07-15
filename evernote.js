@@ -201,9 +201,11 @@ EvernoteConnection = function(){
   // FETCH METADATA //
   ////////////////////
 
-  // function to fetch data
+  // function to fetch/refresh data
   EvernoteConnection.prototype.fetchMetaData = function(callback) {
     var _this = this;
+    _this._hasData = false; // no data yet
+    _this.versionCache = {}; // reset version cache
     var cb = function(notes) {
       _this._hasData = true; // okay to start using connection
       if (callback) callback(notes);
@@ -220,6 +222,8 @@ EvernoteConnection = function(){
   // function to fetch notebook data
   EvernoteConnection.prototype._fetchNotebookData = function(callback) {
     var _this = this;
+    _this.notebookMap = {}; // reset notebook map
+    _this._notebooks = null; // reset results array
     var cb = function(notebooks) {
       _this._checkArray(notebooks, Notebook);
       _this._notebooks = notebooks;
@@ -235,6 +239,8 @@ EvernoteConnection = function(){
   // function to fetch tag data
   EvernoteConnection.prototype._fetchTagData = function(callback) {
     var _this = this;
+    _this._tagMap = {}; // reset tag map
+    _this._tags = null; // reset results array
     var cb = function(tags) {
       _this._checkArray(tags, Tag);
       _this._tags = tags;
@@ -681,6 +687,15 @@ EvernoteConnection = function(){
   WrappedNote.connect = function(token, opt, callback) {
     WrappedNote._conn = new EvernoteConnection(token, opt);
     WrappedNote._conn.fetchMetaData(callback);
+  }
+
+  // refresh data in connection
+  WrappedNote.refreshConnection = function(callback) {
+    WrappedNote._checkConnection();
+    WrappedNote._conn.fetchMetaData(function(){
+      WrappedNote._refreshNoteData();
+      if (callback) callback();
+    })
   }
 
   // return true if connected

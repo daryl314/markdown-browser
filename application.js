@@ -1338,6 +1338,7 @@ function connectToEvernote() {
   $saveNoteAs      = $('body > header#main-menu a#saveNoteAs');
   $newNote         = $('body > header#main-menu a#newNote');
   $previewChanges  = $('body > header#main-menu a#previewChanges');
+  $refresh         = $('body > header#main-menu a#refreshConnection');
 
   $viewEditor      = $('body > header#main-menu a#viewEditor');
   $viewHistory     = $('body > header#main-menu a#viewHistory');
@@ -1465,6 +1466,18 @@ function connectToEvernote() {
       if (callback) callback(WN);
     }
   }
+
+
+  ///// REFRESH SERVER CONNECTION /////
+
+  $refresh.on('click', function(){
+    getConnection(function(conn) {
+      WN.refreshConnection(function(){
+        transientAlert("Refreshed Evernote data");
+        populateNoteList(WN.getNoteData());
+      })
+    })
+  })
 
 
   ///// PREVIEW NOTE CHANGES /////
