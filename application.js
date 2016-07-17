@@ -1339,6 +1339,7 @@ function connectToEvernote() {
   $newNote         = $('body > header#main-menu a#newNote');
   $previewChanges  = $('body > header#main-menu a#previewChanges');
   $refresh         = $('body > header#main-menu a#refreshConnection');
+  $updateToken     = $('body > header#main-menu a#updateToken');
 
   $viewEditor      = $('body > header#main-menu a#viewEditor');
   $viewHistory     = $('body > header#main-menu a#viewHistory');
@@ -1351,6 +1352,11 @@ function connectToEvernote() {
   $previewWindow   = $('#application-window section#viewer-container');
   $historyWindow   = $('#application-window section#history-container');
 
+  $promptTemplate  = $('#promptTemplate');
+  $promptOverlay   = $('#overlay-background');
+  $promptBody      = $('#promptTemplate #modalTitle');
+  $promptInput     = $('#promptTemplate .modal-body input');
+  $promptOK        = $('#promptTemplate button.btn-primary');
   $alertContainer  = $('#alertContainer');
   $alertTemplate   = $('#alertTemplate');
 
@@ -1392,9 +1398,14 @@ function connectToEvernote() {
   }
 
   // prompt user for input
-  // TODO: make this something more styled
-  function promptForInput(message, default_entry) {
-    return prompt(message, default_entry);
+  function promptForInput(message, default_entry, callback) {
+    $promptTemplate.add($promptOverlay).show();
+    $promptBody.text(message);
+    $promptInput.val(default_entry);
+    $promptOK.one('click', function(){
+      $promptTemplate.add($promptOverlay).hide();
+      if (callback) callback( $promptInput.val() );
+    });
   }
 
 
@@ -1431,9 +1442,13 @@ function connectToEvernote() {
 
   // prompt user to update developer token
   function updateToken() {
-    localStorage.setItem('token',
-      promptForInput('Please enter your Evernote developer token', localStorage.getItem('token'))
-    )
+    promptForInput(
+      'Please enter your Evernote developer token',
+      localStorage.getItem('token'),
+      function(result) {
+        localStorage.setItem('token', result);
+      }
+    );
   }
 
   // alias to WrappedNote class
@@ -1466,6 +1481,11 @@ function connectToEvernote() {
       if (callback) callback(WN);
     }
   }
+
+
+  ///// UPDATE DEVELOPER TOKEN /////
+
+  $updateToken.on('click', updateToken);
 
 
   ///// REFRESH SERVER CONNECTION /////
@@ -1519,16 +1539,17 @@ function connectToEvernote() {
   ///// SAVE A NEW NOTE /////
 
   $saveNoteAs.on('click', function(){
-    noteTitle = promptForInput('New note name', 'Untitled');
-    if (noteTitle !== null) {
-      getConnection(function(conn) {
-        conn.newNote(noteTitle, cm.getValue(), function(note) {
-          $historyMenu.data('stale', true);
-          currentNote = note.guid;
-          populateNoteList(conn.getNoteData());
-        })
-      });
-    }
+    promptForInput('New note name', 'Untitled', function(noteTitle) {
+      if (noteTitle !== null) {
+        getConnection(function(conn) {
+          conn.newNote(noteTitle, cm.getValue(), function(note) {
+            $historyMenu.data('stale', true);
+            currentNote = note.guid;
+            populateNoteList(conn.getNoteData());
+          })
+        });
+      }
+    })
   });
 
 
