@@ -1,19 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Markdown Editor</title>
 
-  <!-- JAVASCRIPT RESOURCES -->
-  <link rel="stylesheet" href="lib/bootswatch-cosmo.min.css" />
-  <link rel="stylesheet" href="lib/highlight-sunburst.min.css" />
+  <!-- JAVASCRIPT LIBRARIES -->
   <script type="text/javascript" src="lib/jquery.min.js"></script>
-  <script type="text/javascript" src="lib/bootstrap-dropdown-3.3.4.js"></script>
   <script type="text/javascript" src="lib/lodash.min.js"></script>
+
+  <!-- BOOTSTRAP.JS -->
+  <link rel="stylesheet" href="lib/bootswatch-cosmo.min.css" />
+  <script type="text/javascript" src="lib/bootstrap-dropdown-3.3.4.js"></script>
+
+  <!-- SYNTAX HIGHLIGHTING -->
+  <link rel="stylesheet" href="lib/highlight-sunburst.min.css" />
   <script type="text/javascript" src="lib/highlight-9.1.0.min.js"></script>
-  <script type="text/javascript">window.module={};//for diff.js node exports</script>
-  <script type="text/javascript" src="diff.js"></script>
 
   <!-- CODEMIRROR CSS -->
   <link rel="stylesheet" href="CodeMirror/lib/codemirror.css" />
@@ -40,8 +42,12 @@
   <script type="text/javascript" src="/lib/jsOAuth-1.3.7.min.js"></script>
   <script type="text/javascript" src="evernote.js"></script>
 
-  <!-- APPLICATION RESOURCES -->
+  <!-- TEXT DIFF -->
+  <script type="text/javascript">window.module={};//for diff.js node exports</script>
+  <script type="text/javascript" src="diff.js"></script>
   <script type="text/javascript" src="text-diff.js"></script>
+
+  <!-- APPLICATION RESOURCES -->
   <script type="text/javascript" src="marked.js"></script>
   <script type="text/javascript" src="markdown.js"></script>
   <script type="text/javascript" src="sample-markdown.js"></script>
@@ -122,6 +128,18 @@
     .text-diff span.chunk-equal     { }
     .text-diff span.chunk-insert    { background-color: lightgreen }
     .text-diff span.chunk-delete    { background-color: lightpink  }
+
+    /* Style for grey background behind overlay */
+
+    #overlay-background {
+      position: absolute;
+      left: 0px;
+      top: 0px;
+      width:100%;
+      height:100%;
+      z-index: 1000;
+      background-color: rgba(0,0,0,0.7);
+    }
 
     /*
     Solarized color pallet
@@ -230,6 +248,28 @@
 </head>
 <body>
 
+  <!-- DIALOG BOX WINDOW -->
+  <div id="promptTemplate" class="modal fade in" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true" style="display:none; padding-left: 0px;">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true" onClick="$('div#promptTemplate').add('div#overlay-background').hide()">×</span>
+          </button>
+          <h4 class="modal-title" id="modalTitle">Modal title</h4>
+        </div>
+        <div class="modal-body">
+          <input class="form-control" id="promptInput" placeholder="Answer here">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal" onClick="$('div#promptTemplate').add('div#overlay-background').hide()">Cancel</button>
+          <button type="button" class="btn btn-primary">OK</button>
+        </div>
+      </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+  </div>
+  <div id="overlay-background" style="display:none"></div>
+
   <!-- APPLICATION MENU -->
   <header id="main-menu" class="hidden-print">
     <nav class="navbar navbar-default navbar-fixed-top">
@@ -245,10 +285,13 @@
                 <li><a id="saveNote" href="#">Save</a></li>
                 <li><a id="saveNoteAs" href="#">Save As</a></li>
                 <li role="separator" class="divider"></li>
-                <li><a id="showNoteHistory" href="#">History</a></li>
+                <li><a id="refreshConnection" href="#">Refresh</a></li>
+                <li><a id="previewChanges" href="#">Preview Changes</a></li>
+                <li><a id="updateToken" href="#">Update token</a></li>
               </ul>
             </li>
-            <li><a href="#">Menu</a></li>
+            <li><a id="viewEditor" class="btn btn-primary" href="#">Editor</a></li>
+            <li><a id="viewHistory" class="btn btn-default" href="#">History</a></li>
           </ul>
         </div>
       </div>

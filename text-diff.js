@@ -215,19 +215,25 @@
       $container  : $('body') , // default to body for output
       validate    : true      , // validate that diffs match input text
       style       : 'adjacent', // default to side-by-side display
-      title       : null        // no default title
+      title       : null,       // no default title
+      diffData    : null        // precalculated diff data
     })
 
     // perform and validate diffs
-    var d = doDiff(text1, text2);
+    var d = opt.diffData ? opt.diffData : doDiff(text1, text2);
     if (opt.validate)
-      validateDiffs(text1, text2, d)
+      validateDiffs(text1, text2, d);
 
     // render output
-    if (opt.style === 'adjacent')
-      displayDiffsAsTable(d, opt.$container, opt.title);
-    else if (opt.style === 'inline')
-      displayDiffsAsBlock(d, opt.$container, opt.title);
-    else
-      throw new Error('Invalid display style: '+opt.style);
+    if (opt.$container) {
+      if (opt.style === 'adjacent')
+        displayDiffsAsTable(d, opt.$container, opt.title);
+      else if (opt.style === 'inline')
+        displayDiffsAsBlock(d, opt.$container, opt.title);
+      else
+        throw new Error('Invalid display style: '+opt.style);
+    }
+
+    // return the diff data
+    return d
   }
