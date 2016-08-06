@@ -1049,23 +1049,33 @@ function registerCloseBrackets(){
   };
 
   // return a configuration option
+  // this is required because there are multiple autoCloseBrackets option values
+  // that evaluate to true.
   function getOption(conf, name) {
 
-    //
+    // requesting pairs and autoCloseBrackets was defined as a string
+    //   - return the string
     if (name == "pairs" && typeof conf == "string") return conf;
 
-    //
+    // requesting a field that exists in the autoCloseBrackets object
+    //   - return the field from autoCloseBrackets
     if (typeof conf == "object" && conf[name] != null) return conf[name];
 
-    //
+    // otherwise return the default.
     return defaults[name];
   }
 
   // TOOO: Document what this does.  Required by CM, or can be refactored out?
   function getConfig(cm) {
+
+    // return null if plugin is disabled
     var deflt = cm.state.closeBrackets;
     if (!deflt) return null;
+
+    // get mode at cursor location
     var mode = cm.getModeAt(cm.getCursor());
+
+    // return closeBrackets mode if defined at cursor.  plugin state otherwise.
     return mode.closeBrackets || deflt;
   }
 
@@ -1094,20 +1104,28 @@ function registerCloseBrackets(){
     keyMap["'" + bind.charAt(i) + "'"] = handler(bind.charAt(i));
 
   // register plugin
-  CodeMirror.defineOption("autoCloseBrackets", false, function(cm, val, old) {
+  CodeMirror.defineOption(
+    "autoCloseBrackets",  // plugin name
+    false,                // default value: don't turn on plugin unless called out explicitly
+    function(             // callback called when editor is initialized or when option is modified through setOption
+      cm,                 // CodeMirror instance
+      val,                // new value for 'autoCloseBrackets' option
+      old                 // previous value for 'autoCloseBrackets' option
+    ) {
 
-    // ???
-    if (old && old != CodeMirror.Init) {
-      cm.removeKeyMap(keyMap);
-      cm.state.closeBrackets = null;
-    }
+      // value was previously true, so disable plugin
+      if (old && old != CodeMirror.Init) {
+        cm.removeKeyMap(keyMap);        // remove key bindings
+        cm.state.closeBrackets = null;  // set closeBrackets state to null
+      }
 
-    // ???
-    if (val) {
-      cm.state.closeBrackets = val;
-      cm.addKeyMap(keyMap);
+      // new value evaluates to true, so enable plugin
+      if (val) {
+        cm.state.closeBrackets = val;   // set closeBrackets state to true
+        cm.addKeyMap(keyMap);           // add key bindings
+      }
     }
-  });
+  );
 
 
   //////////////////
@@ -1199,7 +1217,10 @@ function registerCloseBrackets(){
 
     var pairs = getOption(conf, "pairs");
     var pos = pairs.indexOf(ch);
+
+    // don't do anything if character isn't in the pairs list
     if (pos == -1) return CodeMirror.Pass;
+
     var triples = getOption(conf, "triples");
 
     var identical = pairs.charAt(pos + 1) == ch; // closing character matches opening character?
@@ -1231,7 +1252,7 @@ function registerCloseBrackets(){
         else
           curType = "skip";
 
-      //
+      // typed 3rd character of a triple, so add 4 of the character
       } else if (
             identical // typed character matches closing character
             && cur.ch > 1 // not at start of line
@@ -1243,24 +1264,56 @@ function registerCloseBrackets(){
       ) {
         curType = "addFour";
 
-      //
-      } else if (identical) { // typed character matches closing character
-        if (!CodeMirror.isWordChar(next) // first character following selection is not a word character
-          && enteringString(cm, cur, ch)) // ???
-            curType = "both";
+      // typed a potential closing character (character is both an opening and closing character)...
+      } else if (identical) {
 
+        // typed a quote character without a word character on either side,
+        // so insert both quote characters from pair
+        //
+        // blue^() inserts a single quote
+        // enteringString returns true if the quote could be the start of a string.  if
+        /*
+          // Project the token type that will exist after the given char is
+          // typed, and use it to determine whether it would cause the start
+          // of a string token.
+          function enteringString(cm, pos, ch) {
+            var line = cm.getLine(pos.line);
+            return (
+              (line[pos.ch-1]||' ') +
+              ch +
+              (line[pos.ch  ]||' ')
+            ).match(/\W['"]\W/);
+        */
+        if (!CodeMirror.isWordChar(next) // first character following selection is not a word character
+          && enteringString(cm, cur, ch)) // character is a quote surrounded by non-word characters (or SOL/EOL)
+            curType = "both"; // insert both brackets from pair
+
+        // ambiguous open/close character has a word on either side (or is not a quote)
+        // so don't do anything since we appear to be mid-string
         else return CodeMirror.Pass;
 
-      } else if (opening && (cm.getLine(cur.line).length == cur.ch ||
-                             isClosingBracket(next, pairs) ||
-                             /\s/.test(next))) {
+      // typed an opening character without a selection where next character is EOL, closing bracket, or whitespace
+      // so insert both brackets from the pair
+      } else if (
+        opening && ( // typed an opening character (and it's an empty selection per logic above)
+          cm.getLine(cur.line).length == cur.ch // cursor is at end of line
+          || isClosingBracket(next, pairs) // first character following selection is a closing bracket
+          || /\s/.test(next) // first character following selection is whitespace
+        )
+      ) {
         curType = "both";
+
+      // otherwise don't do anything
       } else {
         return CodeMirror.Pass;
       }
-      if (!type) type = curType;
-      else if (type != curType) return CodeMirror.Pass;
-    }
+
+      // don't do anything if the current action doesn't match the action associated
+      // with the first selection.
+      if (!type) type = curType; // log action for first selection
+      else if (type != curType) return CodeMirror.Pass; // check that current action matches first action
+
+    } // continue iteration
 
     var left = pos % 2 ? pairs.charAt(pos - 1) : ch; // left bracket character
     var right = pos % 2 ? ch : pairs.charAt(pos + 1); // right bracket character
@@ -1297,9 +1350,14 @@ function registerCloseBrackets(){
   // CodeMirror operations //
   ///////////////////////////
 
-  // unprocessed function from original plugin...
+  // given a CodeMirror selection, shrink it by one character on each side
+  // to remove added brackets from the selection
   function contractSelection(sel) {
+
+    // is this a reverse selection (where endpoint is before the start)?
     var inverted = CodeMirror.cmpPos(sel.anchor, sel.head) > 0;
+
+    // return a new selection representing the shrunken selection
     return {
       anchor: new Pos(sel.anchor.line, sel.anchor.ch + (inverted ? -1 :  1)),
       head  : new Pos(sel.head.line,   sel.head.ch   + (inverted ?  1 : -1))
@@ -1322,7 +1380,7 @@ function registerCloseBrackets(){
     })
   }
 
-  // ??
+  // add bracket characters around each selection.
   function execSurround(left, right){
     cm.operation(function(){
 
@@ -1334,25 +1392,24 @@ function registerCloseBrackets(){
       // replace selections with new text and expand selections to include new text
       cm.replaceSelections(sels, "around");
 
-      // ??
+      // remove newly added brackets from each selection
       sels = cm.listSelections().slice();
       for (var i = 0; i < sels.length; i++)
         sels[i] = contractSelection(sels[i]);
-
       cm.setSelections(sels);
     })
   }
 
-  // ??
+  // replace selection with bracket characters
   function execBoth(left, right){
     cm.operation(function(){
-      cm.replaceSelection(left + right, null);
+      cm.replaceSelection(left + right, null); // replace selection with opening and closing brackets
       cm.triggerElectric(left + right); // trigger automatic indentation
       cm.execCommand("goCharLeft"); // move character to left
     })
   }
 
-  // ??
+  // replace selection with four of the given character
   function execAddFour(left){
     cm.operation(function(){
       cm.replaceSelection(left + left + left + left, "before");
@@ -1377,12 +1434,16 @@ function registerCloseBrackets(){
     return str.length == 2 ? str : null;
   }
 
-  // Project the token type that will exists after the given char is
+  // Project the token type that will exist after the given char is
   // typed, and use it to determine whether it would cause the start
   // of a string token.
   function enteringString(cm, pos, ch) {
     var line = cm.getLine(pos.line);
-    return ((line[pos.ch-1]||' ') + ch + (line[pos.ch]||' ')).match(/\W['"]\W/);
+    return (
+      (line[pos.ch-1]||' ') +
+      ch +
+      (line[pos.ch  ]||' ')
+    ).match(/\W['"]\W/);
     // var token = cm.getTokenAt(pos);
     // if (/\bstring2?\b/.test(token.type)) return false;
     // var stream = new CodeMirror.StringStream(line.slice(0, pos.ch) + ch + line.slice(pos.ch), 4);
