@@ -1090,7 +1090,7 @@ function registerCloseBrackets(){
 
     // opening characters (unique doesn't matter)
     config.openers = ''
-    for (var i = 9; i < config.pairs.length; i+=2)
+    for (var i = 0; i < config.pairs.length; i+=2)
       config.openers += config.pairs[i];
     for (var i = 0; i < config.multiples.length; i++)
       config.openers += config.multiples[i][1][0];
@@ -1155,30 +1155,70 @@ function registerCloseBrackets(){
   function handleBackspace(cm) {
     if (isDisabled(cm)) return CodeMirror.Pass;
 
+    // variable to contain the number of characters [L,R] to delete for each cursor
+    var bracketSizes = [];
+
     // iterate over selections
     var ranges = cm.listSelections();
+    outerLoop:
     for (var i = 0; i < ranges.length; i++) {
 
       // don't do anything if there is a nonzero selection (backspace should delete selection)
-      if (!ranges[i].empty()) return CodeMirror.Pass;
+      if (!ranges[i].empty())
+        return CodeMirror.Pass;
 
-      // don't do anything unless a bracket pair surrounds cursor
-      var around = charsAround(cm, ranges[i].head); // get characters surrounding cursor
-      if (!around  // don't have a character on both sides
-        || config.pairs.indexOf(around) % 2 != 0 // not a pair starting with the opening character
-      ) return CodeMirror.Pass;
+      // don't do anything if at start or end of line
+      var cur = ranges[i].head;
+      if (cur.ch == 0 || cm.getLine(cur.line).length == cur.ch)
+        return CodeMirror.Pass;
+
+      // characters before and after cursor
+      var charsL = cur.ch;
+      var charsR = cm.getLine(cur.line).length - cur.ch;
+
+      // iterate over potential multi-character bracket pairs
+      for (var j = 0; j < config.multiples.length; j++) {
+        var bracketL = config.multiples[j][0];
+        var bracketR = config.multiples[j][1];
+        if (
+            charsL >= bracketL.length &&
+            charsR >= bracketR.length &&
+            adjacentChars(cm, cur, -bracketL.length) == bracketL &&
+            adjacentChars(cm, cur,  bracketR.length) == bracketR
+        ) {
+          bracketSizes.push([ bracketL.length, bracketR.length ]);
+          continue outerLoop;
+        }
+      }
+
+      // look for a match in single-character pair list
+      var around = adjacentChars(cm,cur,-1) + adjacentChars(cm,cur,1);
+      if (config.pairs.indexOf(around) % 2 == 0) {
+        bracketSizes.push([ 1, 1 ]);
+      }
+
+      // otherwise nothing matched, so yield to default backspace action
+      else {
+        return CodeMirror.Pass;
+      }
     }
 
+    // done iterating over selections.
     // all selections at this point are zero-length cursors surrounded by bracket pairs
 
     // iterate over cursors in reverse order and delete bracket pairs surrounding cursor
     for (var i = ranges.length - 1; i >= 0; i--) {
       var cur = ranges[i].head;
-      cm.replaceRange("", Pos(cur.line, cur.ch - 1), Pos(cur.line, cur.ch + 1), "+delete");
+      cm.replaceRange(
+        "",
+        Pos(cur.line, cur.ch - bracketSizes[i][0]),
+        Pos(cur.line, cur.ch + bracketSizes[i][1]),
+        "+delete"
+      );
     }
   }
 
-  // handle an enter keypress
+  // handle an enter keypress: explode bracket pairs
   function handleEnter(cm) {
 
     // don't do anything if input is disabled (vim command mode)
@@ -1194,7 +1234,8 @@ function registerCloseBrackets(){
       if (!ranges[i].empty()) return CodeMirror.Pass;
 
       // don't do anything unless a bracket pair surrounds cursor
-      var around = charsAround(cm, ranges[i].head);
+      var cur = ranges[i].head;
+      var around = adjacentChars(cm,cur,-1) + adjacentChars(cm,cur,1);
       if (!around // don't have a character on both sides
         || explode.indexOf(around) % 2 != 0 // not a pair starting with the opening character
       ) return CodeMirror.Pass;
@@ -1229,11 +1270,11 @@ function registerCloseBrackets(){
   // return the bracketing action associated with a selection and a keypress
   // TODO: better to use an enumeration?
   function bracketAction(cm, ch, range) {
-    if (isDisabled(cm)) return "none"
+    if (isDisabled(cm)) return ["none"]
 
     // don't do anything if character isn't in the bind list
     // this shouldn't happen, but is here as a safety check...
-    if (config.bindKeys.indexOf(ch) == -1) return "none";
+    if (config.bindKeys.indexOf(ch) == -1) return ["none"];
 
     // is this an opening or closing character?
     var isOpener = config.openers.indexOf(ch) != -1;
@@ -1259,16 +1300,16 @@ function registerCloseBrackets(){
     //   - otherwise allow selection to be replaced with typed character
     if (!range.empty()) {
       if (next == ')' && prev == '(' && ch == '\\') {
-        return "escape";
+        return ["escape"];
       } else if (isOpener) {
-        return "surround";
+        return ["surround"];
       } else {
-        return "none";
+        return ["none"];
       }
     }
 
     // backspaces are only used to surround a selection, so ignore in future processing
-    if (ch == '\\') return "none";
+    if (ch == '\\') return ["none"];
 
 
     ///// THERE ISN'T A SELECTION SO THIS IS A CURSOR /////
@@ -1288,18 +1329,18 @@ function registerCloseBrackets(){
       for (var i = 0; i < config.multiples.length; i++) {
         var sequence = config.multiples[i][1];
         if (adjacentChars(cm, cur, sequence.length) == sequence)
-          return "skip" + sequence.length;
+          return ["skip", sequence.length];
       }
 
       // if character is a singleton, move ahead one character to jump over
       // closing bracket
       var idx = config.pairs.indexOf(ch);
-      if (idx != -1 && idx % 2 == 0)
-        return "skip";
+      if (idx != -1 && idx % 2 == 1)
+        return ["skip", 1];
 
       // otherwise take default action
       else
-        return "none";
+        return ["none"];
     }
 
 
@@ -1314,10 +1355,10 @@ function registerCloseBrackets(){
       var sequence = config.multiples[i][0];
 
       // need enough characters in the line to match
-      if (cur.ch > sequence.length - 1) {
+      if (cur.ch >= sequence.length - 1) {
 
         // characters before selection
-        var typedChars = adjacentChars(cm, cur, sequence.length-1);
+        var typedChars = adjacentChars(cm, cur, 1-sequence.length);
 
         // split up sequence
         var seqStart = sequence.slice(0, sequence.length-1);
@@ -1326,7 +1367,7 @@ function registerCloseBrackets(){
         // check if typed characters and current character match sequence.
         // return bracket expansion action if they do.
         if (seqStart == typedChars && seqLast == ch)
-          return "expandMulti";
+          return ["both", seqLast, config.multiples[i][1]];
       }
     }
 
@@ -1343,12 +1384,15 @@ function registerCloseBrackets(){
            !CodeMirror.isWordChar(next)         // character after cursor is not a word character
         && !CodeMirror.isWordChar(prev)         // character before cursor is not a word character
         && (config.midString.indexOf(ch) != -1) // character is in multi-character list
-      )
-          return "both"; // insert both brackets from pair
+      ) {
+        // insert both brackets from pair
+        var pairIdx = config.pairs.indexOf(ch);
+        return ["both", config.pairs[pairIdx], config.pairs[pairIdx+1]];
+      }
 
       // ambiguous open/close character has a word on either side (or is not in mid-string list)
       // so don't do anything since we appear to be mid-string
-      else return "none";
+      else return ["none"];
     }
 
 
@@ -1362,14 +1406,16 @@ function registerCloseBrackets(){
           || config.closers.indexOf(next) != -1 // first character following selection is a closing bracket
           || /\s/.test(next)                    // first character following selection is whitespace
         )
-      ) {
-        return "both";
+    ) {
+      // insert both brackets from pair
+      var pairIdx = config.pairs.indexOf(ch);
+      return ["both", config.pairs[pairIdx], config.pairs[pairIdx+1]];
     }
 
 
     ///// NOTHING MATCHED SO DON'T TAKE ANY ACTION /////
 
-    return "none";
+    return ["none"];
 
   }
 
@@ -1377,9 +1423,11 @@ function registerCloseBrackets(){
   function handleChar(cm, ch) {
     if (isDisabled(cm)) return CodeMirror.Pass;
 
+    // variable to contain type of selection
+    var type;
+
     // iterate over selections
     var ranges = cm.listSelections(); // list of selected blocks
-    var type;
     for (var i = 0; i < ranges.length; i++) {
       var range = ranges[i];
 
@@ -1410,12 +1458,11 @@ function registerCloseBrackets(){
 
     // execute appropriate CodeMirror command
     cm.operation(function(){
-      if      (type == "skip"     ) execSkip();
-      else if (type == "skipThree") execSkip(3);
-      else if (type == "surround" ) execSurround(left, right);
-      else if (type == "both"     ) execBoth(left, right);
-      else if (type == "addFour"  ) execAddFour(left);
-      else if (type == "escape"   ) execEscape();
+      if      (type[0] == "skip"     ) execSkip(type[1]);
+      else if (type[0] == "surround" ) execSurround(left, right);
+      else if (type[0] == "both"     ) execBoth(type[1], type[2]);
+      else if (type[0] == "escape"   ) execEscape();
+      else throw new Error("Invalid action: "+type[0]);
     });
   }
 
@@ -1437,13 +1484,15 @@ function registerCloseBrackets(){
     };
   }
 
-  // skip current character (or specified number of characters)
+  // skip specified number of characters (positive for right, negative for left)
   function execSkip(n){
-    if (n === undefined) {
-      cm.execCommand("goCharRight");
-    } else {
+    if (n > 0) {
       for (var i = 0; i < n; i++) {
         cm.execCommand("goCharRight");
+      }
+    } else if (n < 0) {
+      for (var i = 0; i < -n; i++) {
+        cm.execCommand("goCharLeft");
       }
     }
   }
@@ -1470,13 +1519,7 @@ function registerCloseBrackets(){
   function execBoth(left, right){
     cm.replaceSelection(left + right, null); // replace selection with opening and closing brackets
     cm.triggerElectric(left + right); // trigger automatic indentation
-    cm.execCommand("goCharLeft"); // move character to left
-  }
-
-  // replace selection with four of the given character
-  function execAddFour(left){
-    cm.replaceSelection(left + left + left + left, "before");
-    cm.execCommand("goCharRight"); // move character to right
+    execSkip(-right.length); // move character(s) to left
   }
 
   // escape the bracket characters surrounding each selection
@@ -1496,13 +1539,6 @@ function registerCloseBrackets(){
   ///////////////////////
   // Utility Functions //
   ///////////////////////
-
-  // return a string representing the characters adjacent to the cursor
-  function charsAround(cm, pos) {
-    var str = cm.getRange(Pos(pos.line, pos.ch - 1),
-                          Pos(pos.line, pos.ch + 1));
-    return str.length == 2 ? str : null;
-  }
 
   // return true if bracket plugin is disabled
   function isDisabled(cm) {
