@@ -1060,8 +1060,10 @@ function registerCloseBrackets(){
   var config = function(){
 
     // configuration options
+    // TODO: document what these options mean
     var config = {
       pairs: "()[]{}<>''\"\"**__``",
+      doubles: "_*",
       multiples: [
         ['$$', '$$'],
         ['~~', '~~'],
@@ -1259,16 +1261,18 @@ function registerCloseBrackets(){
         // line associated with current selection
         var line = ranges[i].head.line;
 
-        // indent current and subsequent line
-        cm.indentLine(line, null, true);
+        // indent current and subsequent line using smart indentation if available
+        cm.indentLine(line    , null, true);
         cm.indentLine(line + 1, null, true);
+
+        // indent current line again
+        cm.indentLine(line, 'add', true);
       }
     });
   }
 
 
   // return the bracketing action associated with a selection and a keypress
-  // TODO: better to use an enumeration?
   function bracketAction(cm, ch, range) {
     if (isDisabled(cm)) return ["none"]
 
@@ -1294,6 +1298,9 @@ function registerCloseBrackets(){
 
     ///// SELECTED BLOCK: SURROUND OR REPLACE SELECTION /////
 
+    // note that (foo) expands to \\(foo\\) if 'foo' is selected and a 
+    // backslash is pressed
+
     // if there is a selection...
     //   - if backslash with text surrounded by parentheses, escape parentheses
     //   - if opening character, surround selection with brackets
@@ -1308,14 +1315,27 @@ function registerCloseBrackets(){
       }
     }
 
-    // backspaces are only used to surround a selection, so ignore in future processing
-    if (ch == '\\') return ["none"];
-
 
     ///// THERE ISN'T A SELECTION SO THIS IS A CURSOR /////
 
     // reference to cursor
     var cur = range.head;
+
+
+    ///// HANDLE DOUBLES /////
+
+    // doubles are expanded when the character is pressed a second time after
+    // the pair was expanded on the first key press.
+    //   _^_    -->  __^__
+    //   __^__  -->  ___^_
+    if (
+      config.doubles.indexOf(ch) != -1            // pressed a double key
+      && adjacentChars(cm, cur, -1) === ch        // character before curor
+      && adjacentChars(cm, cur,  1) === ch        // character after cursor
+      && adjacentChars(cm, cur, -2) !== ch + ch   // don't have 2 of character before cursor
+    ) {
+      return ['both', ch, ch];
+    }
 
 
     ///// JUMP OVER TYPED CLOSING CHARACTER TO RIGHT OF CURSOR /////
@@ -1332,9 +1352,13 @@ function registerCloseBrackets(){
           return ["skip", sequence.length];
       }
 
+      // if character is a double with 2 to the right, jump over 2 characters
+      if (config.doubles.indexOf(ch) != -1 && adjacentChars(cm, cur, 2) == ch+ch)
+        return ['skip', 2];
+
       // if character is a singleton, move ahead one character to jump over
       // closing bracket
-      var idx = config.pairs.indexOf(ch);
+      var idx = config.pairs.lastIndexOf(ch);
       if (idx != -1 && idx % 2 == 1)
         return ["skip", 1];
 
@@ -1344,70 +1368,60 @@ function registerCloseBrackets(){
     }
 
 
-    ///// EXPAND A MULTI-CHARACTER BRACKET /////
+    ///// INSERT A MID-STRING CHARACTER /////
 
-    // TODO: there was an action here to do the following (for triples):
-    //  - check that cusor is on 2nd or 3rd character of line
-    //  - or 3rd character before selection doesn't match character
+    // if there is a word character on either side of the inserted character,
+    // this means that the typed character is part of a string.  mid-string
+    // characters aren't expanded.  otherwise don' would expand to don''
 
-    // typed the last character of a multi-character sequence, so expand
-    for (var i = 0; i < config.multiples.length; i++) {
-      var sequence = config.multiples[i][0];
-
-      // need enough characters in the line to match
-      if (cur.ch >= sequence.length - 1) {
-
-        // characters before selection
-        var typedChars = adjacentChars(cm, cur, 1-sequence.length);
-
-        // split up sequence
-        var seqStart = sequence.slice(0, sequence.length-1);
-        var seqLast  = sequence.slice(-1);
-
-        // check if typed characters and current character match sequence.
-        // return bracket expansion action if they do.
-        if (seqStart == typedChars && seqLast == ch)
-          return ["both", seqLast, config.multiples[i][1]];
-      }
+    // typed a character in mid-string list with word on either side,
+    // so don't do any expansion
+    if (config.midString.indexOf(ch) != -1 && (
+        CodeMirror.isWordChar(next) || CodeMirror.isWordChar(prev)
+    )) {
+      return ['none'];
     }
 
 
-    ///// AMBIGUOUS OPENING/CLOSING CHARACTER THAT MAY BE MID-STRING /////
+    ///// EXPAND A MULTI-CHARACTER BRACKET /////
 
-    // typed a potential closing character (character is both an opening and closing character)...
-    if (isOpener && isCloser) {
+    // conditions for bracket expansion: it is okay to expand an opening bracket
+    // if the next charater is EOL, a closing bracket, or whitespace
+    var okayToExpand =
+      cm.getLine(cur.line).length == cur.ch // cursor is at end of line
+      || config.closers.indexOf(next) != -1 // first character following selection is a closing bracket
+      || /\s/.test(next);                   // first character following selection is whitespace
 
-      // typed a mid-string character without a word character on either side (which happens when inside a string),
-      // so insert both characters from pair to start a string
-      //   - blue^() inserts a single quote if cursor is at ^
-      if (
-           !CodeMirror.isWordChar(next)         // character after cursor is not a word character
-        && !CodeMirror.isWordChar(prev)         // character before cursor is not a word character
-        && (config.midString.indexOf(ch) != -1) // character is in multi-character list
-      ) {
-        // insert both brackets from pair
-        var pairIdx = config.pairs.indexOf(ch);
-        return ["both", config.pairs[pairIdx], config.pairs[pairIdx+1]];
+    // typed the last character of a multi-character sequence (with expansion
+    // conditions met), so expand multi-character bracket
+    if (okayToExpand) {
+      for (var i = 0; i < config.multiples.length; i++) {
+        var sequence = config.multiples[i][0];
+
+        // need enough characters in the line to match
+        if (cur.ch >= sequence.length - 1) {
+
+          // characters before selection
+          var typedChars = adjacentChars(cm, cur, 1-sequence.length);
+
+          // split up sequence
+          var seqStart = sequence.slice(0, sequence.length-1);
+          var seqLast  = sequence.slice(-1);
+
+          // check if typed characters and current character match sequence.
+          // return bracket expansion action if they do.
+          if (seqStart == typedChars && seqLast == ch)
+            return ["both", seqLast, config.multiples[i][1]];
+        }
       }
-
-      // ambiguous open/close character has a word on either side (or is not in mid-string list)
-      // so don't do anything since we appear to be mid-string
-      else return ["none"];
     }
 
 
     ///// TYPED OPENING CHARACTER: INSERT BRACKET PAIR /////
 
-    // typed an opening character without a selection where next character is EOL, closing bracket, or whitespace
-    // so insert both brackets from the pair.  Selection is a cursor per logic above.
-    if (
-        isOpener && (                           // typed an opening character
-          cm.getLine(cur.line).length == cur.ch // cursor is at end of line
-          || config.closers.indexOf(next) != -1 // first character following selection is a closing bracket
-          || /\s/.test(next)                    // first character following selection is whitespace
-        )
-    ) {
-      // insert both brackets from pair
+    // typed an opening character (with expansion conditions met), so expand
+    // and insert both brackets from pair
+    if (isOpener && okayToExpand && config.pairs.indexOf(ch) != -1) {
       var pairIdx = config.pairs.indexOf(ch);
       return ["both", config.pairs[pairIdx], config.pairs[pairIdx+1]];
     }
