@@ -1030,28 +1030,8 @@ var render = function(){
 // BRACKET CLOSING PLUGIN //
 ////////////////////////////
 
-/**********
-
-  Plugin adapted from CodeMirror CloseBrackets plugin
-
-  Bracket characters
-
-    [xxx] for hyperlinks (expand other formats)
-
-    __xxx__ or **xxx** for bold
-    _xxx_ or *xxx* for italics
-    ~~xxx~~ for strikethrough
-    `xxx` for inline code
-    \\(xxx\\) for inline latex
-    $$xxx$$ for block latex
-
-    <> for tags (include closing tags or just bracket pairs??)
-    '' or "" for quotes
-    () and {} for generic use.  explode on braces??
-
-**********/
-
 function registerCloseBrackets(){
+  // adapted from CodeMirror CloseBrackets plugin
 
   ///////////////////
   // Configuration //
@@ -1060,17 +1040,46 @@ function registerCloseBrackets(){
   var config = function(){
 
     // configuration options
-    // TODO: document what these options mean
     var config = {
+
+      // adjacent pairs of single-character brackets
       pairs: "()[]{}<>''\"\"**__``",
+
+      // pairs that can also be double brackets
       doubles: "_*",
+
+      // pairs that can also be triple brackets
+      triples: '`',
+
+      // multi-character brackets (left side, right side)
       multiples: [
         ['$$', '$$'],
         ['~~', '~~'],
         ['\\\\(', '\\\\)']
       ],
+
+      // special case for headings
+      // keep expanding for every key press starting from a blank line and
+      // skip closing bracket with keypress
+      //   ^.          -->  ^#.#
+      //   ^#.#$       -->  ^##.##$
+      //   ^##xxx.##$  -->  ^##xxx##.$
+      lineWrapper: '#',
+
+      // characters that can be mid-string
+      // (that are not expanded when part of a string)
       midString: "\"'_",
-      explode: "[]{}"
+
+      // bracket pairs to explode when ENTER is pressed between them
+      // exploding is putting an indented blank line between the brackets
+      explode: [
+        //LEFT    RIGHT     INDENT
+        ['[',     ']',      true ],
+        ['{',     '}',      true ],
+        ['$$',    '$$',     true ],
+        ['\\\\(', '\\\\)',  true ],
+        ['```',   '```',    false]
+      ]
     };
 
     // list of unique characters (need to bind to these)
@@ -1082,6 +1091,8 @@ function registerCloseBrackets(){
           config.bindKeys += allKeys[j];
       }
     }
+    for (var i = 0; i < config.lineWrapper.length; i++)
+      config.bindKeys += config.lineWrapper[i];
 
     // closing characters (unique doesn't matter)
     config.closers = ''
@@ -1116,8 +1127,9 @@ function registerCloseBrackets(){
 
   // configure a key map for bracket handler
   var keyMap = {
-    Backspace: handleBackspace,
-    Enter: handleEnter
+    Space:      handleSpace,
+    Backspace:  handleBackspace,
+    Enter:      handleEnter
   };
 
   // extend keymap with keys in paired bracket list
@@ -1153,6 +1165,55 @@ function registerCloseBrackets(){
   // Key handlers //
   //////////////////
 
+  // handle a space bar keypress
+  function handleSpace(cm) {
+
+    // don't do anything if input is disabled (vim command mode)
+    // or if there is nothing to explode
+    var explode = config.explode;
+    if (!explode || cm.getOption("disableInput")) return CodeMirror.Pass;
+
+    // iterate over selections
+    var ranges = cm.listSelections();
+    outerLoop: for (var i = 0; i < ranges.length; i++) {
+      var cur = ranges[i].head;
+
+      // don't do anything if there is a nonzero selection (space should clear selection)
+      if (!ranges[i].empty()) return CodeMirror.Pass;
+
+      // check for a single-character pair
+      var lChar = adjacentChars(cm, cur, -1);
+      var rChar = adjacentChars(cm, cur,  1);
+      var idx = config.pairs.indexOf(lChar);
+      if (idx != -1 && idx % 2 == 0 && config.pairs[idx+1] == rChar)
+        continue outerLoop;
+
+      // check for a lineWrapper
+      if (lChar == rChar && config.lineWrapper.indexOf(lChar) != -1)
+        continue outerLoop;
+
+      // check for multi-character pairs
+      for (var j = 0; j < config.multiples.length; j++) {
+        if (
+            adjacentChars(cm, cur, -config.multiples[j][0].length) == config.multiples[j][0] &&
+            adjacentChars(cm, cur,  config.multiples[j][1].length) == config.multiples[j][1]
+        ) {
+          continue outerLoop;
+        }
+      }
+
+      // don't do anything if a bracket pair wasn't found surrounding the cursor
+      return CodeMirror.Pass;
+    }
+
+    // all selections at this point are zero-length cursors surrounded by bracket pairs
+
+    // execute the following CodeMirror commands...
+    cm.operation(function() {
+      execBoth(' ', ' ');
+    });
+  }
+
   // handle a backspace keypress
   function handleBackspace(cm) {
     if (isDisabled(cm)) return CodeMirror.Pass;
@@ -1162,8 +1223,7 @@ function registerCloseBrackets(){
 
     // iterate over selections
     var ranges = cm.listSelections();
-    outerLoop:
-    for (var i = 0; i < ranges.length; i++) {
+    outerLoop: for (var i = 0; i < ranges.length; i++) {
 
       // don't do anything if there is a nonzero selection (backspace should delete selection)
       if (!ranges[i].empty())
@@ -1228,19 +1288,30 @@ function registerCloseBrackets(){
     var explode = config.explode;
     if (!explode || cm.getOption("disableInput")) return CodeMirror.Pass;
 
+    // is the line indented?
+    var indentBracket = [];
+
     // iterate over selections
     var ranges = cm.listSelections();
-    for (var i = 0; i < ranges.length; i++) {
+    outerLoop: for (var i = 0; i < ranges.length; i++) {
+      var cur = ranges[i].head;
 
       // don't do anything if there is a nonzero selection (enter should clear selection and insert newline)
       if (!ranges[i].empty()) return CodeMirror.Pass;
 
-      // don't do anything unless a bracket pair surrounds cursor
-      var cur = ranges[i].head;
-      var around = adjacentChars(cm,cur,-1) + adjacentChars(cm,cur,1);
-      if (!around // don't have a character on both sides
-        || explode.indexOf(around) % 2 != 0 // not a pair starting with the opening character
-      ) return CodeMirror.Pass;
+      // iterate over bracket pairs
+      for (var j = 0; j < config.explode.length; j++) {
+        if (
+            adjacentChars(cm, cur, -config.explode[j][0].length) == config.explode[j][0] &&
+            adjacentChars(cm, cur,  config.explode[j][1].length) == config.explode[j][1]
+        ) {
+          indentBracket.push(config.explode[j][2]);
+          continue outerLoop;
+        }
+      }
+
+      // don't do anything if a bracket pair wasn't found surrounding the cursor
+      return CodeMirror.Pass;
     }
 
     // all selections at this point are zero-length cursors surrounded by bracket pairs
@@ -1266,7 +1337,8 @@ function registerCloseBrackets(){
         cm.indentLine(line + 1, null, true);
 
         // indent current line again
-        cm.indentLine(line, 'add', true);
+        if (indentBracket[i])
+          cm.indentLine(line, 'add', true);
       }
     });
   }
@@ -1298,7 +1370,7 @@ function registerCloseBrackets(){
 
     ///// SELECTED BLOCK: SURROUND OR REPLACE SELECTION /////
 
-    // note that (foo) expands to \\(foo\\) if 'foo' is selected and a 
+    // note that (foo) expands to \\(foo\\) if 'foo' is selected and a
     // backslash is pressed
 
     // if there is a selection...
@@ -1326,8 +1398,8 @@ function registerCloseBrackets(){
 
     // doubles are expanded when the character is pressed a second time after
     // the pair was expanded on the first key press.
-    //   _^_    -->  __^__
-    //   __^__  -->  ___^_
+    //   _._    -->  __.__
+    //   __.__  -->  ___._
     if (
       config.doubles.indexOf(ch) != -1            // pressed a double key
       && adjacentChars(cm, cur, -1) === ch        // character before curor
@@ -1335,6 +1407,44 @@ function registerCloseBrackets(){
       && adjacentChars(cm, cur, -2) !== ch + ch   // don't have 2 of character before cursor
     ) {
       return ['both', ch, ch];
+    }
+
+
+    ///// HANDLE TRIPLES /////
+
+    // triples are expanded when the character is pressed a third time after the
+    // pair was expanded on the first key press.
+    //   __.  -->  ___.___
+    if (
+      config.triples.indexOf(ch) != -1                // pressed a triple key
+      && adjacentChars(cm, cur, -2) === ch + ch       // 2 characters before cursor
+      && adjacentChars(cm, cur, -3) !== ch + ch + ch  // not 3 characters before cursor
+    ) {
+      return ['both', ch, ch+ch+ch];
+    }
+
+
+    ///// HANDLE LINE WRAPPERS /////
+
+    // special case for variable number of characters that surround a line on
+    // both sides (like markdown headers: ^### xxx ###$)
+    //   ^#.#$    -->  ^##.##$
+    //   ^##.##$  -->  ^###.###$
+    if (config.lineWrapper.indexOf(ch) != -1) {
+      var lineText = cm.getLine(cur.line);
+      if (lineText.length == 0) {
+        return ['both', ch, ch]
+      } else if (lineText === repChar(ch, cur.ch * 2)) {
+        return ['both', ch, ch]
+      }
+
+      // if character is a line wrapper with N to the right, jump to EOL
+      var rep = repChar(ch, lineText.length-cur.ch);
+      if (
+          lineText.slice(  -rep.length) === rep &&
+          lineText.slice(0, rep.length) === rep
+      )
+        return ["skip", rep.length];
     }
 
 
@@ -1351,6 +1461,10 @@ function registerCloseBrackets(){
         if (adjacentChars(cm, cur, sequence.length) == sequence)
           return ["skip", sequence.length];
       }
+
+      // if character is a triple with 3 to the right, jump over 3 characters
+      if (config.triples.indexOf(ch) != -1 && adjacentChars(cm, cur, 3) == ch+ch+ch)
+        return ['skip', 3];
 
       // if character is a double with 2 to the right, jump over 2 characters
       if (config.doubles.indexOf(ch) != -1 && adjacentChars(cm, cur, 2) == ch+ch)
@@ -1574,6 +1688,11 @@ function registerCloseBrackets(){
     } else {
       return '';
     }
+  }
+
+  // repeat a character the specified number of times
+  function repChar(ch, n) {
+    return (new Array(n+1).join(ch))
   }
 
 
