@@ -899,13 +899,18 @@ renderMarkdown = function(x, $el) {
 
   // create a table of contents
   var toc = markdown.toHTML(
-    $(':header').not('h1').map(function(){
+    $el.find(':header').not('h1').map(function(){
       var level = parseInt($(this).prop("tagName").slice(1));
       return Array(1+2*(level-1)).join(' ') + "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
     }).toArray().join('\n'));
 
   // fill TOC elements
   $el.find('toc').html(toc);
+
+  // remove line number tags from TOC entries
+  $el.find('toc [data-source-line]').each(function(){
+    $(this).attr('data-source-line', null)
+  });
 
   // style tables
   $el.find('table').addClass('table table-striped table-hover table-condensed');
@@ -976,7 +981,7 @@ interpolate = function(x_vec, y_vec, xi, xf) {
 }
 
 // return locations of lines in editor window
-visibleLines = function(cm){
+visibleLines = function(){
   var scrollInfo = cm.getScrollInfo();
   var topLine    = cm.lineAtHeight(scrollInfo.top                          , 'local');
   var bottomLine = cm.lineAtHeight(scrollInfo.top + scrollInfo.clientHeight, 'local');
@@ -991,16 +996,102 @@ visibleLines = function(cm){
 // line number lookup array
 var lineMap;
 
-// scroll to the specified line number
-var scrollTo = function(line, marker) {
-  if (marker == "bottom") {
-    $('#viewer-container').scrollTop(lineMap[line-1] - $('#viewer-container').height());
-  } else if (marker == "center") {
-    $('#viewer-container').scrollTop(lineMap[line-1] - $('#viewer-container').height()*0.5);
+// counters for number of triggered scroll actions.  this lets the scrolled
+// window know that its scrolling was triggered by a user scroll in the ohter
+// window.  otherwise there is a circular dependency and the windows fight with
+// each other
+var scrollState = {
+  editorCount : 0,
+  viewerCount : 0
+};
+
+// function to return viewer position associated with editor position
+var editorPosToViewerPos = function(line, marker) {
+  var h = $('#viewer-container').height();
+  if (marker == 'bottom') {
+    return lineMap[line-1] - h*1;
+  } else if (marker == 'center') {
+    return lineMap[line-1] - h*0.5;
   } else {
-    $('#viewer-container').scrollTop(lineMap[line-1]);
+    return lineMap[line-1] - h*0;
   }
 }
+
+// function to return editor position associated with viewer position
+var viewerPosToEditorPos = function(line) {
+
+  // binary search function
+   function binSearch(a, b, val) {
+    if (b - a == 1) {
+      if (lineMap[b] == val) {
+        return b;
+      } else if (lineMap[a] == val) {
+        return a;
+      } else {
+        return a + (val - lineMap[a])/(lineMap[b] - lineMap[a]);
+      }
+    } else {
+      var m = Math.round((a+b)/2);
+      if (val > lineMap[m]) {
+        return binSearch(m, b, val);
+      } else {
+        return binSearch(a, m, val);
+      }
+    }
+  }
+
+  // perform search
+  return Math.max(
+    1, 
+    Math.round(
+      binSearch(1, lineMap.length-1, line)
+    )
+  );
+}
+
+// scroll preview window to the location matching specified editor line number
+var scrollTo = function(line, marker) {
+
+  // if the update count is nonzero, this was a scroll triggered by a preview
+  // window scroll (and not a user scroll).  decrement the scroll count and
+  // return.
+  if (scrollState.editorCount > 0) {
+    scrollState.editorCount -= 1;
+    return
+  }
+
+  // otherwise this was a user scroll, so trigger a corresponding scroll in the
+  // preview window
+  else {
+    scrollState.viewerCount += 1;
+    $('#viewer-container').scrollTop( editorPosToViewerPos(line,marker) );
+    return
+  }
+
+}
+
+// scroll editor to line number matching specified preview scroll location
+var scrollFrom = function(line) {
+  //console.log("Viewer top position "+line+" --> editor line "+viewerPosToEditorPos(line));
+
+
+  // if the update count is nonzer, this was a scroll triggered by an editor
+  // window scroll (and not a user scroll).  decrement the scroll count and
+  // return
+  if (scrollState.viewerCount > 0) {
+    scrollState.viewerCount -= 1;
+    return
+  }
+
+  // otherwise this was a user scroll, so trigger a corresponding scroll in the
+  // editor window
+  else {
+    scrollState.editorCount += 1;
+    cm.scrollTo(null, cm.heightAtLine(viewerPosToEditorPos(line), 'local'));
+    return
+  }
+}
+
 
 // function to render markdown
 var render = function(){
@@ -1773,10 +1864,23 @@ function launchCodeMirror() {
   render();
   cm.on('change', _.debounce(render, 300, {maxWait:1000})); // render when typing stops
 
-  // synchronize scrolling
-  scrollSync = _.debounce(function(a){scrollTo(visibleLines(a).top)}, 100, {maxWait:100});
+  // function to scroll preview window to editor location
+  scrollSync = _.debounce(
+    function(){ scrollTo(visibleLines().top); }, 
+    100, 
+    {maxWait:100}
+  );
+
+  // function to scroll editor window to preview location
+  scrollSyncRev = _.debounce(
+    function(){ scrollFrom($(this).scrollTop()); }, 
+    100, 
+    {maxWait:100}
+  );
+
+  // bind scroll callbacks to scroll events
   cm.on('scroll', scrollSync);
-  cm.on('scroll', scrollSync);
+  $('#viewer-container').on('scroll', scrollSyncRev);
 }
 
 // closure containing evernote connection code
