@@ -961,10 +961,28 @@ collapseRepeated = function(x_vec, y_vec) {
   y_vec.splice(head, tail-head);
 }
 
+// dump location data to matlab format
+dumpPoints = function(x, y, name) {
+  txt = [name + ' = ['];
+  if (!x) {
+    x = [];
+    for (var i = 0; i < y.length; i++) {
+      x.push(i+1);
+    }
+  }
+  for (var i = 0; i < x.length; i++) {
+    txt.push('    '+x[i]+' '+y[i]);
+  }
+  txt.push('];');
+  $('#viewer').append(txt.join('<br>\n'))+'<br>\n';
+}
+
 // interpolate data to a linear range
 interpolate = function(x_vec, y_vec, xi, xf) {
   var out = [], x1, x2, y1, y2, m;
+  //dumpPoints(x_vec, y_vec, 'initial');
   collapseRepeated(x_vec, y_vec);
+  //dumpPoints(x_vec, y_vec, 'collapsed');
   var updateSlope = function(){
     x1 = x2; x2 = x_vec.shift();
     y1 = y2; y2 = y_vec.shift();
@@ -977,6 +995,7 @@ interpolate = function(x_vec, y_vec, xi, xf) {
     }
     out.push(y1 + m*(x-x1)); // add interpolated point to output array
   }
+  //dumpPoints(null, out, 'interpolated');
   return out;
 }
 
