@@ -61,10 +61,9 @@
     .CodeMirror {
       border: 1px solid #eee;
       height: 100vh;
-      padding-top: 29px;
     }
 
-    #application-window section {
+    #application-window main, #application-window section {
       padding-top: 29px;
     }
 
@@ -294,6 +293,14 @@
             <li><a id="viewHistory" class="btn btn-default" href="#">History</a></li>
           </ul>
         </div>
+        <ul class="nav navbar-nav navbar-right">
+          <li>
+            <a href="#" id="editorToggle">
+              <span>&LT;</span>
+              <span style="display:none">></span>
+            </a>
+          </li>
+        </ul>
       </div>
     </nav>
   </header>

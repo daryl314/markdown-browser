@@ -1061,7 +1061,7 @@ var viewerPosToEditorPos = function(line) {
 
   // perform search
   return Math.max(
-    1, 
+    1,
     Math.round(
       binSearch(1, lineMap.length-1, line)
     )
@@ -1885,15 +1885,15 @@ function launchCodeMirror() {
 
   // function to scroll preview window to editor location
   scrollSync = _.debounce(
-    function(){ scrollTo(visibleLines().top); }, 
-    100, 
+    function(){ scrollTo(visibleLines().top); },
+    100,
     {maxWait:100}
   );
 
   // function to scroll editor window to preview location
   scrollSyncRev = _.debounce(
-    function(){ scrollFrom($(this).scrollTop()); }, 
-    100, 
+    function(){ scrollFrom($(this).scrollTop()); },
+    100,
     {maxWait:100}
   );
 
@@ -1938,6 +1938,8 @@ function connectToEvernote() {
 
   $viewEditor      = $('body > header#main-menu a#viewEditor');
   $viewHistory     = $('body > header#main-menu a#viewHistory');
+
+  $editorToggle    = $('body > header#main-menu a#editorToggle')
 
   $historyMenu     = $('#application-window section#history-list');
   $historyList     = $('#application-window section#history-list ul.list-group');
@@ -2031,6 +2033,12 @@ function connectToEvernote() {
       showEditorWindow();
     }
   });
+
+  $editorToggle.on('click', function(){
+    $editorToggle.find('span').toggle();
+    $('main#content').toggle();
+    $('section#viewer-container').toggleClass('col-md-6').toggleClass('col-md-12');
+  })
 
 
   ///// SERVER CONNECTIVITY /////
