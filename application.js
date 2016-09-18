@@ -912,6 +912,9 @@ renderMarkdown = function(x, $el) {
     $(this).attr('data-source-line', null)
   });
 
+  // copy table of contents
+  $('#floating-toc').html($el.find('toc').html());
+
   // style tables
   $el.find('table').addClass('table table-striped table-hover table-condensed');
   $el.find('thead').addClass('btn-primary');
@@ -1015,6 +1018,9 @@ visibleLines = function(){
 // line number lookup array
 var lineMap;
 
+// heading location lookup array
+var headingLookup;
+
 // counters for number of triggered scroll actions.  this lets the scrolled
 // window know that its scrolling was triggered by a user scroll in the ohter
 // window.  otherwise there is a circular dependency and the windows fight with
@@ -1040,7 +1046,7 @@ var editorPosToViewerPos = function(line, marker) {
 var viewerPosToEditorPos = function(line) {
 
   // binary search function
-   function binSearch(a, b, val) {
+  function binSearch(a, b, val) {
     if (b - a == 1) {
       if (lineMap[b] == val) {
         return b;
@@ -1068,6 +1074,39 @@ var viewerPosToEditorPos = function(line) {
   );
 }
 
+// function to return closest header to a position
+var parentHeader = function(pos) {
+
+  // binary search function
+  function binSearch(a, b, val) {
+    if (b - a == 1) {
+      if (headingLookup[b] == val) {
+        return headingLookup[b][1];
+      } else if (lineMap[a] == val) {
+        return headingLookup[a][1];
+      } else {
+        return headingLookup[a][1];
+      }
+    } else {
+      var m = Math.round((a+b)/2);
+      if (val < headingLookup[m][0]) {
+        return binSearch(a, m, val);
+      } else {
+        return binSearch(m, b, val);
+      }
+    }
+  }
+
+  // perform search
+  var last = headingLookup.length-1;
+  if (pos > headingLookup[last][0]) {
+    return headingLookup[last][1];
+  } else {
+    return binSearch(0, headingLookup.length-1, pos);
+  }
+
+}
+
 // scroll preview window to the location matching specified editor line number
 var scrollTo = function(line, marker) {
 
@@ -1093,8 +1132,16 @@ var scrollTo = function(line, marker) {
 var scrollFrom = function(line) {
   //console.log("Viewer top position "+line+" --> editor line "+viewerPosToEditorPos(line));
 
+  // identify closest header and corresponding TOC entry
+  var matchingToc = parentHeader(line);
 
-  // if the update count is nonzer, this was a scroll triggered by an editor
+  // style closest header
+  $('nav#floating-toc li').removeClass('active');
+  matchingToc
+    .parentsUntil('nav#floating-toc', 'li')
+    .addClass('active');
+
+  // if the update count is nonzero, this was a scroll triggered by an editor
   // window scroll (and not a user scroll).  decrement the scroll count and
   // return
   if (scrollState.viewerCount > 0) {
@@ -1130,6 +1177,18 @@ var render = function(){
 
   // interpolate/extrapolate to create a line number lookup array
   lineMap = interpolate(x, y, 1, cm.lastLine());
+
+  // capture heading locations
+  headingLookup = [];
+  $('#viewer-container :header').each( function(){
+    var matchingToc = $("nav#floating-toc a[href='#" + $(this).attr('id') + "']");
+    if (matchingToc.length > 0) {
+      headingLookup.push([
+        $(this).position().top + $('section#viewer-container').scrollTop(),
+        matchingToc
+      ])
+    }
+  });
 
   // scroll to the cursor location
   $('section#viewer-container').scrollTop(currentScroll);
@@ -2037,7 +2096,8 @@ function connectToEvernote() {
   $editorToggle.on('click', function(){
     $editorToggle.find('span').toggle();
     $('main#content').toggle();
-    $('section#viewer-container').toggleClass('col-md-6').toggleClass('col-md-12');
+    $('section#viewer-container').toggleClass('col-md-6').toggleClass('col-md-10');
+    $('section#floating-toc-container').toggle();
   })
 
 

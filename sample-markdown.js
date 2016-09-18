@@ -1,4 +1,6 @@
-var md_test = "[source of *this* content](https://raw.githubusercontent.com/divtxt/gfm-test/master/README.md)\n\
+var md_test = "[toc]\n\
+\n\
+[source of *this* content](https://raw.githubusercontent.com/divtxt/gfm-test/master/README.md)\n\
 \n\
 > This is **some\n\
 > wrapped** blockquote\n\
@@ -17,6 +19,8 @@ here is some code\n\
 This is some code with apparent *bold* text\n\
 and another line...\n\
 ```\n\
+\n\
+### Sub-Heading ###\n\
 \n\
 $$\n\
 \\vec{x_1} +\n\

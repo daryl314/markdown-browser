@@ -243,6 +243,21 @@
       background: rgba(0, 0, 0, 0.10);
     }
 
+    /* Floating table of contents */
+
+    nav#floating-toc ul {
+      list-style: none;
+      padding-left: 1em;
+    }
+
+    nav#floating-toc ul ul {
+      font-size: 0.8em;
+    }
+
+    nav#floating-toc li.active {
+      font-weight: bolder;
+    }
+
   </style>
 </head>
 <body>
@@ -335,6 +350,11 @@
     <!-- MARKDOWN PREVIEW WINDOW -->
     <section id="viewer-container" class="col-md-6" style="overflow-y: scroll; height:100vh;" role="complementary">
       <div id="viewer"></div>
+    </section>
+
+    <!-- FLOATING TABLE OF CONTENTS -->
+    <section id="floating-toc-container" style="display:none" class="col-md-2 hidden-print" role="complementary">
+      <nav id="floating-toc" class="col-md-2 affix"></nav>
     </section>
 
     <!-- HISTORY WINDOWS -->
