@@ -250,12 +250,21 @@
       padding-left: 1em;
     }
 
-    nav#floating-toc ul ul {
+    nav#floating-toc > ul > li > ul {
       font-size: 0.8em;
     }
 
-    nav#floating-toc li.active {
+    nav#floating-toc li.active > a {
       font-weight: bolder;
+      background-color: lightgrey;
+    }
+
+    nav#floating-toc > ul > li li {
+      display: none;
+    }
+
+    nav#floating-toc > ul > li.active li {
+      display: block;
     }
 
   </style>
