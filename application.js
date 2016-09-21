@@ -904,6 +904,9 @@ renderMarkdown = function(x, $el) {
       return Array(1+2*(level-1)).join(' ') + "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
     }).toArray().join('\n'));
 
+  // convert anchors to data-href attributes
+  toc = toc.replace(/href/g, 'href="#" data-href');
+
   // fill TOC elements
   $el.find('toc').html(toc);
 
@@ -912,8 +915,10 @@ renderMarkdown = function(x, $el) {
     $(this).attr('data-source-line', null)
   });
 
-  // copy table of contents
-  $('#floating-toc').html($el.find('toc').html());
+  // create floating table of contents and nav menu
+  $('#floating-toc').html(toc);
+  $('ul#navMenu > li.divider ~ li').remove();
+  $('ul#navMenu').append( $(toc).html() );
 
   // style tables
   $el.find('table').addClass('table table-striped table-hover table-condensed');
@@ -1153,7 +1158,7 @@ var scrollFrom = function(line) {
   // editor window
   else {
     scrollState.editorCount += 1;
-    cm.scrollTo(null, cm.heightAtLine(viewerPosToEditorPos(line), 'local'));
+    cm.scrollTo(null, cm.heightAtLine(viewerPosToEditorPos(line)-1, 'local'));
     return
   }
 }
@@ -1181,7 +1186,7 @@ var render = function(){
   // capture heading locations
   headingLookup = [];
   $('#viewer-container :header').each( function(){
-    var matchingToc = $("nav#floating-toc a[href='#" + $(this).attr('id') + "']");
+    var matchingToc = $("nav#floating-toc a[data-href='#" + $(this).attr('id') + "']");
     if (matchingToc.length > 0) {
       headingLookup.push([
         $(this).position().top + $('section#viewer-container').scrollTop(),
@@ -1998,7 +2003,10 @@ function connectToEvernote() {
   $viewEditor      = $('body > header#main-menu a#viewEditor');
   $viewHistory     = $('body > header#main-menu a#viewHistory');
 
-  $editorToggle    = $('body > header#main-menu a#editorToggle')
+  $editorToggle    = $('body > header#main-menu a#editorToggle');
+
+  $navMenu         = $('body > header#main-menu ul#navMenu');
+  $floatingTOC     = $('#application-window nav#floating-toc');
 
   $historyMenu     = $('#application-window section#history-list');
   $historyList     = $('#application-window section#history-list ul.list-group');
@@ -2098,7 +2106,15 @@ function connectToEvernote() {
     $('main#content').toggle();
     $('section#viewer-container').toggleClass('col-md-6').toggleClass('col-md-10');
     $('section#floating-toc-container').toggle();
-  })
+  });
+
+  var navigationHandler = function(event){
+    var $target = $( $(this).data('href') );
+    $previewWindow.scrollTop($previewWindow.scrollTop() + $target.position().top);
+  };
+  $navMenu.on('click', 'a', navigationHandler);
+  $floatingTOC.on('click', 'a', navigationHandler);
+  $previewWindow.on('click', 'toc a', navigationHandler);
 
 
   ///// SERVER CONNECTIVITY /////
