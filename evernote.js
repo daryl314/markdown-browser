@@ -190,8 +190,8 @@ EvernoteConnection = function(){
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
-          .replace(/(.+)/mg, '<div>$1</div>')
-          .replace(/^$/mg, '<div><br /></div>')
+          .replace(/(.+)/mg, '<div><span style="font-family: \'Courier New\';">$1</span></div>')
+          .replace(/^$/mg, '<div><span style="font-family: \'Courier New\';"><br /></span></div>')
         +
       '</en-note>'
   }
