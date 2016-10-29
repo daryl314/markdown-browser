@@ -576,6 +576,9 @@ EvernoteConnection = function(){
   WrappedNote.prototype.updated = function() {
     return this._note.updated;
   }
+  WrappedNote.prototype.updatedStr = function() {
+    return EvernoteConnection.dateString(this._note.updated);
+  }
 
   // return the note as an object
   WrappedNote.prototype.asObject = function() {
@@ -608,7 +611,7 @@ EvernoteConnection = function(){
         note._note.updated           = versionList[i].updated;
         noteList.push(note);
       }
-      if (callback) callback(noteList);
+      if (callback) callback(noteList, _this);
     }
     this._conn.listNoteVersions(this._note.guid, cb);
   }
@@ -709,6 +712,7 @@ EvernoteConnection = function(){
       EvernoteConnection.errorHandler('No connection!');
     if (!(WrappedNote._conn instanceof EvernoteConnection))
       EvernoteConnection.errorHandler('Invalid connection type!');
+    return WrappedNote;
   }
 
   // refresh note data
@@ -723,41 +727,39 @@ EvernoteConnection = function(){
     }
   }
 
-  // return a list of note data
-  WrappedNote.getNoteData = function() {
-    WrappedNote._checkConnection();
+  // load note data if not already loaded
+  WrappedNote._checkNoteData = function() {
     if (WrappedNote._noteData === undefined)
       WrappedNote._refreshNoteData();
+  }
+
+  // return a list of note data
+  WrappedNote.getNoteData = function() {
+    WrappedNote._checkConnection()._checkNoteData();
     return WrappedNote._noteData;
   }
 
   // return a list of notes
   WrappedNote.getNotes = function() {
-    WrappedNote._checkConnection();
-    if (WrappedNote._noteList === undefined)
-      WrappedNote._refreshNoteData();
+    WrappedNote._checkConnection()._checkNoteData();
     return WrappedNote._noteList;
   }
 
   // return a map of notes
   WrappedNote.getNoteMap = function() {
-    WrappedNote._checkConnection();
-    if (WrappedNote._noteMap === undefined)
-      WrappedNote._refreshNoteData();
+    WrappedNote._checkConnection()._checkNoteData();
     return WrappedNote._noteMap;
   }
 
   // return a note
   WrappedNote.getNote = function(guid) {
-    WrappedNote._checkConnection();
-    if (WrappedNote._noteMap === undefined)
-      WrappedNote._refreshNoteData();
+    WrappedNote._checkConnection()._checkNoteData();
     return WrappedNote._noteMap[guid];
   }
 
   // create a new note
   WrappedNote.newNote = function(title, content, callback) {
-    WrappedNote._checkConnection();
+    WrappedNote._checkConnection()._checkNoteData();
     WrappedNote._conn.createNote(
       title,
       EvernoteConnection.addFormatting(content),

@@ -138,7 +138,7 @@
           }
 
           // increment lines if applicable
-          if (j+1 < lines.length) {
+          if (j+1 < lines.length || i+i == d.length) {
             if (d[i][0] == diff.EQUAL) {
               createRow($table, 'line-change', nL++, txtL, nR++, txtR);
               txtL = '';

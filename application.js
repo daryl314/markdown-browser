@@ -14,7 +14,9 @@
 /////////////////
 
 // function to return references once document is ready
-function guiReferences(){
+//  - WN: WrappedNote class for note handling
+//  - getConnection: function to pass actions to server
+function guiReferences(WN, getConnection){
 
   ///// GUI ELEMENTS /////
 
@@ -57,52 +59,65 @@ function guiReferences(){
   };
 
 
+  ///// STATE VARIABLES /////
+
+  gui.state = {
+    staleHistory: true,         // is note history list out-of-date?
+    diffCache:    {},           // cached version diff data
+    currentNote:  undefined     // GUID of current note
+  };
+
+
   ///// DIALOG BOXES /////
 
-  // create a new notification window
-  gui.createNotification = function(message) {
-    return gui.$alertTemplate
-      .clone()
-      .appendTo(gui.$alertContainer)
-      .attr('id','')
-      .show()
-      .append(message);
-  }
+  (function() {
 
-  // create a persistent alert window
-  gui.persistentAlert = function(message) {
-    return gui.createNotification(message).addClass('alert-info');
-  }
+    // create a new notification window
+    gui.createNotification = function(message) {
+      return gui.$alertTemplate
+        .clone()
+        .appendTo(gui.$alertContainer)
+        .attr('id','')
+        .show()
+        .append(message);
+    }
 
-  // create a transient alert window (hide after 5 seconds)
-  gui.transientAlert = function(message) {
-    $el = gui.createNotification(message).addClass('alert-info').delay(5000).slideUp();
-    window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
-    return $el;
-  }
+    // create a persistent alert window
+    gui.persistentAlert = function(message) {
+      return gui.createNotification(message).addClass('alert-info');
+    }
 
-  // create a persistent warning window
-  gui.persistentWarning = function(message) {
-    return gui.createNotification(message).addClass('alert-danger');
-  }
+    // create a transient alert window (hide after 5 seconds)
+    gui.transientAlert = function(message) {
+      $el = gui.createNotification(message).addClass('alert-info').delay(5000).slideUp();
+      window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
+      return $el;
+    }
 
-  // create a transient warning window (hide after 5 seconds)
-  gui.transientWarning = function(message) {
-    $el = gui.createNotification(message).addClass('alert-danger').delay(5000).slideUp();
-    window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
-    return $el;
-  }
+    // create a persistent warning window
+    gui.persistentWarning = function(message) {
+      return gui.createNotification(message).addClass('alert-danger');
+    }
 
-  // prompt user for input
-  gui.promptForInput = function(message, default_entry, callback) {
-    gui.$promptTemplate.add(gui.$promptOverlay).show();
-    gui.$promptBody.text(message);
-    gui.$promptInput.val(default_entry);
-    gui.$promptOK.one('click', function(){
-      gui.$promptTemplate.add(gui.$promptOverlay).hide();
-      if (callback) callback( gui.$promptInput.val() );
-    });
-  }
+    // create a transient warning window (hide after 5 seconds)
+    gui.transientWarning = function(message) {
+      $el = gui.createNotification(message).addClass('alert-danger').delay(5000).slideUp();
+      window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
+      return $el;
+    }
+
+    // prompt user for input
+    gui.promptForInput = function(message, default_entry, callback) {
+      gui.$promptTemplate.add(gui.$promptOverlay).show();
+      gui.$promptBody.text(message);
+      gui.$promptInput.val(default_entry);
+      gui.$promptOK.one('click', function(){
+        gui.$promptTemplate.add(gui.$promptOverlay).hide();
+        if (callback) callback( gui.$promptInput.val() );
+      });
+    }
+
+  }());
 
 
   ///// GUI HANDLERS /////
@@ -112,6 +127,13 @@ function guiReferences(){
     gui.$viewEditor.addClass('btn-primary');
     gui.$historyMenu.add(gui.$historyWindow).hide();
     gui.$editorWindow.add(gui.$previewWindow).show();
+  }
+
+  gui.toggleEditorWindow = function(){
+    gui.$editorToggle.find('span').toggle();
+    gui.$editorWindow.toggle();
+    gui.$previewWindow.toggleClass('col-md-6').toggleClass('col-md-10');
+    gui.$tocWindow.toggle();
   }
 
   gui.showHistoryWindow = function() {
@@ -126,29 +148,389 @@ function guiReferences(){
     gui.$previewWindow.scrollTop(gui.$previewWindow.scrollTop() + $target.position().top);
   };
 
+  // show/hide/toggle note list menu
+  gui.showNoteList = function() {
+    gui.$noteMenu.show();
+    gui.$previewWindow.add(gui.$editorWindow).removeClass('col-md-6').addClass('col-md-5');
+  }
+  gui.hideNoteList = function() {
+    gui.$noteMenu.hide();
+    gui.$previewWindow.add(gui.$editorWindow).addClass('col-md-6').removeClass('col-md-5');
+  }
+  gui.toggleNoteList = function() {
+    gui.$noteMenu.toggle();
+    gui.$previewWindow.add(gui.$editorWindow).toggleClass('col-md-6').toggleClass('col-md-5');
+  }
+
+
+  ///// DATA VIEWS /////
+
+  // render note list
+  gui.populateNoteList = function(notes) {
+
+    // sorted list of unique notebooks
+    var notebooks = _.chain(notes)
+      .pluck('notebook')
+      .unique()
+      .sortBy(function(x){
+        return x.toLowerCase()
+      }).value();
+
+    // notes grouped by their notebook
+    var groupedNotes = _.groupBy(notes, 'notebook');
+
+    // reset note list
+    gui.$noteList.empty();
+
+    // iterate over notebooks
+    _.each(notebooks, function(notebook){
+
+      //
+      gui.$noteList.append(
+        '<li class="list-group-item active">' + notebook + '</li>'
+      );
+
+      // iterate over notes in notebook
+      var notes = _.sortBy(groupedNotes[notebook], function(n){return n.title.toLowerCase()});
+      _.each(notes, function(note) {
+
+        //
+        gui.$noteList.append(
+          '<a href="#" class="list-group-item" data-guid="'+note.guid+'">' + note.title + '</a>'
+        );
+      });
+    });
+  }
+
+  // populate GUI with note content
+  gui.populateNote = function(guid, content) {
+
+    // put note content in editor
+    cm.setValue(content);
+
+    // if note has changed, flag note history list as stale and update its attached note guid
+    if (gui.state.currentNote !== guid)
+      gui.state.staleHistory = true;
+
+    // update GUID of current note
+    gui.state.currentNote = guid;
+
+  }
+
+  // generate note history menu for a specified note
+  gui.populateNoteHistory = function(note, versionData) {
+
+    // helper function to create a history menu item
+    function historyItem(version, date) {
+      return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + date + '</a>'
+    }
+
+    // append menu entry for current version
+    gui.$historyList.empty().append(historyItem(note.version(), note.updatedStr()));
+
+    // append menu entries for older versions
+    // NOTE: this should be returning wrapped Notes
+    for (var i = 0; i < versionData.length; i++) {
+      gui.$historyList.append(historyItem(versionData[i].version(), versionData[i].updatedStr()));
+    }
+  }
+
+  // generate viw of note diff data
+  gui.renderNoteDiffs = function() {
+
+    // get selected item list
+    var $el = GUI.$historyList.find('a.active');
+    var selectedItems = $el.map( function(){return $(this).data('sequence')} ).toArray();
+
+    // clear history window
+    GUI.$historyWindow.empty();
+
+    // if only one version is selected, display the content of this version
+    if (selectedItems.length == 1) {
+      GUI.$historyWindow
+        .append('<h2>' + $($el[0]).text() + '</h2>')
+        .append('<div class="text-diff">' + escapeText(gui.state.diffCache[selectedItems[0]][null]) + '</div>')
+
+    // otherwise show diffs between selected versions
+    } else {
+      for (var i = selectedItems.length-2; i >= 0; i--) {
+        compareBlocks(
+          gui.state.diffCache[ selectedItems[i+1] ][ null ],
+          gui.state.diffCache[ selectedItems[i]   ][ null ],
+          gui.diffOptions(
+            $($el[i+1]).text() + ' &rarr; ' + $($el[i]).text(),
+            gui.state.diffCache[ selectedItems[i+1] ][ selectedItems[i] ]
+          )
+        );
+      }
+    }
+  }
+
+
+  ///// HELPER FUNCTIONS /////
+
+  // options to pass to diff function
+  gui.diffOptions = function(title, d) {
+    return {
+      title       : title,
+      diffData    : d,
+      $container  : gui.$historyWindow,
+      validate    : true,
+      style       : 'adjacent'
+    }
+  }
+
+  // compute diffs between a list of note versions
+  gui.computeVersionDiffs = function(keyArr, contentArr, diffCache) {
+
+    // add entries for keys (version numbers) if they aren't already in cache
+
+    for (var i = 0; i < contentArr.length; i++) {
+      if (!diffCache[ keyArr[i] ]) {
+        diffCache[ keyArr[i] ] = {
+          null : contentArr[i]
+        };
+      }
+    }
+
+    // compute diffs between adjacent versions
+
+    for (var i = contentArr.length-2; i >= 0; i--) {
+
+      // current and previous version numbers
+      var oldVersion = keyArr[i+1];
+      var newVersion = keyArr[i];
+
+      // current and previous note content
+      var oldContent = contentArr[i+1];
+      var newContent = contentArr[i];
+
+      // if a comparison between version numbers isn't in cache, compute difference
+      // and add it to the cache
+      if(! diffCache[ oldVersion ][ newVersion ]) {
+        diffCache[ oldVersion ][ newVersion ] = compareBlocks(oldContent, newContent, {
+          $container : null
+        });
+      }
+    }
+  }
+
+  // return true if all note diff data are ready
+  gui.diffReady = function() {
+
+    // currently selected versions in version list
+    var selectedItems = gui.$historyList.find('a.active').map( function(){return $(this).data('sequence')} ).toArray();
+
+    // if only one item is selected, don't need anything in cache
+    if (selectedItems.length < 2) {
+      return true
+
+    // otherwise loop over pairs of adjacent selected versions
+    } else {
+      for (var i = 0; i < selectedItems.length-1; i++) {
+
+        // if an entry doesn't exist for the current pair, return false
+        if (!(
+            gui.state.diffCache[selectedItems[i+1]] &&
+            gui.state.diffCache[selectedItems[i+1]][selectedItems[i]]
+        )) {
+          return false
+        }
+      }
+
+      // otherwise diff data are ready, so return true
+      return true
+    }
+  }
+
+
+  ///// SERVER CONNECTIVITY /////
+
+  // generate/refresh note list
+  gui.refreshNoteList = function(callback) {
+    getConnection(function(conn){
+      gui.populateNoteList(WN.getNoteData());
+      if (callback) callback();
+    })
+  }
+
+  // generate note list (no-op if already done)
+  gui.generateNoteList = function(callback) {
+    if (!WN.hasConnection()) {
+      gui.refreshNoteList(callback);
+    } else if (callback) {
+      callback();
+    }
+  }
+
+  // load a note
+  gui.loadNote = function(guid, callback) {
+    getConnection(function(conn){
+      var note = conn.getNote(guid);
+      var cb = undefined;
+      if (callback)
+        cb = function(content) { callback(content, note) };
+      note.fetchContent(cb);
+    })
+  }
+
+  // load note version data
+  gui.loadNoteVersions = function(guid, versions, callback) {
+    getConnection(function(conn){
+      var note = conn.getNote(guid);
+      note.fetchContent(versions, callback);
+    });
+  }
+
+  // update a note
+  gui.updateNote = function(guid, content, callback) {
+    getConnection(function(conn) {
+      var note = conn.getNote(guid);
+      note.update(content, callback);
+    });
+  }
+
+  // create a new note
+  gui.createNote = function(title, content, callback) {
+    getConnection(function(conn) {
+      conn.newNote(title, content, callback)
+    });
+  }
+
+  // fetch a note version list
+  gui.fetchNoteVersions = function(guid, callback) {
+    getConnection(function(conn) {
+      var note = conn.getNote(guid);
+      note.versions(callback);
+    })
+  }
+
+  // refresh connection
+  gui.refreshConnection = function(callback) {
+    getConnection(function(conn) {
+      WN.refreshConnection(callback);
+    })
+  }
+
+
+  ///// ATTACH TO EVENTS /////
+
+  // bind to clicking on 'History' menu
   gui.$viewHistory.on('click', function(){
     if ($(this).hasClass('btn-primary') == false) {
-      showHistoryWindow();
-      showNoteHistory();
+      if (gui.state.currentNote === undefined) {
+        gui.transientAlert("No note currently loaded!")
+      } else if (gui.state.staleHistory) {
+        gui.showHistoryWindow();
+        gui.state.diffCache = {}; // clear cache
+        gui.fetchNoteVersions(gui.state.currentNote, function(versionData, note) {
+          gui.populateNoteHistory(note, versionData);
+          gui.state.staleHistory = false;
+        })
+      }
     }
   });
 
+  //
   gui.$viewEditor.on('click', function(){
     if ($(this).hasClass('btn-primary') == false) {
-      showEditorWindow();
+      gui.showEditorWindow();
     }
   });
 
-  gui.$editorToggle.on('click', function(){
-    gui.$editorToggle.find('span').toggle();
-    gui.$editorWindow.toggle();
-    gui.$previewWindow.toggleClass('col-md-6').toggleClass('col-md-10');
-    gui.$tocWindow.toggle();
-  });
-
+  //
+  gui.$editorToggle.on('click', gui.toggleEditorWindow);
   gui.$navMenu.on('click', 'a', gui.navigationHandler);
   gui.$floatingTOC.on('click', 'a', gui.navigationHandler);
   gui.$previewWindow.on('click', 'toc a', gui.navigationHandler);
+
+  // bind to 'Load' menu and trigger refresh on first click
+  gui.$loadMenuItem.on('click', function(){
+    gui.generateNoteList();
+    gui.toggleNoteList();
+  })
+
+  // bind to clicks on note list
+  gui.$noteList.on('click', 'a', function(){
+    var guid = $(this).data('guid');
+    gui.$noteList.find('a.list-group-item.selected').removeClass('selected');
+    $(this).addClass('selected');
+    gui.loadNote(guid, function(content){
+      gui.populateNote(guid, content)
+    });
+    gui.hideNoteList();
+  });
+
+  // bind to clicks on history items
+  gui.$historyMenu.on('click', 'a', function(){
+    $(this).toggleClass('active');
+    var selectedItems = gui.$historyList.find('a.active').map( function(){
+      return $(this).data('sequence')}
+    ).toArray();
+    gui.$historyWindow.empty();
+    gui.loadNoteVersions(gui.state.currentNote, selectedItems, function(contentArr){
+      gui.computeVersionDiffs(selectedItems, contentArr, gui.state.diffCache);
+      // wait until all data are ready in case of click backlog
+      if (gui.diffReady()) gui.renderNoteDiffs();
+    })
+  })
+
+  // 'Save' --> update a note
+  gui.$saveNote.on('click', function(){
+    if (gui.state.currentNote === undefined) {
+      gui.transientAlert("No note currently loaded!")
+    } else {
+      gui.updateNote(gui.state.currentNote, cm.getValue(), function(note){
+        gui.transientAlert("Note "+gui.state.currentNote+" updated: "+note.title());
+        gui.state.staleHistory = true;
+      })
+    }
+  });
+
+  // 'Preview Changes' --> preview note changes from server version
+  gui.$previewChanges.on('click', function(){
+    if (gui.state.currentNote === undefined) {
+      gui.transientAlert("No note currently loaded!")
+    } else {
+      gui.loadNote(gui.state.currentNote, function(oldContent, note){
+        gui.showHistoryWindow();
+        gui.$historyWindow.empty();
+        gui.$historyMenu.hide();
+        compareBlocks(oldContent, cm.getValue(), diffOptions(note.title()));
+      })
+    }
+  })
+
+  // 'Save As' --> write a new note to server
+  gui.$saveNoteAs.on('click', function(){
+    gui.promptForInput('New note name', 'Untitled', function(noteTitle) {
+      if (noteTitle !== null) {
+        gui.generateNoteList(function(){
+          gui.createNote(noteTitle, cm.getValue(), function(note){
+            gui.state.staleHistory = true;
+            gui.state.currentNote = note.guid;
+            gui.refreshNoteList();
+          })
+        });
+      }
+    })
+  });
+
+  // 'New' --> reset editor
+  gui.$newNote.on('click', function(){
+    gui.state.currentNote = undefined;
+    gui.state.staleHistory = true;
+    cm.setValue('');
+  })
+
+  // 'Refresh' --> Refresh connection with server
+  gui.$refresh.on('click', function() {
+    gui.refreshConnection(function() {
+      gui.transientAlert("Refreshed server connection");
+      gui.populateNoteList(WN.getNoteData());
+    })
+  })
+
 
 
   ///// CLEANUP /////
@@ -404,7 +786,9 @@ var parentHeader = function(pos) {
 
   // perform search
   var last = headingLookup.length-1;
-  if (pos > headingLookup[last][0]) {
+  if (last == -1) {
+    return;
+  } else if (pos > headingLookup[last][0]) {
     return headingLookup[last][1];
   } else {
     return binSearch(0, headingLookup.length-1, pos);
@@ -441,10 +825,12 @@ var scrollFrom = function(line) {
   var matchingToc = parentHeader(line);
 
   // style closest header
-  GUI.$floatingTOC.find('li').removeClass('active');
-  matchingToc
-    .parentsUntil(GUI.$floatingTOC, 'li')
-    .addClass('active');
+  if (matchingToc) {
+    GUI.$floatingTOC.find('li').removeClass('active');
+    matchingToc
+      .parentsUntil(GUI.$floatingTOC, 'li')
+      .addClass('active');
+  }
 
   // if the update count is nonzero, this was a scroll triggered by an editor
   // window scroll (and not a user scroll).  decrement the scroll count and
@@ -598,357 +984,85 @@ function launchCodeMirror() {
   GUI.$previewWindow.on('scroll', scrollSyncRev);
 }
 
-// closure containing evernote connection code
-function connectToEvernote() {
 
-  ///// APPLICATION STATE VARIABLES AND CONFIGURATION /////
+/////////////////////////
+// SERVER CONNECTIVITY //
+/////////////////////////
 
-  // GUID for current note
-  var currentNote = undefined;
-
-  // cached version diff data
-  var diffCache = {}
-
-  // options to pass to diff function
-  function diffOptions(title, d) {
-    return {
-      title       : title,
-      diffData    : d,
-      $container  : $historyWindow,
-      validate    : true,
-      style       : 'adjacent'
-    }
-  }
-
-  ///// SERVER CONNECTIVITY /////
-
-  // prompt user to update developer token
-  function updateToken() {
-    GUI.promptForInput(
-      'Please enter your Evernote developer token',
-      localStorage.getItem('token'),
-      function(result) {
-        localStorage.setItem('token', result);
-      }
-    );
-  }
+// return an Evernote server connection
+function getEvernoteConnection(callback) {
 
   // alias to WrappedNote class
   var WN = EvernoteConnection.WrappedNote;
 
-  // function to use server connection
-  function getConnection(callback) {
-    if (!WN.hasConnection()) {
-      if (localStorage.getItem('token') === null)
-        updateToken();
-      var $el = GUI.persistentAlert('Connecting to Evernote...');
-      var opt = {
-        searchTags    : ['markdown'],
-        saveTags      : ['markdown'],
-        errorLogger   : GUI.persistentWarning,
-        messageLogger : GUI.transientAlert
-      }
-      WN.connect(localStorage.getItem('token'), opt, function() {
-        if (!WN.hasConnection()) {
-          GUI.persistentWarning("Failed to connect to Evernote!");
-          throw new Error("Unable to connect to Evernote");
-        } else {
-          $el.remove();
-          GUI.transientAlert("Connected to Evernote!");
-          populateNoteList(WN.getNoteData());
-          if (callback) callback(WN);
-        }
-      })
-    } else {
-      if (callback) callback(WN);
-    }
-  }
+  // if a connection exists, use it
+  if (WN.hasConnection()) {
+    if (callback) callback(WN);
 
+  // otherwise create connection
+  } else {
 
-  ///// UPDATE DEVELOPER TOKEN /////
+    // prompt user for token if it isn't set in local storage
+    if (localStorage.getItem('token') === null)
+      getEvernoteConnection.updateToken();
 
-  GUI.$updateToken.on('click', updateToken);
+    // create a connection notification
+    var $el = GUI.persistentAlert('Connecting to Evernote...');
 
-
-  ///// REFRESH SERVER CONNECTION /////
-
-  GUI.$refresh.on('click', function(){
-    getConnection(function(conn) {
-      WN.refreshConnection(function(){
-        GUI.transientAlert("Refreshed Evernote data");
-        populateNoteList(WN.getNoteData());
-      })
-    })
-  })
-
-
-  ///// PREVIEW NOTE CHANGES /////
-
-  GUI.$previewChanges.on('click', function(){
-    if (currentNote === undefined) {
-      GUI.transientAlert("No note currently loaded!")
-    } else {
-      getConnection(function(conn) {
-        var note = conn.getNote(currentNote);
-        note.fetchContent(function(oldContent) {
-          GUI.showHistoryWindow();
-          GUI.$historyWindow.empty();
-          GUI.$historyMenu.hide();
-          compareBlocks(oldContent, cm.getValue(), diffOptions(note.title()));
-        })
-      })
-    }
-  })
-
-
-  ///// UPDATE A NOTE /////
-
-  GUI.$saveNote.on('click', function(){
-    if (currentNote === undefined) {
-      GUI.transientAlert("No note currently loaded!")
-    } else {
-      getConnection(function(conn) {
-        var note = conn.getNote(currentNote);
-        note.update(cm.getValue(), function() {
-          GUI.transientAlert("Note "+currentNote+" updated: "+note.title());
-          GUI.$historyMenu.data('stale', true);
-        })
-      });
-    }
-  });
-
-
-  ///// SAVE A NEW NOTE /////
-
-  GUI.$saveNoteAs.on('click', function(){
-    GUI.promptForInput('New note name', 'Untitled', function(noteTitle) {
-      if (noteTitle !== null) {
-        getConnection(function(conn) {
-          conn.newNote(noteTitle, cm.getValue(), function(note) {
-            GUI.$historyMenu.data('stale', true);
-            currentNote = note.guid;
-            populateNoteList(conn.getNoteData());
-          })
-        });
-      }
-    })
-  });
-
-
-  ///// CREATE A NEW NOTE /////
-
-  GUI.$newNote.on('click', function(){
-    currentNote = undefined;
-    GUI.$historyMenu.data('stale', true);
-    cm.setValue('');
-  })
-
-
-  ///// NOTE DATA LOADING /////
-
-  // connect to evernote and populate the list of notes
-  function populateNoteList(notes) {
-    var notebooks = _.chain(notes).pluck('notebook').unique().sortBy(function(x){return x.toLowerCase()}).value();
-    var groupedNotes = _.groupBy(notes, 'notebook');
-
-    // clear click handler and reset note list
-    GUI.$noteList.off('click').empty();
-
-    // re-build note list
-    _.each(notebooks, function(notebook){
-      GUI.$noteList.append('<li class="list-group-item active">' + notebook + '</li>');
-      var notes = _.sortBy(groupedNotes[notebook], function(n){return n.title.toLowerCase()});
-      _.each(notes, function(note) {
-        GUI.$noteList.append('<a href="#" class="list-group-item" data-guid="'+note.guid+'">' + note.title + '</a>');
-      });
-    });
-
-    // bind a handler for clicking on a note in the list (load the note)
-    GUI.$noteList.on('click', 'a', function(){
-      var guid = $(this).data('guid');
-
-      // indicate currently selected item
-      GUI.$noteList.find('a.list-group-item.selected').removeClass('selected');
-      $(this).addClass('selected');
-
-      // fetch note content
-      getConnection(function(conn){
-        conn.getNote(guid).fetchContent(function(content){
-
-          // put note content in editor
-          cm.setValue(content);
-
-          // if note has changed, flag note history list as stale and update its attached note guid
-          if (currentNote !== guid) {
-            GUI.$historyMenu.data('stale', true);
-          }
-
-          // update GUID of current note
-          currentNote = guid;
-        })
-      })
-
-      // hide the note menu
-      toggleDropdown();
-    });
-  }
-
-  // show or hide note menu
-  function toggleDropdown() {
-    GUI.$noteMenu.toggle().addClass('col-md-2');
-    GUI.$previewWindow.add(GUI.$editorWindow).toggleClass('col-md-6').toggleClass('col-md-5');
-    getConnection();
-  }
-
-  // bind 'Load' menu item to show/hide note menu
-  GUI.$loadMenuItem.on('click', toggleDropdown);
-
-
-  ///// NOTE HISTORY /////
-
-  function showNoteHistory(){
-
-    // nothing to do if no note is loaded
-    if (currentNote === undefined) {
-      GUI.persistentWarning("A note must be loaded first!");
-      return
+    // connection options
+    var opt = {
+      searchTags    : ['markdown'],
+      saveTags      : ['markdown'],
+      errorLogger   : GUI.persistentWarning,
+      messageLogger : GUI.transientAlert
     }
 
-    // helper function to create a history menu item
-    function historyItem(version, date) {
-      return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + EvernoteConnection.dateString(date) + '</a>'
-    }
+    // create connection
+    WN.connect(localStorage.getItem('token'), opt, function() {
 
-    // helper function to return true if all diff data are available
-    function diffReady() {
-      var selectedItems = GUI.$historyList.find('a.active').map( function(){return $(this).data('sequence')} ).toArray();
-      if (selectedItems.length < 2) {
-        return true
+      // raise an exception if connection failed
+      if (!WN.hasConnection()) {
+        GUI.persistentWarning("Failed to connect to Evernote!");
+        throw new Error("Unable to connect to Evernote");
+
+      // otherwise notify user and trigger callback
       } else {
-        for (var i = 0; i < selectedItems.length-1; i++) {
-          if (!(
-              diffCache[selectedItems[i+1]] &&
-              diffCache[selectedItems[i+1]][selectedItems[i]]
-          )) {
-            return false
-          }
-        }
-        return true
+        $el.remove();
+        GUI.transientAlert("Connected to Evernote!");
+        //populateNoteList(WN.getNoteData());
+        if (callback) callback(WN);
       }
-    }
-
-    // helper function to perform the rendering
-    // rendering only happens once all data are available in case the function is backlogged with clicks
-    function doRendering() {
-      if (diffReady()) {
-
-        // get selected item list
-        var $el = GUI.$historyList.find('a.active');
-        var selectedItems = $el.map( function(){return $(this).data('sequence')} ).toArray();
-
-        // clear history window
-        GUI.$historyWindow.empty();
-
-        // if only one version is selected, display the content of this version
-        if (selectedItems.length == 1) {
-          GUI.$historyWindow
-            .append('<h2>' + $($el[0]).text() + '</h2>')
-            .append('<div class="text-diff">' + escapeText(diffCache[selectedItems[0]][null]) + '</div>')
-
-        // otherwise show diffs between selected versions
-        } else {
-          for (var i = selectedItems.length-2; i >= 0; i--) {
-            compareBlocks(
-              diffCache[ selectedItems[i+1] ][ null ],
-              diffCache[ selectedItems[i]   ][ null ],
-              diffOptions(
-                $($el[i+1]).text() + ' &rarr; ' + $($el[i]).text(),
-                diffCache[ selectedItems[i+1] ][ selectedItems[i] ]
-              )
-            );
-          }
-        }
-      }
-    }
-
-    // callback function for clicking on a history menu item
-    function clickHandler() {
-      $el = $(this);
-
-      // toggle selection status of current item and get selected item list
-      $(this).toggleClass('active');
-      var $el = GUI.$historyList.find('a.active');
-      var selectedItems = $el.map( function(){return $(this).data('sequence')} ).toArray();
-
-      // clear history window
-      GUI.$historyWindow.empty();
-
-      // call function to fetch note history list
-      getConnection(function(conn) {
-        conn.getNote(currentNote).fetchContent(selectedItems, function(contentArr) {
-
-          // cache version data
-          for (var i = 0; i < contentArr.length; i++) {
-            if (!diffCache[selectedItems[i]])
-              diffCache[selectedItems[i]] = {null : contentArr[i]};
-          }
-
-          // compute diffs between versions
-          for (var i = contentArr.length-2; i >= 0; i--) {
-            var oldVersion = selectedItems[i+1];
-            var newVersion = selectedItems[i];
-            var oldContent = contentArr[i+1];
-            var newContent = contentArr[i];
-            if(! diffCache[oldVersion][newVersion] ) {
-              diffCache[oldVersion][newVersion] = compareBlocks(oldContent, newContent, {
-                $container : null
-              });
-            }
-          }
-
-          // render results
-          doRendering();
-        })
-      })
-    }
-
-    // if history is flagged as out-of-date, regenerate menu
-    if (GUI.$historyMenu.data('stale')) {
-      getConnection(function(conn) {
-
-        // clear cache
-        diffCache = {};
-
-        // fetch version list for current note
-        var note = conn.getNote(currentNote);
-        note.versions(function(versionData) {
-
-          // append menu entry for current version
-          GUI.$historyList.empty().append(historyItem(note.version(), note.updated()));
-
-          // append menu entries for older versions
-          // NOTE: this should be returning wrapped Notes
-          for (var i = 0; i < versionData.length; i++) {
-            GUI.$historyList.append(historyItem(versionData[i].version(), versionData[i].updated()));
-          }
-
-          // history menu is no longer out-of-date
-          GUI.$historyMenu.data('stale', false);
-
-          // bind to click on history menu items
-          GUI.$historyMenu.find('a').on('click', clickHandler);
-        })
-      })
-    }
+    })
   }
-
 }
+
+// attach a function to update developer token
+getEvernoteConnection.updateToken = function() {
+  GUI.promptForInput(
+    'Please enter your Evernote developer token',
+    localStorage.getItem('token'),
+    function(result) {
+      localStorage.setItem('token', result);
+    }
+  );
+}
+
+
+//////////////////////////////
+// SET EVERYTHING IN MOTION //
+//////////////////////////////
 
 // set everything in motion once document is ready
 $(function(){
 
   // get gui references
-  window.GUI = guiReferences();
+  window.GUI = guiReferences(
+    EvernoteConnection.WrappedNote,
+    getEvernoteConnection
+  );
+
+  // enable menu to update token (Evernote-specific)
+  GUI.$updateToken.show().on('click', getEvernoteConnection.updateToken);
 
   // starter text for editor
   GUI.$editor.text(md_test + gfm_test);
@@ -958,6 +1072,4 @@ $(function(){
   //   launchCodeMirror();
   // })
 
-  // start evernote connection
-  connectToEvernote();
 });
