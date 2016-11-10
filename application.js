@@ -21,23 +21,31 @@ function guiReferences(WN, getConnection){
   ///// GUI ELEMENTS /////
 
   gui = {
+
+    // container for menu bar
     $mainMenu        : $('body > header#main-menu'),
+
+    // File menu
     $loadMenuItem    : $('body > header#main-menu a#showNoteList'),
+    $newNote         : $('body > header#main-menu a#newNote'),
     $saveNote        : $('body > header#main-menu a#saveNote'),
     $saveNoteAs      : $('body > header#main-menu a#saveNoteAs'),
-    $newNote         : $('body > header#main-menu a#newNote'),
-    $previewChanges  : $('body > header#main-menu a#previewChanges'),
     $refresh         : $('body > header#main-menu a#refreshConnection'),
+    $previewChanges  : $('body > header#main-menu a#previewChanges'),
     $updateToken     : $('body > header#main-menu a#updateToken'),
 
+    // Nav menu
+    $navMenu         : $('body > header#main-menu ul#navMenu'),
+
+    // View toggles
     $viewEditor      : $('body > header#main-menu a#viewEditor'),
     $viewHistory     : $('body > header#main-menu a#viewHistory'),
-
     $editorToggle    : $('body > header#main-menu a#editorToggle'),
 
-    $navMenu         : $('body > header#main-menu ul#navMenu'),
+    // floating table of contents
     $floatingTOC     : $('#application-window nav#floating-toc'),
 
+    // windows
     $historyMenu     : $('#application-window section#history-list'),
     $historyList     : $('#application-window section#history-list ul.list-group'),
     $noteMenu        : $('#application-window section#nav-list'),
@@ -49,6 +57,7 @@ function guiReferences(WN, getConnection){
     $historyWindow   : $('#application-window section#history-container'),
     $tocWindow       : $('#application-window section#floating-toc-container'),
 
+    // alert components
     $promptTemplate  : $('#promptTemplate'),
     $promptOverlay   : $('#overlay-background'),
     $promptBody      : $('#promptTemplate #modalTitle'),
@@ -122,6 +131,7 @@ function guiReferences(WN, getConnection){
 
   ///// GUI HANDLERS /////
 
+  // function to show editor window
   gui.showEditorWindow = function() {
     gui.$viewHistory.removeClass('btn-primary');
     gui.$viewEditor.addClass('btn-primary');
@@ -129,6 +139,7 @@ function guiReferences(WN, getConnection){
     gui.$editorWindow.add(gui.$previewWindow).show();
   }
 
+  // function to toggle visibility of editor window
   gui.toggleEditorWindow = function(){
     gui.$editorToggle.find('span').toggle();
     gui.$editorWindow.toggle();
@@ -136,6 +147,7 @@ function guiReferences(WN, getConnection){
     gui.$tocWindow.toggle();
   }
 
+  // function to show history window
   gui.showHistoryWindow = function() {
     gui.$viewEditor.removeClass('btn-primary');
     gui.$viewHistory.addClass('btn-primary');
@@ -143,6 +155,7 @@ function guiReferences(WN, getConnection){
     gui.$editorWindow.add(gui.$previewWindow).hide();
   }
 
+  // function to navigate to a table of contents cross-reference
   gui.navigationHandler = function(event){
     var $target = $( $(this).data('href') );
     gui.$previewWindow.scrollTop(gui.$previewWindow.scrollTop() + $target.position().top);
@@ -401,7 +414,10 @@ function guiReferences(WN, getConnection){
   gui.fetchNoteVersions = function(guid, callback) {
     getConnection(function(conn) {
       var note = conn.getNote(guid);
-      note.versions(callback);
+      var cb = undefined;
+      if (callback)
+        cb = function(versionList) { callback(versionList, note) };
+      note.versions(cb);
     })
   }
 
@@ -431,15 +447,17 @@ function guiReferences(WN, getConnection){
     }
   });
 
-  //
+  // bind to clicking on 'Editor' menu
   gui.$viewEditor.on('click', function(){
     if ($(this).hasClass('btn-primary') == false) {
       gui.showEditorWindow();
     }
   });
 
-  //
+  // bind to the editor toggle button (enter/exit read-only mode)
   gui.$editorToggle.on('click', gui.toggleEditorWindow);
+
+  // bind to table of contents entry clicks
   gui.$navMenu.on('click', 'a', gui.navigationHandler);
   gui.$floatingTOC.on('click', 'a', gui.navigationHandler);
   gui.$previewWindow.on('click', 'toc a', gui.navigationHandler);
@@ -496,7 +514,7 @@ function guiReferences(WN, getConnection){
         gui.showHistoryWindow();
         gui.$historyWindow.empty();
         gui.$historyMenu.hide();
-        compareBlocks(oldContent, cm.getValue(), diffOptions(note.title()));
+        compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title()));
       })
     }
   })
@@ -585,10 +603,16 @@ renderMarkdown = function(x, $el) {
   $el.html(html);
 
   // create a table of contents
+  var minHeader = Math.min.apply(null,
+    $el.find(':header').not('h1').map(function(){
+      return parseInt($(this).prop('tagName').slice(1))
+    })
+  );
   var toc = markdown.toHTML(
     $el.find(':header').not('h1').map(function(){
       var level = parseInt($(this).prop("tagName").slice(1));
-      return Array(1+2*(level-1)).join(' ') + "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
+      return Array(1+2*(level-(minHeader-1))).join(' ') +
+        "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
     }).toArray().join('\n'));
 
   // convert anchors to data-href attributes

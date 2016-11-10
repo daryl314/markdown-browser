@@ -611,7 +611,7 @@ EvernoteConnection = function(){
         note._note.updated           = versionList[i].updated;
         noteList.push(note);
       }
-      if (callback) callback(noteList, _this);
+      if (callback) callback(noteList);
     }
     this._conn.listNoteVersions(this._note.guid, cb);
   }
