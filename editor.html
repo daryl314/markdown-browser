@@ -94,12 +94,43 @@
     }
 
     /* Shrink height of menu bar */
-    header .navbar-nav > li > a, .navbar-brand {
-      padding-top:4px !important;
-      padding-bottom:0 !important;
+    header#main-menu .navbar-nav > li > a, .navbar-brand {
+      padding-top:4px;
+      padding-bottom:0;
       height: 28px;
     }
-    header .navbar {min-height:28px !important;}
+    header#main-menu .navbar {
+      min-height:28px;
+      border: 0px;
+    }
+
+    /* Navbar buttons */
+
+    .arrow_box {
+      position: relative;
+      background: #2780e3;
+    }
+    .arrow_box:after {
+      top: 100%;
+      left: 50%;
+      border: solid transparent;
+      content: " ";
+      height: 0;
+      width: 0;
+      position: absolute;
+      pointer-events: none;
+      border-color: rgba(136, 183, 213, 0);
+      border-top-color: #2780e3;
+      border-width: 10px;
+      margin-left: -10px;
+    }
+    header#main-menu .navbar-nav>li>a:hover {
+      background-color: #93c0f1;
+    }
+    header#main-menu .navbar-nav>li>a.arrow_box:hover,
+    header#main-menu .navbar-nav>li>a.arrow_box:focus  {
+      background-color: #2780e3;
+    }
 
     /* Text diff styles */
 
@@ -310,7 +341,6 @@
                 <li><a id="saveNoteAs" href="#">Save As</a></li>
                 <li role="separator" class="divider"></li>
                 <li><a id="refreshConnection" href="#">Refresh</a></li>
-                <li><a id="previewChanges" href="#">Preview Changes</a></li>
                 <li><a id="updateToken" href="#" style="display:none">Update token</a></li>
               </ul>
             </li>
@@ -322,18 +352,11 @@
                 <li role="separator" class="divider"></li>
               </ul>
             </li>
-            <li><a id="viewEditor" class="btn btn-primary" href="#">Editor</a></li>
-            <li><a id="viewHistory" class="btn btn-default" href="#">History</a></li>
+            <li><a id="viewEditor" class="arrow_box" href="#">Editor</a></li>
+            <li><a id="viewViewer" href="#">Viewer</a></li>
+            <li><a id="viewHistory" class="disabled" href="#">History</a></li>
           </ul>
         </div>
-        <ul class="nav navbar-nav navbar-right">
-          <li>
-            <a href="#" id="editorToggle">
-              <span>&LT;</span>
-              <span style="display:none">></span>
-            </a>
-          </li>
-        </ul>
       </div>
     </nav>
   </header>

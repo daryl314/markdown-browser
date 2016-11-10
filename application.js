@@ -31,7 +31,6 @@ function guiReferences(WN, getConnection){
     $saveNote        : $('body > header#main-menu a#saveNote'),
     $saveNoteAs      : $('body > header#main-menu a#saveNoteAs'),
     $refresh         : $('body > header#main-menu a#refreshConnection'),
-    $previewChanges  : $('body > header#main-menu a#previewChanges'),
     $updateToken     : $('body > header#main-menu a#updateToken'),
 
     // Nav menu
@@ -40,7 +39,7 @@ function guiReferences(WN, getConnection){
     // View toggles
     $viewEditor      : $('body > header#main-menu a#viewEditor'),
     $viewHistory     : $('body > header#main-menu a#viewHistory'),
-    $editorToggle    : $('body > header#main-menu a#editorToggle'),
+    $viewViewer      : $('body > header#main-menu a#viewViewer'),
 
     // floating table of contents
     $floatingTOC     : $('#application-window nav#floating-toc'),
@@ -71,9 +70,11 @@ function guiReferences(WN, getConnection){
   ///// STATE VARIABLES /////
 
   gui.state = {
-    staleHistory: true,         // is note history list out-of-date?
-    diffCache:    {},           // cached version diff data
-    currentNote:  undefined     // GUID of current note
+    staleHistory  : true,         // is note history list out-of-date?
+    diffCache     : {},           // cached version diff data
+    currentTab    : "editor",     // currently selected tab
+    showNoteList  : false,        // should note list be rendered?
+    currentNote   : undefined     // GUID of current note
   };
 
 
@@ -131,28 +132,73 @@ function guiReferences(WN, getConnection){
 
   ///// GUI HANDLERS /////
 
-  // function to show editor window
-  gui.showEditorWindow = function() {
-    gui.$viewHistory.removeClass('btn-primary');
-    gui.$viewEditor.addClass('btn-primary');
-    gui.$historyMenu.add(gui.$historyWindow).hide();
-    gui.$editorWindow.add(gui.$previewWindow).show();
-  }
+  gui.updateLayout = function(newTab) {
 
-  // function to toggle visibility of editor window
-  gui.toggleEditorWindow = function(){
-    gui.$editorToggle.find('span').toggle();
-    gui.$editorWindow.toggle();
-    gui.$previewWindow.toggleClass('col-md-6').toggleClass('col-md-10');
-    gui.$tocWindow.toggle();
-  }
+    // set tab if applicable
+    if (newTab)
+      gui.state.currentTab = newTab;
 
-  // function to show history window
-  gui.showHistoryWindow = function() {
-    gui.$viewEditor.removeClass('btn-primary');
-    gui.$viewHistory.addClass('btn-primary');
-    gui.$historyMenu.add(gui.$historyWindow).show();
-    gui.$editorWindow.add(gui.$previewWindow).hide();
+    // reset arrow box classes
+    gui.$viewEditor.removeClass('arrow_box');
+    gui.$viewViewer.removeClass('arrow_box');
+    gui.$viewHistory.removeClass('arrow_box');
+
+    // hide all windows
+    gui.$historyMenu.hide();
+    gui.$historyWindow.hide();
+    gui.$editorWindow.hide();
+    gui.$previewWindow.hide();
+    gui.$noteMenu.hide();
+    gui.$tocWindow.hide();
+
+    // reset column size classes
+    gui.$previewWindow.removeClass('col-md-5').removeClass('col-md-6').removeClass('col-md-8').removeClass('col-md-10');
+    gui.$editorWindow.removeClass('col-md-5').removeClass('col-md-6');
+
+    // disable history mode if applicable
+    if (gui.state.currentNote)
+      gui.$viewHistory.parent('li').removeClass('disabled');
+    else
+    gui.$viewHistory.parent('li').addClass('disabled');
+
+    // configure 'editor' mode
+    if (gui.state.currentTab == 'editor') {
+      gui.$viewEditor.addClass('arrow_box');
+      gui.$editorWindow.show();
+      gui.$previewWindow.show();
+      if (gui.state.showNoteList) {
+        gui.$previewWindow.addClass('col-md-5');
+        gui.$editorWindow.addClass('col-md-5');
+        gui.$noteMenu.show();
+      } else {
+        gui.$previewWindow.addClass('col-md-6');
+        gui.$editorWindow.addClass('col-md-6');
+      }
+
+    // configure 'viewer' mode
+    } else if (gui.state.currentTab == 'viewer') {
+      gui.$viewViewer.addClass('arrow_box');
+      gui.$previewWindow.show();
+      gui.$tocWindow.show();
+      if (gui.state.showNoteList) {
+         gui.$previewWindow.addClass('col-md-8');
+         gui.$noteMenu.show();
+      } else {
+        gui.$previewWindow.addClass('col-md-10');
+      }
+
+    // configure 'history' mode
+    } else if (gui.state.currentTab == 'history') {
+      gui.$viewHistory.addClass('arrow_box');
+      gui.$historyMenu.show();
+      gui.$historyWindow.show();
+
+    // otherwise an error
+    } else {
+      throw new Error("Invalid tab state: "+gui.state.currentTab);
+    }
+
+
   }
 
   // function to navigate to a table of contents cross-reference
@@ -160,20 +206,6 @@ function guiReferences(WN, getConnection){
     var $target = $( $(this).data('href') );
     gui.$previewWindow.scrollTop(gui.$previewWindow.scrollTop() + $target.position().top);
   };
-
-  // show/hide/toggle note list menu
-  gui.showNoteList = function() {
-    gui.$noteMenu.show();
-    gui.$previewWindow.add(gui.$editorWindow).removeClass('col-md-6').addClass('col-md-5');
-  }
-  gui.hideNoteList = function() {
-    gui.$noteMenu.hide();
-    gui.$previewWindow.add(gui.$editorWindow).addClass('col-md-6').removeClass('col-md-5');
-  }
-  gui.toggleNoteList = function() {
-    gui.$noteMenu.toggle();
-    gui.$previewWindow.add(gui.$editorWindow).toggleClass('col-md-6').toggleClass('col-md-5');
-  }
 
 
   ///// DATA VIEWS /////
@@ -437,8 +469,8 @@ function guiReferences(WN, getConnection){
       if (gui.state.currentNote === undefined) {
         gui.transientAlert("No note currently loaded!")
       } else if (gui.state.staleHistory) {
-        gui.showHistoryWindow();
         gui.state.diffCache = {}; // clear cache
+        gui.updateLayout('history');
         gui.fetchNoteVersions(gui.state.currentNote, function(versionData, note) {
           gui.populateNoteHistory(note, versionData);
           gui.state.staleHistory = false;
@@ -450,12 +482,14 @@ function guiReferences(WN, getConnection){
   // bind to clicking on 'Editor' menu
   gui.$viewEditor.on('click', function(){
     if ($(this).hasClass('btn-primary') == false) {
-      gui.showEditorWindow();
+      gui.updateLayout('editor');
     }
   });
 
-  // bind to the editor toggle button (enter/exit read-only mode)
-  gui.$editorToggle.on('click', gui.toggleEditorWindow);
+  // bind to clicking on 'Viewer' menu
+  gui.$viewViewer.on('click', function(){
+    gui.updateLayout('viewer');
+  })
 
   // bind to table of contents entry clicks
   gui.$navMenu.on('click', 'a', gui.navigationHandler);
@@ -506,7 +540,7 @@ function guiReferences(WN, getConnection){
   });
 
   // 'Preview Changes' --> preview note changes from server version
-  gui.$previewChanges.on('click', function(){
+  /*gui.$previewChanges.on('click', function(){
     if (gui.state.currentNote === undefined) {
       gui.transientAlert("No note currently loaded!")
     } else {
@@ -517,7 +551,7 @@ function guiReferences(WN, getConnection){
         compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title()));
       })
     }
-  })
+  })*/
 
   // 'Save As' --> write a new note to server
   gui.$saveNoteAs.on('click', function(){
