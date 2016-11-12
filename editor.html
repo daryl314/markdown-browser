@@ -131,6 +131,15 @@
     header#main-menu .navbar-nav>li>a.arrow_box:focus  {
       background-color: #2780e3;
     }
+    header#main-menu .navbar-nav>li.disabled {
+      background-color: #777777;
+    }
+    header#main-menu .navbar-nav>li.navbar-text {
+      padding-top: 4px;
+      margin-top: 0px;
+      margin-bottom: 0px;
+      font-weight: 900;
+    }
 
     /* Text diff styles */
 
@@ -354,7 +363,9 @@
             </li>
             <li><a id="viewEditor" class="arrow_box" href="#">Editor</a></li>
             <li><a id="viewViewer" href="#">Viewer</a></li>
-            <li><a id="viewHistory" class="disabled" href="#">History</a></li>
+            <li class="disabled"><a id="viewChanges" href="#">Changes</a></li>
+            <li class="disabled"><a id="viewHistory" href="#">History</a></li>
+            <li class="navbar-text" id="noteTitle">Untitled Note</li>
           </ul>
         </div>
       </div>

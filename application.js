@@ -20,6 +20,7 @@ function guiReferences(WN, getConnection){
 
   ///// GUI ELEMENTS /////
 
+  // object containing handles to elements
   gui = {
 
     // container for menu bar
@@ -35,11 +36,13 @@ function guiReferences(WN, getConnection){
 
     // Nav menu
     $navMenu         : $('body > header#main-menu ul#navMenu'),
+    $noteTitle       : $('body > header#main-menu li#noteTitle'),
 
-    // View toggles
+    // Tabs
     $viewEditor      : $('body > header#main-menu a#viewEditor'),
     $viewHistory     : $('body > header#main-menu a#viewHistory'),
     $viewViewer      : $('body > header#main-menu a#viewViewer'),
+    $viewChanges     : $('body > header#main-menu a#viewChanges'),
 
     // floating table of contents
     $floatingTOC     : $('#application-window nav#floating-toc'),
@@ -66,15 +69,42 @@ function guiReferences(WN, getConnection){
     $alertTemplate   : $('#alertTemplate')
   };
 
+  // return a jquery selection containing a list of selectors
+  function wrapList(a) {
+    var $el = $(a[0]);
+    for (var i = 0; i < a.length; i++)
+      $el = $el.add(a[i]);
+    return $el;
+  }
+
+  // attach a wrapped set of tabs
+  gui.$allTabs = wrapList([
+    gui.$viewEditor,
+    gui.$viewViewer,
+    gui.$viewHistory,
+    gui.$viewChanges
+  ]);
+
+  // attach a wrapped set of windows
+  gui.$allWindows = wrapList([
+    gui.$historyMenu,
+    gui.$historyWindow,
+    gui.$editorWindow,
+    gui.$previewWindow,
+    gui.$noteMenu,
+    gui.$tocWindow
+  ]);
+
 
   ///// STATE VARIABLES /////
 
   gui.state = {
-    staleHistory  : true,         // is note history list out-of-date?
-    diffCache     : {},           // cached version diff data
-    currentTab    : "editor",     // currently selected tab
-    showNoteList  : false,        // should note list be rendered?
-    currentNote   : undefined     // GUID of current note
+    staleHistory  : true,             // is note history list out-of-date?
+    diffCache     : {},               // cached version diff data
+    currentTab    : "editor",         // currently selected tab
+    showNoteList  : false,            // should note list be rendered?
+    noteTitle     : 'Untitled Note',  // title of current note
+    currentNote   : undefined         // GUID of current note
   };
 
 
@@ -132,34 +162,46 @@ function guiReferences(WN, getConnection){
 
   ///// GUI HANDLERS /////
 
-  gui.updateLayout = function(newTab) {
+  gui.updateState = function(stateUpdate) {
 
-    // set tab if applicable
-    if (newTab)
-      gui.state.currentTab = newTab;
+    // check input
+    if (stateUpdate !== undefined && typeof(stateUpdate) !== 'object')
+      throw new Error("Invalid input");
+
+    // iterate over state change keys and set in GUI state
+    if (stateUpdate) {
+      var k = Object.keys(stateUpdate);
+      for (var i = 0; i < k.length; i++) {
+        if (gui.state[k[i]] === undefined) {
+          throw new Error("Invalid state key: "+k[i]);
+        } else {
+          gui.state[k[i]] = stateUpdate[k[i]];
+        }
+      }
+    }
+
+    // set note title
+    gui.$noteTitle.text(gui.state.noteTitle);
 
     // reset arrow box classes
-    gui.$viewEditor.removeClass('arrow_box');
-    gui.$viewViewer.removeClass('arrow_box');
-    gui.$viewHistory.removeClass('arrow_box');
+    gui.$allTabs.removeClass('arrow_box');
 
     // hide all windows
-    gui.$historyMenu.hide();
-    gui.$historyWindow.hide();
-    gui.$editorWindow.hide();
-    gui.$previewWindow.hide();
-    gui.$noteMenu.hide();
-    gui.$tocWindow.hide();
+    gui.$allWindows.hide();
 
     // reset column size classes
-    gui.$previewWindow.removeClass('col-md-5').removeClass('col-md-6').removeClass('col-md-8').removeClass('col-md-10');
-    gui.$editorWindow.removeClass('col-md-5').removeClass('col-md-6');
+    gui.$previewWindow.removeClass('col-md-5 col-md-6 col-md-8 col-md-10');
+    gui.$editorWindow.removeClass('col-md-5 col-md-6');
+    gui.$historyWindow.removeClass('col-md-10 col-md-12');
 
-    // disable history mode if applicable
-    if (gui.state.currentNote)
+    // disable tabs that require loaded notes if applicable
+    if (gui.state.currentNote) {
       gui.$viewHistory.parent('li').removeClass('disabled');
-    else
-    gui.$viewHistory.parent('li').addClass('disabled');
+      gui.$viewChanges.parent('li').removeClass('disabled');
+    } else {
+      gui.$viewHistory.parent('li').addClass('disabled');
+      gui.$viewChanges.parent('li').addClass('disabled');
+    }
 
     // configure 'editor' mode
     if (gui.state.currentTab == 'editor') {
@@ -178,20 +220,24 @@ function guiReferences(WN, getConnection){
     // configure 'viewer' mode
     } else if (gui.state.currentTab == 'viewer') {
       gui.$viewViewer.addClass('arrow_box');
-      gui.$previewWindow.show();
       gui.$tocWindow.show();
       if (gui.state.showNoteList) {
-         gui.$previewWindow.addClass('col-md-8');
+         gui.$previewWindow.addClass('col-md-8').show();
          gui.$noteMenu.show();
       } else {
-        gui.$previewWindow.addClass('col-md-10');
+        gui.$previewWindow.addClass('col-md-10').show();
       }
+
+    // configure 'changes' mode
+  } else if (gui.state.currentTab == 'changes') {
+      gui.$viewChanges.addClass('arrow_box');
+      gui.$historyWindow.addClass('col-md-12').show();
 
     // configure 'history' mode
     } else if (gui.state.currentTab == 'history') {
       gui.$viewHistory.addClass('arrow_box');
       gui.$historyMenu.show();
-      gui.$historyWindow.show();
+      gui.$historyWindow.addClass('col-md-10').show();
 
     // otherwise an error
     } else {
@@ -463,14 +509,14 @@ function guiReferences(WN, getConnection){
 
   ///// ATTACH TO EVENTS /////
 
-  // bind to clicking on 'History' menu
+  // bind to clicking on 'History' tab
   gui.$viewHistory.on('click', function(){
-    if ($(this).hasClass('btn-primary') == false) {
+    if (gui.state.currentTab !== 'history') {
       if (gui.state.currentNote === undefined) {
         gui.transientAlert("No note currently loaded!")
       } else if (gui.state.staleHistory) {
         gui.state.diffCache = {}; // clear cache
-        gui.updateLayout('history');
+        gui.updateState({ currentTab: 'history' });
         gui.fetchNoteVersions(gui.state.currentNote, function(versionData, note) {
           gui.populateNoteHistory(note, versionData);
           gui.state.staleHistory = false;
@@ -479,16 +525,30 @@ function guiReferences(WN, getConnection){
     }
   });
 
-  // bind to clicking on 'Editor' menu
+  // bind to clicking on 'Editor' tab
   gui.$viewEditor.on('click', function(){
-    if ($(this).hasClass('btn-primary') == false) {
-      gui.updateLayout('editor');
-    }
+    if (gui.state.currentTab !== 'editor')
+      gui.updateState({ currentTab: 'editor' });
   });
 
-  // bind to clicking on 'Viewer' menu
+  // bind to clicking on 'Viewer' tab
   gui.$viewViewer.on('click', function(){
-    gui.updateLayout('viewer');
+    if (gui.state.currentTab !== 'viewer')
+      gui.updateState({ currentTab: 'viewer' });
+  })
+
+  // bind to clicking on 'Changes' tab --> preview note changes from server version
+  gui.$viewChanges.on('click', function(){
+    if (gui.state.currentTab !== 'changes') {
+      if (gui.state.currentNote === undefined) {
+        gui.transientAlert("No note currently loaded!")
+      } else {
+        gui.loadNote(gui.state.currentNote, function(oldContent, note){
+          gui.updateState({ currentTab : 'changes' });
+          compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title()));
+        })
+      }
+    }
   })
 
   // bind to table of contents entry clicks
@@ -498,19 +558,22 @@ function guiReferences(WN, getConnection){
 
   // bind to 'Load' menu and trigger refresh on first click
   gui.$loadMenuItem.on('click', function(){
+    gui.updateState({ showNoteList : true });
     gui.generateNoteList();
-    gui.toggleNoteList();
   })
 
-  // bind to clicks on note list
+  // bind to clicks on notes in note list
   gui.$noteList.on('click', 'a', function(){
     var guid = $(this).data('guid');
     gui.$noteList.find('a.list-group-item.selected').removeClass('selected');
     $(this).addClass('selected');
-    gui.loadNote(guid, function(content){
-      gui.populateNote(guid, content)
+    gui.loadNote(guid, function(content, note){
+      gui.populateNote(guid, content);
+      gui.updateState({
+        showNoteList : false,
+        noteTitle    : note.title()
+      });
     });
-    gui.hideNoteList();
   });
 
   // bind to clicks on history items
@@ -539,20 +602,6 @@ function guiReferences(WN, getConnection){
     }
   });
 
-  // 'Preview Changes' --> preview note changes from server version
-  /*gui.$previewChanges.on('click', function(){
-    if (gui.state.currentNote === undefined) {
-      gui.transientAlert("No note currently loaded!")
-    } else {
-      gui.loadNote(gui.state.currentNote, function(oldContent, note){
-        gui.showHistoryWindow();
-        gui.$historyWindow.empty();
-        gui.$historyMenu.hide();
-        compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title()));
-      })
-    }
-  })*/
-
   // 'Save As' --> write a new note to server
   gui.$saveNoteAs.on('click', function(){
     gui.promptForInput('New note name', 'Untitled', function(noteTitle) {
@@ -561,7 +610,7 @@ function guiReferences(WN, getConnection){
           gui.createNote(noteTitle, cm.getValue(), function(note){
             gui.state.staleHistory = true;
             gui.state.currentNote = note.guid;
-            gui.refreshNoteList();
+            gui.refreshNoteList({ noteTitle: noteTitle });
           })
         });
       }
@@ -570,8 +619,11 @@ function guiReferences(WN, getConnection){
 
   // 'New' --> reset editor
   gui.$newNote.on('click', function(){
-    gui.state.currentNote = undefined;
-    gui.state.staleHistory = true;
+    gui.updateState({
+      currentNote : undefined,
+      noteTitle   : 'Untitled Note',
+      staleHistory : true
+    });
     cm.setValue('');
   })
 
