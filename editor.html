@@ -284,29 +284,53 @@
       background: rgba(0, 0, 0, 0.10);
     }
 
-    /* Floating table of contents */
+    /* Floating/Navigation table of contents */
 
-    nav#floating-toc ul {
-      list-style: none;
-      padding-left: 1em;
+    .toc-menu, .toc-menu ul {
+      list-style-type:none;
     }
-
-    nav#floating-toc > ul > li > ul {
-      font-size: 0.8em;
-    }
-
-    nav#floating-toc li.active > a {
-      font-weight: bolder;
-      background-color: lightgrey;
-    }
-
-    nav#floating-toc > ul > li li {
-      display: none;
-    }
-
-    nav#floating-toc > ul > li.active li {
+    .toc-menu a {
+      color: black;
       display: block;
+      text-decoration: none;
     }
+    .toc-menu a:hover,
+    .toc-menu li.active > a
+    {
+      color: white;
+      background-color: #2780e3;
+    }
+    .toc-menu li ul {
+      display:none;
+    }
+    .toc-menu li:hover ul,
+    .toc-menu li.visible ul
+    {
+      display:block;
+    }
+    .toc-menu, .toc-menu ul, .toc-menu li {
+      padding: 0px;
+    }
+    .toc-menu > li > a {
+      padding-left:20px;
+    }
+    .toc-menu > li > ul > li > a {
+      padding-left:40px;
+    }
+    .toc-menu > li > ul > li > ul > li > a {
+      padding-left:60px;
+    }
+
+    ul#floating-toc a {
+      border-top: 1px solid #eeeeee;
+    }
+    ul#floating-toc {
+      margin-top:20px;
+      border-left: 1px solid #eeeeee;
+      border-right: 1px solid #eeeeee;
+      border-bottom: 1px solid #eeeeee;
+    }
+
 
   </style>
 </head>
@@ -356,7 +380,7 @@
             <li class="dropdown">
               <a class="dropdown-toggle" role="button" data-toggle="dropdown">Nav
               <span class="caret"></span></a>
-              <ul id="navMenu" class="dropdown-menu">
+              <ul id="navMenu" class="dropdown-menu toc-menu">
                 <li><a id="toggleFloatingTOC" href="#">Toggle Floating Menu</a></li>
                 <li role="separator" class="divider"></li>
               </ul>
@@ -406,7 +430,7 @@
 
     <!-- FLOATING TABLE OF CONTENTS -->
     <section id="floating-toc-container" style="display:none" class="col-md-2 hidden-print" role="complementary">
-      <nav id="floating-toc" class="col-md-2 affix"></nav>
+      <ul id="floating-toc" class="col-md-2 affix toc-menu"></ul>
     </section>
 
     <!-- HISTORY WINDOWS -->

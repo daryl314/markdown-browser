@@ -45,7 +45,7 @@ function guiReferences(WN, getConnection){
     $viewChanges     : $('body > header#main-menu a#viewChanges'),
 
     // floating table of contents
-    $floatingTOC     : $('#application-window nav#floating-toc'),
+    $floatingTOC     : $('#application-window ul#floating-toc'),
 
     // windows
     $historyMenu     : $('#application-window section#history-list'),
@@ -671,6 +671,24 @@ function latexToHTML(latex, isBlock) {
 // MARKDOWN RENDERING //
 ////////////////////////
 
+// function to extract header data and generate a markdown table of contents list
+function extractTOC($el) {
+
+  // identify lowest-level header
+  var minHeader = Math.min.apply(null,
+    $el.find(':header').not('h1').map(function(){
+      return parseInt($(this).prop('tagName').slice(1))
+    })
+  );
+
+  // generate markdown
+  return $el.find(':header').not('h1').map(function(){
+    var level = parseInt($(this).prop("tagName").slice(1));
+    var spaces = Array(1+2*(level-minHeader)).join(' ');
+    return spaces + "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
+  }).toArray().join('\n')
+}
+
 // function to render markdown into the specified element
 renderMarkdown = function(x, $el) {
 
@@ -689,17 +707,7 @@ renderMarkdown = function(x, $el) {
   $el.html(html);
 
   // create a table of contents
-  var minHeader = Math.min.apply(null,
-    $el.find(':header').not('h1').map(function(){
-      return parseInt($(this).prop('tagName').slice(1))
-    })
-  );
-  var toc = markdown.toHTML(
-    $el.find(':header').not('h1').map(function(){
-      var level = parseInt($(this).prop("tagName").slice(1));
-      return Array(1+2*(level-(minHeader-1))).join(' ') +
-        "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
-    }).toArray().join('\n'));
+  var toc = markdown.toHTML(extractTOC($el));
 
   // convert anchors to data-href attributes
   toc = toc.replace(/href/g, 'href="#" data-href');
@@ -936,10 +944,10 @@ var scrollFrom = function(line) {
 
   // style closest header
   if (matchingToc) {
-    GUI.$floatingTOC.find('li').removeClass('active');
-    matchingToc
-      .parentsUntil(GUI.$floatingTOC, 'li')
-      .addClass('active');
+    GUI.$floatingTOC.find('li').removeClass('active visible');
+    matchingToc.parent('li').addClass('active');
+    matchingToc.parentsUntil(GUI.$floatingTOC, 'li').addClass('visible');
+
   }
 
   // if the update count is nonzero, this was a scroll triggered by an editor
@@ -968,10 +976,15 @@ var render = function(){
   // execute rendering
   var renderData = renderMarkdown(cm.getValue(),GUI.$previewContents);
 
-  // create floating table of contents and nav menu
-  GUI.$floatingTOC.html(renderData.toc);
+  // table of contents without outer UL
+  var toc = $(renderData.toc).html();
+
+  // create nav menu
   GUI.$navMenu.children('li.divider ~ li').remove();
-  GUI.$navMenu.append( $(renderData.toc).html() );
+  GUI.$navMenu.append(toc);
+
+  // create floating table of contents
+  GUI.$floatingTOC.html(toc);
 
   // capture line numbers
   var x = [], y = [];
