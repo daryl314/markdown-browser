@@ -713,7 +713,7 @@ renderMarkdown = function(x, $el) {
   toc = toc.replace(/href/g, 'href="#" data-href');
 
   // fill TOC elements
-  $el.find('toc').html(toc);
+  $el.find('toc').html(toc.replace(/ul>/g, 'ol>'));
 
   // remove line number tags from TOC entries
   $el.find('toc [data-source-line]').each(function(){

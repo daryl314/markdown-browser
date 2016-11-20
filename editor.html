@@ -284,6 +284,36 @@
       background: rgba(0, 0, 0, 0.10);
     }
 
+    /* Inline table of contents */
+
+    toc {
+      display: inline-block;
+      margin-top:10px;
+    }
+    toc ol ol { 
+      padding-left: 20px;
+    }
+    toc > ol {
+      border: 1px solid grey;
+      padding: 10px;
+      background-color: #eeeeee;
+    }
+    toc a {
+      padding-left: 5px;
+      color: black;
+    }
+    toc ol {
+      counter-reset: item;
+    }
+    toc li {
+      display: block;
+      /*border-top: 1px dashed gray;*/
+    }
+    toc li:before {
+      content: counters(item, ".") " ";
+      counter-increment: item
+    }
+
     /* Floating/Navigation table of contents */
 
     .toc-menu, .toc-menu ul {
