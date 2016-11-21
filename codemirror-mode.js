@@ -989,6 +989,9 @@ function registerCloseBrackets(){
     var explode = config.explode;
     if (!explode || cm.getOption("disableInput")) return CodeMirror.Pass;
 
+    // variable to track special case for creating a list item instead of a bullet
+    var createListItem;
+
     // iterate over selections
     var ranges = cm.listSelections();
     outerLoop: for (var i = 0; i < ranges.length; i++) {
@@ -997,9 +1000,20 @@ function registerCloseBrackets(){
       // don't do anything if there is a nonzero selection (space should clear selection)
       if (!ranges[i].empty()) return CodeMirror.Pass;
 
-      // check for a single-character pair
+      // characters before and after cursor
       var lChar = adjacentChars(cm, cur, -1);
       var rChar = adjacentChars(cm, cur,  1);
+
+      // check for list item special case: ^\s*\*\s is a bullet, not bold
+      if (lChar === '*' && rChar === '*' && cm.getLine(cur.line).slice(cur.ch).match(/\s*\*$/)) {
+        if (createListItem === undefined) {
+          createListItem = true; // trigger as true only if undefined
+        }
+      } else {
+        createListItem = false; // at least one selection doesn't match pattern
+      }
+
+      // check for a single-character pair
       var idx = config.pairs.indexOf(lChar);
       if (idx != -1 && idx % 2 == 0 && config.pairs[idx+1] == rChar)
         continue outerLoop;
@@ -1026,7 +1040,16 @@ function registerCloseBrackets(){
 
     // execute the following CodeMirror commands...
     cm.operation(function() {
-      execBoth(' ', ' ');
+
+      // special case for converting bold text at start of line to a list item
+      if (createListItem) {
+        cm.execCommand('killLine');
+        execBoth(' ', '');
+
+      // otherwise put a space on both sides of cursor
+      } else {
+        execBoth(' ', ' ');
+      }
     });
   }
 
