@@ -37,6 +37,7 @@ function guiReferences(WN, getConnection){
     // Nav menu
     $navMenu         : $('body > header#main-menu ul#navMenu'),
     $noteTitle       : $('body > header#main-menu li#noteTitle'),
+    $toggleTOC       : $('body > header#main-menu a#toggleFloatingTOC'),
 
     // Tabs
     $viewEditor      : $('body > header#main-menu a#viewEditor'),
@@ -104,6 +105,7 @@ function guiReferences(WN, getConnection){
     currentTab    : "editor",         // currently selected tab
     showNoteList  : false,            // should note list be rendered?
     noteTitle     : 'Untitled Note',  // title of current note
+    floatingTOC   : false,            // display floating TOC menu?
     currentNote   : undefined         // GUID of current note
   };
 
@@ -190,8 +192,8 @@ function guiReferences(WN, getConnection){
     gui.$allWindows.hide();
 
     // reset column size classes
-    gui.$previewWindow.removeClass('col-md-5 col-md-6 col-md-8 col-md-10');
-    gui.$editorWindow.removeClass('col-md-5 col-md-6');
+    gui.$previewWindow.removeClass('col-md-4 col-md-5 col-md-6 col-md-8 col-md-10');
+    gui.$editorWindow.removeClass('col-md-4 col-md-5 col-md-6');
     gui.$historyWindow.removeClass('col-md-10 col-md-12');
 
     // disable tabs that require loaded notes if applicable
@@ -203,41 +205,53 @@ function guiReferences(WN, getConnection){
       gui.$viewChanges.parent('li').addClass('disabled');
     }
 
+    // show floating TOC menu if requested
+    if (gui.state.floatingTOC) {
+      gui.$tocWindow.show();
+    }
+
+    // show note list menu if requested
+    if (gui.state.showNoteList) {
+      gui.$noteMenu.show();
+    }
+
+    // helper function to set column width class based on state
+    function setWidthClass($el) {
+      if ($el.length == 2 && gui.state.showNoteList && gui.state.floatingTOC) {
+        $el.addClass('col-md-4');
+      } else if ($el.length == 2 && (gui.state.showNoteList || gui.state.floatingTOC) ) {
+        $el.addClass('col-md-5');
+      } else if ($el.length == 2) {
+        $el.addClass('col-md-6');
+      } else if ($el.length == 1 && gui.state.showNoteList && gui.state.floatingTOC) {
+        $el.addClass('col-md-8');
+      } else if ($el.length == 1 && (gui.state.showNoteList || gui.state.floatingTOC) ) {
+        $el.addClass('col-md-10');
+      } else if ($el.length == 1) {
+        $el.addClass('col-md-12');
+      }
+      return $el;
+    }
+
     // configure 'editor' mode
     if (gui.state.currentTab == 'editor') {
       gui.$viewEditor.addClass('arrow_box');
-      gui.$editorWindow.show();
-      gui.$previewWindow.show();
-      if (gui.state.showNoteList) {
-        gui.$previewWindow.addClass('col-md-5');
-        gui.$editorWindow.addClass('col-md-5');
-        gui.$noteMenu.show();
-      } else {
-        gui.$previewWindow.addClass('col-md-6');
-        gui.$editorWindow.addClass('col-md-6');
-      }
+      setWidthClass( gui.$editorWindow.add(gui.$previewWindow) ).show();
 
     // configure 'viewer' mode
     } else if (gui.state.currentTab == 'viewer') {
       gui.$viewViewer.addClass('arrow_box');
-      gui.$tocWindow.show();
-      if (gui.state.showNoteList) {
-         gui.$previewWindow.addClass('col-md-8').show();
-         gui.$noteMenu.show();
-      } else {
-        gui.$previewWindow.addClass('col-md-10').show();
-      }
+      setWidthClass( gui.$previewWindow ).show();
 
     // configure 'changes' mode
   } else if (gui.state.currentTab == 'changes') {
       gui.$viewChanges.addClass('arrow_box');
-      gui.$historyWindow.addClass('col-md-12').show();
+      setWidthClass( gui.$historyWindow ).show();
 
     // configure 'history' mode
     } else if (gui.state.currentTab == 'history') {
       gui.$viewHistory.addClass('arrow_box');
-      gui.$historyMenu.show();
-      gui.$historyWindow.addClass('col-md-10').show();
+      setWidthClass( gui.$historyWindow ).show();
 
     // otherwise an error
     } else {
@@ -249,8 +263,10 @@ function guiReferences(WN, getConnection){
 
   // function to navigate to a table of contents cross-reference
   gui.navigationHandler = function(event){
-    var $target = $( $(this).data('href') );
-    gui.$previewWindow.scrollTop(gui.$previewWindow.scrollTop() + $target.position().top);
+    if (this !== gui.$toggleTOC[0]) {
+      var $target = $( $(this).data('href') );
+      gui.$previewWindow.scrollTop(gui.$previewWindow.scrollTop() + $target.position().top);
+    }
   };
 
 
@@ -516,7 +532,10 @@ function guiReferences(WN, getConnection){
         gui.transientAlert("No note currently loaded!")
       } else if (gui.state.staleHistory) {
         gui.state.diffCache = {}; // clear cache
-        gui.updateState({ currentTab: 'history' });
+        gui.updateState({
+          currentTab  : 'history',
+          floatingTOC : false
+        });
         gui.fetchNoteVersions(gui.state.currentNote, function(versionData, note) {
           gui.populateNoteHistory(note, versionData);
           gui.state.staleHistory = false;
@@ -528,13 +547,19 @@ function guiReferences(WN, getConnection){
   // bind to clicking on 'Editor' tab
   gui.$viewEditor.on('click', function(){
     if (gui.state.currentTab !== 'editor')
-      gui.updateState({ currentTab: 'editor' });
+      gui.updateState({
+        currentTab  : 'editor',
+        floatingTOC : false
+      });
   });
 
   // bind to clicking on 'Viewer' tab
   gui.$viewViewer.on('click', function(){
     if (gui.state.currentTab !== 'viewer')
-      gui.updateState({ currentTab: 'viewer' });
+      gui.updateState({
+        currentTab  : 'viewer',
+        floatingTOC : true
+      });
   })
 
   // bind to clicking on 'Changes' tab --> preview note changes from server version
@@ -544,7 +569,10 @@ function guiReferences(WN, getConnection){
         gui.transientAlert("No note currently loaded!")
       } else {
         gui.loadNote(gui.state.currentNote, function(oldContent, note){
-          gui.updateState({ currentTab : 'changes' });
+          gui.updateState({
+            currentTab  : 'changes',
+            floatingTOC : false
+          });
           compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title()));
         })
       }
@@ -555,6 +583,13 @@ function guiReferences(WN, getConnection){
   gui.$navMenu.on('click', 'a', gui.navigationHandler);
   gui.$floatingTOC.on('click', 'a', gui.navigationHandler);
   gui.$previewWindow.on('click', 'toc a', gui.navigationHandler);
+
+  // 'Toggle Floating Menu' --> toggle display of floating TOC menu
+  gui.$toggleTOC.on('click', function(){
+    gui.updateState({
+      floatingTOC: !gui.state.floatingTOC
+    })
+  })
 
   // bind to 'Load' menu and trigger refresh on first click
   gui.$loadMenuItem.on('click', function(){
@@ -634,7 +669,6 @@ function guiReferences(WN, getConnection){
       gui.populateNoteList(WN.getNoteData());
     })
   })
-
 
 
   ///// CLEANUP /////
