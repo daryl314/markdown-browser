@@ -97,7 +97,8 @@ function guiReferences(WN, getConnection){
     gui.$editorWindow,
     gui.$previewWindow,
     gui.$noteMenu,
-    gui.$tocWindow
+    gui.$tocWindow,
+    gui.$helpWindow
   ]);
 
 
