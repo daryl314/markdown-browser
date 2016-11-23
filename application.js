@@ -1222,11 +1222,9 @@ $(function(){
   GUI.$updateToken.show().on('click', getEvernoteConnection.updateToken);
 
   // starter text for editor
-  GUI.$editor.text(md_test + gfm_test);
-  launchCodeMirror();
-  // $.ajax('Inbox/Linear%20Algebra.md').success(function(x){
-  //   $('textarea#editor').text(x);
-  //   launchCodeMirror();
-  // })
+  $.ajax('instructions.md').success(function(x){
+    GUI.$editor.text(x);
+    launchCodeMirror();
+  })
 
 });
