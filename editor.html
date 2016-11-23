@@ -76,6 +76,11 @@
       background-color: green;
     }
 
+    #application-window section#viewer-container, #application-window section#help-container {
+      overflow-y: scroll;
+      height:100vh;
+    }
+
     section#nav-list {
       height: 100vh;
       overflow: scroll;
@@ -290,7 +295,7 @@
       display: inline-block;
       margin-top:10px;
     }
-    toc ol ol { 
+    toc ol ol {
       padding-left: 20px;
     }
     toc > ol {
@@ -419,6 +424,7 @@
             <li><a id="viewViewer" href="#">Viewer</a></li>
             <li class="disabled"><a id="viewChanges" href="#">Changes</a></li>
             <li class="disabled"><a id="viewHistory" href="#">History</a></li>
+            <li><a id="viewHelp" href="#">Help</a></li>
             <li class="navbar-text" id="noteTitle">Untitled Note</li>
           </ul>
         </div>
@@ -454,8 +460,13 @@
     </main>
 
     <!-- MARKDOWN PREVIEW WINDOW -->
-    <section id="viewer-container" class="col-md-6" style="overflow-y: scroll; height:100vh;" role="complementary">
+    <section id="viewer-container" class="col-md-6" role="complementary">
       <div id="viewer"></div>
+    </section>
+
+    <!-- HELP TEXT WINDOW -->
+    <section id="help-container" class="col-md-6" role="complementary">
+      <div id="rendered-help"></div>
     </section>
 
     <!-- FLOATING TABLE OF CONTENTS -->

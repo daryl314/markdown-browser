@@ -44,6 +44,7 @@ function guiReferences(WN, getConnection){
     $viewHistory     : $('body > header#main-menu a#viewHistory'),
     $viewViewer      : $('body > header#main-menu a#viewViewer'),
     $viewChanges     : $('body > header#main-menu a#viewChanges'),
+    $viewHelp        : $('body > header#main-menu a#viewHelp'),
 
     // floating table of contents
     $floatingTOC     : $('#application-window ul#floating-toc'),
@@ -57,6 +58,8 @@ function guiReferences(WN, getConnection){
     $editor          : $('#application-window main#content textarea#editor'),
     $previewWindow   : $('#application-window section#viewer-container'),
     $previewContents : $('#application-window section#viewer-container div#viewer'),
+    $helpWindow      : $('#application-window section#help-container'),
+    $helpContents    : $('#application-window section#help-container div#rendered-help'),
     $historyWindow   : $('#application-window section#history-container'),
     $tocWindow       : $('#application-window section#floating-toc-container'),
 
@@ -83,7 +86,8 @@ function guiReferences(WN, getConnection){
     gui.$viewEditor,
     gui.$viewViewer,
     gui.$viewHistory,
-    gui.$viewChanges
+    gui.$viewChanges,
+    gui.$viewHelp
   ]);
 
   // attach a wrapped set of windows
@@ -106,6 +110,7 @@ function guiReferences(WN, getConnection){
     showNoteList  : false,            // should note list be rendered?
     noteTitle     : 'Untitled Note',  // title of current note
     floatingTOC   : false,            // display floating TOC menu?
+    showHelp      : false,            // display help instead of preview?
     currentNote   : undefined         // GUID of current note
   };
 
@@ -252,6 +257,11 @@ function guiReferences(WN, getConnection){
     } else if (gui.state.currentTab == 'history') {
       gui.$viewHistory.addClass('arrow_box');
       setWidthClass( gui.$historyWindow ).show();
+
+    // configure 'help' mode
+    } else if (gui.state.currentTab == 'help') {
+      gui.$viewHelp.addClass('arrow_box');
+      setWidthClass( gui.$editorWindow.add(gui.$helpWindow) ).show();
 
     // otherwise an error
     } else {
@@ -534,7 +544,8 @@ function guiReferences(WN, getConnection){
         gui.state.diffCache = {}; // clear cache
         gui.updateState({
           currentTab  : 'history',
-          floatingTOC : false
+          floatingTOC : false,
+          showHelp    : false
         });
         gui.fetchNoteVersions(gui.state.currentNote, function(versionData, note) {
           gui.populateNoteHistory(note, versionData);
@@ -549,7 +560,8 @@ function guiReferences(WN, getConnection){
     if (gui.state.currentTab !== 'editor')
       gui.updateState({
         currentTab  : 'editor',
-        floatingTOC : false
+        floatingTOC : false,
+        showHelp    : false
       });
   });
 
@@ -558,7 +570,18 @@ function guiReferences(WN, getConnection){
     if (gui.state.currentTab !== 'viewer')
       gui.updateState({
         currentTab  : 'viewer',
-        floatingTOC : true
+        floatingTOC : true,
+        showHelp    : false
+      });
+  })
+
+  // bind to clicking on 'Help' tab
+  gui.$viewHelp.on('click', function(){
+    if (gui.state.currentTab !== 'help')
+      gui.updateState({
+        currentTab  : 'help',
+        floatingTOC : false,
+        showHelp    : true
       });
   })
 
@@ -571,7 +594,8 @@ function guiReferences(WN, getConnection){
         gui.loadNote(gui.state.currentNote, function(oldContent, note){
           gui.updateState({
             currentTab  : 'changes',
-            floatingTOC : false
+            floatingTOC : false,
+            showHelp    : false
           });
           compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title()));
         })
@@ -1121,6 +1145,9 @@ function launchCodeMirror() {
   // render starter text and re-render on text change
   render();
   cm.on('change', _.debounce(render, 300, {maxWait:1000})); // render when typing stops
+
+  // copy help text to help window
+  GUI.$helpContents.html( GUI.$previewContents.html() );
 
   // function to scroll preview window to editor location
   scrollSync = _.debounce(
