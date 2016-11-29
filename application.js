@@ -1298,10 +1298,26 @@ $(function(){
   // enable menu to update token (Evernote-specific)
   GUI.$updateToken.show().on('click', getEvernoteConnection.updateToken);
 
-  // starter text for editor
+  // local file to load (if any)
+  var mdFile = document.URL.split('#')[1];
+
+  // load usage instructions into editor
   $.ajax('instructions.md').success(function(x){
     GUI.$editor.text(x);
     launchCodeMirror();
+
+    // if a local file was specified, replace usage instructions with this file
+    if (mdFile.length > 0) {
+      $.ajax(mdFile).success(function(txt){
+        cm.setValue(txt);
+        GUI.updateState({
+          staleHistory: false,
+          noteTitle: mdFile,
+          currentTab: 'viewer',
+          floatingTOC: true
+        })
+      })
+    }
   })
 
 });
