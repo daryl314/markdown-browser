@@ -112,6 +112,7 @@ function guiReferences(WN, getConnection){
     noteTitle     : 'Untitled Note',  // title of current note
     floatingTOC   : false,            // display floating TOC menu?
     showHelp      : false,            // display help instead of preview?
+    noteModified  : false,            // are there unsaved changes?
     currentNote   : undefined         // GUID of current note
   };
 
@@ -154,14 +155,30 @@ function guiReferences(WN, getConnection){
       return $el;
     }
 
+    // collection of elements to show/hide in dialog box prompts
+    var $dialogElements = gui.$promptTemplate
+      .add(gui.$promptOverlay)
+      .add(gui.$promptInput.parent());
+
     // prompt user for input
     gui.promptForInput = function(message, default_entry, callback) {
-      gui.$promptTemplate.add(gui.$promptOverlay).show();
+      $dialogElements.show();
       gui.$promptBody.text(message);
       gui.$promptInput.val(default_entry);
-      gui.$promptOK.one('click', function(){
-        gui.$promptTemplate.add(gui.$promptOverlay).hide();
+      gui.$promptOK.off('click').one('click', function(){
+        $dialogElements.hide();
         if (callback) callback( gui.$promptInput.val() );
+      });
+    }
+
+    // prompt user for confirmation
+    gui.promptForConfirmation = function(message, callback) {
+      $dialogElements.show();
+      gui.$promptBody.text(message);
+      gui.$promptInput.parent().hide();
+      gui.$promptOK.off('click').one('click', function(){
+        $dialogElements.hide();
+        if (callback) callback();
       });
     }
 
@@ -189,7 +206,14 @@ function guiReferences(WN, getConnection){
     }
 
     // set note title
-    gui.$noteTitle.text(gui.state.noteTitle);
+    if (gui.state.noteModified)
+      gui.$noteTitle.html('<span class="modificationFlag">Mod</span>'+gui.state.noteTitle);
+    else
+      gui.$noteTitle.text(gui.state.noteTitle);
+
+    // clear changes window if note is no longer modified
+    if (!gui.state.noteModified)
+      gui.$historyWindow.empty();
 
     // reset arrow box classes
     gui.$allTabs.removeClass('arrow_box');
@@ -631,6 +655,7 @@ function guiReferences(WN, getConnection){
       gui.populateNote(guid, content);
       gui.updateState({
         showNoteList : false,
+        noteModified : false,
         noteTitle    : note.title()
       });
     });
@@ -657,6 +682,10 @@ function guiReferences(WN, getConnection){
     } else {
       gui.updateNote(gui.state.currentNote, cm.getValue(), function(note){
         gui.transientAlert("Note "+gui.state.currentNote+" updated: "+note.title());
+        gui.updateState({
+          staleHistory  : true,
+          noteModified  : false
+        });
         gui.state.staleHistory = true;
       })
     }
@@ -668,8 +697,11 @@ function guiReferences(WN, getConnection){
       if (noteTitle !== null) {
         gui.generateNoteList(function(){
           gui.createNote(noteTitle, cm.getValue(), function(note){
-            gui.state.staleHistory = true;
-            gui.state.currentNote = note.guid;
+            gui.updateState({
+              staleHistory  : true,
+              currentNote   : note.guid,
+              noteModified  : false
+            })
             gui.refreshNoteList({ noteTitle: noteTitle });
           })
         });
@@ -679,12 +711,20 @@ function guiReferences(WN, getConnection){
 
   // 'New' --> reset editor
   gui.$newNote.on('click', function(){
-    gui.updateState({
-      currentNote : undefined,
-      noteTitle   : 'Untitled Note',
-      staleHistory : true
-    });
-    cm.setValue('');
+    var callback = function() {
+      gui.state.currentNote = undefined; // undefined in updateState throws exception
+      gui.updateState({
+        noteTitle     : 'Untitled Note',
+        noteModified  : false,
+        staleHistory  : true
+      });
+      cm.setValue('');
+    }
+    if (gui.state.noteModified) {
+      gui.promptForConfirmation('Note has unsaved changes: okay to proceed?', callback);
+    } else {
+      callback();
+    }
   })
 
   // 'Refresh' --> Refresh connection with server
@@ -1146,6 +1186,15 @@ function launchCodeMirror() {
   // render starter text and re-render on text change
   render();
   cm.on('change', _.debounce(render, 300, {maxWait:1000})); // render when typing stops
+
+  // flag note as modified when the 'change' event fires
+  cm.on('change', function(){
+    if (!gui.state.noteModified) {
+      GUI.updateState({
+        noteModified : true
+      })
+    }
+  })
 
   // copy help text to help window
   GUI.$helpContents.html( GUI.$previewContents.html() );
