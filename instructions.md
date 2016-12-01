@@ -5,8 +5,8 @@
 ## Editor Usage ##
 
 - Start proxy server by running `./proxy.py`
-- Open editor by browsing to <http://localhost:8080/editor.html>
-- Open viewer by browsing to <http://localhost:8080/editor.html#LOCAL_FILE_NAME>
+- Open editor by browsing to <http://localhost:8080/>
+- Open viewer by browsing to <http://localhost:8080/?LOCAL_FILE_NAME>
 
 ## Markdown Syntax ##
 

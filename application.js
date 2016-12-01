@@ -1282,6 +1282,86 @@ getEvernoteConnection.updateToken = function() {
 }
 
 
+////////////////////////
+// LOCAL FILE SUPPORT //
+////////////////////////
+
+// make an ajax request
+function requestFile(fileName, callback) {
+  $.ajax(fileName)
+    .success(callback)
+    .error(function(qXHR, textStatus, errorThrown){
+      throw new Error("AJAX request failure!");
+    });
+}
+
+// generate local note list
+function generateLocalNoteList(){
+
+  // request recursive list of markdown files
+  requestFile('/ls/*.md', function(files){
+
+    // markdown file data grouped by containing folder
+    var noteData = _.chain(files)
+      .map(function(f){
+        var m = f.match(/(.*)\/(.*)/);
+        return { title:m[2], folder:m[1], link:f }
+      })
+      .sortBy(function(x){
+        return x.title.toLowerCase()
+      })
+      .groupBy('folder')
+      .value();
+
+    // clear note list
+    gui.$noteList.empty();
+
+    // sorted list of folders
+    var folders = _.sortBy(Object.keys(noteData), function(a){ return a.toLowerCase() });
+
+    // iterate over folders
+    _.each(folders, function(folder){
+
+      // create header for current folder
+      gui.$noteList.append(
+        '<li class="list-group-item active">' + folder + '</li>'
+      );
+
+      // iterate over notes in folder and append to list
+      _.each(noteData[folder], function(note) {
+        gui.$noteList.append(
+          '<a href="#" class="list-group-item" data-link="'+note.link+'">' + note.title + '</a>'
+        );
+      });
+    })
+
+    // bind a new click handler for notes
+    gui.$noteList.off('click').on('click', 'a', function(){
+      loadLocalFile($(this).data('link'));
+      window.history.pushState(
+        null,
+        'Markdown Browser',
+        document.URL.split('?')[0] + '?' + $(this).data('link').slice(2)
+      );
+    })
+  });
+}
+
+// load a local file into the editor
+function loadLocalFile(mdFile) {
+  requestFile(mdFile, function(txt){
+    cm.setValue(txt);
+    GUI.updateState({
+      staleHistory: false,
+      noteTitle: mdFile,
+      currentTab: 'viewer',
+      showNoteList: true,
+      floatingTOC: true
+    });
+  })
+}
+
+
 //////////////////////////////
 // SET EVERYTHING IN MOTION //
 //////////////////////////////
@@ -1299,24 +1379,17 @@ $(function(){
   GUI.$updateToken.show().on('click', getEvernoteConnection.updateToken);
 
   // local file to load (if any)
-  var mdFile = document.URL.split('#')[1];
+  var mdFile = document.URL.split('?')[1];
 
   // load usage instructions into editor
-  $.ajax('instructions.md').success(function(x){
+  requestFile('instructions.md', function(x){
     GUI.$editor.text(x);
     launchCodeMirror();
 
     // if a local file was specified, replace usage instructions with this file
-    if (mdFile.length > 0) {
-      $.ajax(mdFile).success(function(txt){
-        cm.setValue(txt);
-        GUI.updateState({
-          staleHistory: false,
-          noteTitle: mdFile,
-          currentTab: 'viewer',
-          floatingTOC: true
-        })
-      })
+    if (mdFile && mdFile.length > 0) {
+      generateLocalNoteList();
+      loadLocalFile(mdFile);
     }
   })
 
