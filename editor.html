@@ -5,53 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Markdown Editor</title>
 
-  <!-- JAVASCRIPT LIBRARIES -->
-  <script type="text/javascript" src="lib/jquery.min.js"></script>
-  <script type="text/javascript" src="lib/lodash.min.js"></script>
-
-  <!-- BOOTSTRAP.JS -->
+  <!-- BOOTSTRAP.JS CSS -->
   <link rel="stylesheet" href="lib/bootswatch-cosmo.min.css" />
-  <script type="text/javascript" src="lib/bootstrap-dropdown-3.3.4.js"></script>
-
-  <!-- SYNTAX HIGHLIGHTING -->
-  <link rel="stylesheet" href="lib/highlight-atelier-forest-light.min.css" />
-  <script type="text/javascript" src="lib/highlight-9.1.0.min.js"></script>
 
   <!-- CODEMIRROR CSS -->
   <link rel="stylesheet" href="CodeMirror/lib/codemirror.css" />
   <link rel="stylesheet" href="CodeMirror/addon/fold/foldgutter.css" />
   <link rel="stylesheet" href="CodeMirror/addon/dialog/dialog.css" />
-
-  <!-- CODEMIRROR JS -->
-  <script type="text/javascript" src="CodeMirror/lib/codemirror.js"></script>
-  <script type="text/javascript" src="CodeMirror/addon/dialog/dialog.js"></script>
-  <script type="text/javascript" src="CodeMirror/addon/edit/continuelist.js"></script>
-  <script type="text/javascript" src="CodeMirror/addon/edit/matchbrackets.js"></script>
-  <script type="text/javascript" src="CodeMirror/addon/fold/foldcode.js"></script>
-  <script type="text/javascript" src="CodeMirror/addon/fold/foldgutter.js"></script>
-  <script type="text/javascript" src="CodeMirror/addon/search/searchcursor.js"></script>
-  <script type="text/javascript" src="CodeMirror/addon/selection/active-line.js"></script>
-  <script type="text/javascript" src="CodeMirror/keymap/vim.js"></script>
-
-  <!-- LATEX RENDERING -->
-  <link rel="stylesheet" href="katex-0.5.1/katex.min.css">
-  <script src="katex-0.5.1/katex.min.js"></script>
-
-  <!-- EVERNOTE CONNECTION RESOURCES -->
-  <script type="text/javascript" src="/lib/evernote-sdk-minified.js"></script>
-  <script type="text/javascript" src="/lib/jsOAuth-1.3.7.min.js"></script>
-  <script type="text/javascript" src="evernote.js"></script>
-
-  <!-- TEXT DIFF -->
-  <script type="text/javascript">window.module={};//for diff.js node exports</script>
-  <script type="text/javascript" src="diff.js"></script>
-  <script type="text/javascript" src="text-diff.js"></script>
-
-  <!-- APPLICATION RESOURCES -->
-  <script type="text/javascript" src="marked.js"></script>
-  <script type="text/javascript" src="markdown.js"></script>
-  <script type="text/javascript" src="codemirror-mode.js"></script>
-  <script type="text/javascript" src="application.js"></script>
 
   <!-- EDITOR STYLESHEET (adapted from CodeMirror solarized style)-->
   <style>
@@ -490,5 +450,48 @@
     <section id="history-container" class="col-md-10" style="display:none" role="complementary"></section>
 
   </div></div> <!-- END APPLICATION BODY -->
+
+  <!-- POST-LOAD ASSETS BELOW -->
+
+  <!-- JAVASCRIPT LIBRARIES -->
+  <script type="text/javascript" src="lib/jquery.min.js"></script>
+  <script type="text/javascript" src="lib/lodash.min.js"></script>
+  <script type="text/javascript" src="lib/bootstrap-dropdown-3.3.4.js"></script>
+
+  <!-- SYNTAX HIGHLIGHTING -->
+  <link rel="stylesheet" href="lib/highlight-atelier-forest-light.min.css" />
+  <script type="text/javascript" src="lib/highlight-9.8.0.min.js"></script>
+
+  <!-- CODEMIRROR JS -->
+  <script type="text/javascript" src="CodeMirror/lib/codemirror.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/dialog/dialog.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/edit/continuelist.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/edit/matchbrackets.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/fold/foldcode.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/fold/foldgutter.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/search/searchcursor.js"></script>
+  <script type="text/javascript" src="CodeMirror/addon/selection/active-line.js"></script>
+  <script type="text/javascript" src="CodeMirror/keymap/vim.js"></script>
+
+  <!-- LATEX RENDERING -->
+  <link rel="stylesheet" href="katex-0.5.1/katex.min.css">
+  <script src="katex-0.5.1/katex.min.js"></script>
+
+  <!-- EVERNOTE CONNECTION RESOURCES -->
+  <script type="text/javascript" src="/lib/evernote-sdk-minified.js"></script>
+  <script type="text/javascript" src="/lib/jsOAuth-1.3.7.min.js"></script>
+  <script type="text/javascript" src="evernote.js"></script>
+
+  <!-- TEXT DIFF -->
+  <script type="text/javascript">window.module={};//for diff.js node exports</script>
+  <script type="text/javascript" src="diff.js"></script>
+  <script type="text/javascript" src="text-diff.js"></script>
+
+  <!-- APPLICATION RESOURCES -->
+  <script type="text/javascript" src="marked.js"></script>
+  <script type="text/javascript" src="markdown.js"></script>
+  <script type="text/javascript" src="codemirror-mode.js"></script>
+  <script type="text/javascript" src="application.js"></script>
+
 </body>
 </html>
