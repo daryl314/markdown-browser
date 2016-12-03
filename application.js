@@ -27,6 +27,7 @@ function guiReferences(WN, getConnection){
     $mainMenu        : $('body > header#main-menu'),
 
     // File menu
+    $fileMenu        : $('body > header#main-menu li#fileMenu'),
     $loadMenuItem    : $('body > header#main-menu a#showNoteList'),
     $newNote         : $('body > header#main-menu a#newNote'),
     $saveNote        : $('body > header#main-menu a#saveNote'),
@@ -229,8 +230,10 @@ function guiReferences(WN, getConnection){
       .add(gui.$refresh.parent());
     if (gui.state.hasServer) {
       $serverItems.removeClass('disabled');
+      gui.$fileMenu.show();
     } else {
       $serverItems.addClass('disabled');
+      gui.$fileMenu.hide();
     }
 
     // reset column size classes
