@@ -41,7 +41,7 @@ class S(BaseHTTPRequestHandler):
 
     def isProxied(self):
         """Return true if request needs to be proxied"""
-        return self.path.startswith('/proxy-http/') or self.path.startswith('/proxy-https/')
+        return self.path.startswith('/@proxy-http/') or self.path.startswith('/@proxy-https/')
 
     def _getServer(self):
         """Return the server to use for connections or requests"""
@@ -53,7 +53,7 @@ class S(BaseHTTPRequestHandler):
 
     def _getConnection(self):
         """Return HTTP or HTTPS connection object as appropriate"""
-        return httplib.HTTPSConnection(self._getServer()) if self.path.startswith("/proxy-https/") else httplib.HTTPConnection(self._getServer())
+        return httplib.HTTPSConnection(self._getServer()) if self.path.startswith("/@proxy-https/") else httplib.HTTPConnection(self._getServer())
 
     def _sendData(self, data, mimeType):
         """Send specified data as a response"""
@@ -91,8 +91,8 @@ class S(BaseHTTPRequestHandler):
             self.request('GET', self._getURL())
             
         # remap directory listing requests
-        elif self.path.startswith('/ls/*'):
-            extension = self.path[5:]
+        elif self.path.startswith('/@ls/*'):
+            extension = self.path[7:]
             res = []
             for directory,subdirectories,files in os.walk('.', followlinks=True):
                 res = res + [ directory+'/'+f for f in files if f.endswith(extension) ]
@@ -121,8 +121,8 @@ class S(BaseHTTPRequestHandler):
         data_string = self.rfile.read(int(self.headers['Content-Length']))
         print("POST data: " + repr(data_string))
         # post to URL @FILE exports to a local file
-        if self._getURL().startswith('/@'):
-            outFile = self._getURL()[2:]
+        if self._getURL().startswith('/@writer/'):
+            outFile = self._getURL()[9:]
             if outFile.split('.')[-1] in forbiddenExtensions:
                 self.send_error(403,'Invalid output file: %s' % outFile)
             else:

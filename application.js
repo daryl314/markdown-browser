@@ -1322,7 +1322,7 @@ function requestFile(fileName, callback) {
 function generateLocalNoteList(){
 
   // request recursive list of markdown files
-  requestFile('/ls/*.md', function(files){
+  requestFile('/@ls/*.md', function(files){
 
     // markdown file data grouped by containing folder
     var noteData = _.chain(files)

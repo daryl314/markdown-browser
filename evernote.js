@@ -69,7 +69,7 @@ EvernoteConnection = function(){
 
       // instantiate Evernote connection objects
       this.authenticationToken = token;
-      var noteStoreURL = "proxy-https/www.evernote.com/shard/s2/notestore";
+      var noteStoreURL = "@proxy-https/www.evernote.com/shard/s2/notestore";
       var noteStoreTransport = new Thrift.BinaryHttpTransport(noteStoreURL);
       var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
       this.noteStore = new NoteStoreClient(noteStoreProtocol);

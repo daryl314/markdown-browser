@@ -6,7 +6,7 @@
 
 - Start proxy server by running `./proxy.py`
 - Open editor by browsing to <http://localhost:8080/>
-- Open viewer by browsing to <http://localhost:8080/?LOCAL_FILE_NAME>
+- Open viewer by browsing to <http://localhost:8080/?instructions.md>
 
 ## Markdown Syntax ##
 
