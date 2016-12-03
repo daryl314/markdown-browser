@@ -474,24 +474,23 @@
   <script type="text/javascript" src="CodeMirror/keymap/vim.js"></script>
 
   <!-- LATEX RENDERING -->
-  <link rel="stylesheet" href="katex-0.5.1/katex.min.css">
   <script src="katex-0.5.1/katex.min.js"></script>
 
   <!-- EVERNOTE CONNECTION RESOURCES -->
-  <script type="text/javascript" src="/lib/evernote-sdk-minified.js"></script>
-  <script type="text/javascript" src="/lib/jsOAuth-1.3.7.min.js"></script>
   <script type="text/javascript" src="evernote.js"></script>
 
-  <!-- TEXT DIFF -->
+  <!-- APPLICATION RESOURCES -->
+  <script type="text/javascript" src="markdown.js"></script>
+  <script type="text/javascript" src="codemirror-mode.js"></script>
+  <script type="text/javascript" src="application.js"></script>
+
+  <!-- TEXT DIFF (NOT NEEDED FOR INITIAL LOAD) -->
   <script type="text/javascript">window.module={};//for diff.js node exports</script>
   <script type="text/javascript" src="diff.js"></script>
   <script type="text/javascript" src="text-diff.js"></script>
 
-  <!-- APPLICATION RESOURCES -->
-  <script type="text/javascript" src="marked.js"></script>
-  <script type="text/javascript" src="markdown.js"></script>
-  <script type="text/javascript" src="codemirror-mode.js"></script>
-  <script type="text/javascript" src="application.js"></script>
+  <!-- SUPPLEMENTAL RESOURCES NOT NEEDED FOR INITIAL LOAD -->
+  <link rel="stylesheet" href="katex-0.5.1/katex.min.css">
 
 </body>
 </html>

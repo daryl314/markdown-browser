@@ -113,6 +113,7 @@ function guiReferences(WN, getConnection){
     floatingTOC   : false,            // display floating TOC menu?
     showHelp      : false,            // display help instead of preview?
     noteModified  : false,            // are there unsaved changes?
+    hasServer     : false,            // is a server connection available?
     currentNote   : undefined         // GUID of current note
   };
 
@@ -220,6 +221,17 @@ function guiReferences(WN, getConnection){
 
     // hide all windows
     gui.$allWindows.hide();
+
+    // disable/enable menu items with server connection
+    $serverItems = gui.$loadMenuItem.parent()
+      .add(gui.$saveNote.parent())
+      .add(gui.$saveNoteAs.parent())
+      .add(gui.$refresh.parent());
+    if (gui.state.hasServer) {
+      $serverItems.removeClass('disabled');
+    } else {
+      $serverItems.addClass('disabled');
+    }
 
     // reset column size classes
     gui.$previewWindow.removeClass('col-md-4 col-md-5 col-md-6 col-md-8 col-md-10');
@@ -642,8 +654,10 @@ function guiReferences(WN, getConnection){
 
   // bind to 'Load' menu and trigger refresh on first click
   gui.$loadMenuItem.on('click', function(){
-    gui.updateState({ showNoteList : true });
-    gui.generateNoteList();
+    if (gui.state.hasServer) {
+      gui.updateState({ showNoteList : true });
+      gui.generateNoteList();
+    }
   })
 
   // bind to clicks on notes in note list
@@ -677,36 +691,40 @@ function guiReferences(WN, getConnection){
 
   // 'Save' --> update a note
   gui.$saveNote.on('click', function(){
-    if (gui.state.currentNote === undefined) {
-      gui.transientAlert("No note currently loaded!")
-    } else {
-      gui.updateNote(gui.state.currentNote, cm.getValue(), function(note){
-        gui.transientAlert("Note "+gui.state.currentNote+" updated: "+note.title());
-        gui.updateState({
-          staleHistory  : true,
-          noteModified  : false
-        });
-        gui.state.staleHistory = true;
-      })
+    if (gui.state.hasServer) {
+      if (gui.state.currentNote === undefined) {
+        gui.transientAlert("No note currently loaded!")
+      } else {
+        gui.updateNote(gui.state.currentNote, cm.getValue(), function(note){
+          gui.transientAlert("Note "+gui.state.currentNote+" updated: "+note.title());
+          gui.updateState({
+            staleHistory  : true,
+            noteModified  : false
+          });
+          gui.state.staleHistory = true;
+        })
+      }
     }
   });
 
   // 'Save As' --> write a new note to server
   gui.$saveNoteAs.on('click', function(){
-    gui.promptForInput('New note name', 'Untitled', function(noteTitle) {
-      if (noteTitle !== null) {
-        gui.generateNoteList(function(){
-          gui.createNote(noteTitle, cm.getValue(), function(note){
-            gui.updateState({
-              staleHistory  : true,
-              currentNote   : note.guid,
-              noteModified  : false
+    if (gui.state.hasServer) {
+      gui.promptForInput('New note name', 'Untitled', function(noteTitle) {
+        if (noteTitle !== null) {
+          gui.generateNoteList(function(){
+            gui.createNote(noteTitle, cm.getValue(), function(note){
+              gui.updateState({
+                staleHistory  : true,
+                currentNote   : note.guid,
+                noteModified  : false
+              })
+              gui.refreshNoteList({ noteTitle: noteTitle });
             })
-            gui.refreshNoteList({ noteTitle: noteTitle });
-          })
-        });
-      }
-    })
+          });
+        }
+      })
+    }
   });
 
   // 'New' --> reset editor
@@ -729,10 +747,12 @@ function guiReferences(WN, getConnection){
 
   // 'Refresh' --> Refresh connection with server
   gui.$refresh.on('click', function() {
-    gui.refreshConnection(function() {
-      gui.transientAlert("Refreshed server connection");
-      gui.populateNoteList(WN.getNoteData());
-    })
+    if (gui.state.hasServer) {
+      gui.refreshConnection(function() {
+        gui.transientAlert("Refreshed server connection");
+        gui.populateNoteList(WN.getNoteData());
+      })
+    }
   })
 
 
@@ -1366,6 +1386,38 @@ function loadLocalFile(mdFile) {
 // SET EVERYTHING IN MOTION //
 //////////////////////////////
 
+// function to load one or more javascript files
+function loadJavascriptFile() {
+
+  // variable to contain the callback function
+  var callback;
+
+  // if function was called with 2 arguments and the second argument is a
+  // function, this second argument is the callback
+  if (arguments.length === 2 && typeof(arguments[1]) === 'function') {
+    callback = arguments[1];
+
+  // if function was called with only 1 argument, there is no callback
+  } else if (arguments.length === 1) {
+    callback = function(){ };
+
+  // otherwise callback is a recursive function call with the tail of the
+  // input arguments
+  } else {
+    callback = function(){
+      loadJavascriptFile.apply(null, arguments.slice(1));
+    }
+  }
+
+  // perform ajax call
+  $.ajax({
+      url: arguments[0],
+      dataType: 'script',
+      success: callback,
+      async: true
+  });
+}
+
 // set everything in motion once document is ready
 $(function(){
 
@@ -1374,9 +1426,6 @@ $(function(){
     EvernoteConnection.WrappedNote,
     getEvernoteConnection
   );
-
-  // enable menu to update token (Evernote-specific)
-  GUI.$updateToken.show().on('click', getEvernoteConnection.updateToken);
 
   // local file to load (if any)
   var mdFile = document.URL.split('?')[1];
@@ -1390,6 +1439,17 @@ $(function(){
     if (mdFile && mdFile.length > 0) {
       generateLocalNoteList();
       loadLocalFile(mdFile);
+
+    // otherwise set the initial state and load Evernote library
+    } else {
+
+      // enable menu to update token (Evernote-specific)
+      GUI.$updateToken.show().on('click', getEvernoteConnection.updateToken);
+
+      gui.updateState({});
+      loadJavascriptFile('/lib/evernote-sdk-minified.js', function(){
+        gui.updateState({ hasServer : true });
+      });
     }
   })
 
