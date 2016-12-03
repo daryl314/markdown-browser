@@ -25,6 +25,13 @@ mimeMap = {
     ".woff2"    : 'application/font-woff'
 }
 
+# forbidden file write extensions
+forbiddenExtensions = [
+    'js',
+    'css',
+    'html'
+]
+
 
 ###################################
 ## Class to handle HTTP requests ##
@@ -113,11 +120,23 @@ class S(BaseHTTPRequestHandler):
         """Handler for POST requests"""
         data_string = self.rfile.read(int(self.headers['Content-Length']))
         print("POST data: " + repr(data_string))
-        headers = {
-            "Content-type" : self.headers['Content-type'],
-            "Accept"       : self.headers['Accept']
-        }
-        self._makeRequest("POST", self._getURL(), data_string, headers)
+        # post to URL @FILE exports to a local file
+        if self._getURL().startswith('/@'):
+            outFile = self._getURL()[2:]
+            if outFile.split('.')[-1] in forbiddenExtensions:
+                self.send_error(403,'Invalid output file: %s' % outFile)
+            else:
+                with open(outFile, 'w') as handle:
+                    handle.write(data_string)
+                    print("Wrote to file: "+outFile)
+                    self.send_response(201, message="Created file: "+outFile)
+        # otherwise pass on POST request
+        else:
+            headers = {
+                "Content-type" : self.headers['Content-type'],
+                "Accept"       : self.headers['Accept']
+            }
+            self._makeRequest("POST", self._getURL(), data_string, headers)
 
 
 ##############################
