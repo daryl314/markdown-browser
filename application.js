@@ -113,7 +113,8 @@ function guiReferences(WN, getConnection){
     noteTitle     : 'Untitled Note',  // title of current note
     floatingTOC   : false,            // display floating TOC menu?
     showHelp      : false,            // display help instead of preview?
-    noteModified  : false,            // are there unsaved changes?
+    noteClean     : true,             // are there unsaved changes?
+    generation    : null,             // generation number for clean note state
     hasServer     : false,            // is a server connection available?
     currentNote   : undefined         // GUID of current note
   };
@@ -208,13 +209,13 @@ function guiReferences(WN, getConnection){
     }
 
     // set note title
-    if (gui.state.noteModified)
+    if (!gui.state.noteClean)
       gui.$noteTitle.html('<span class="modificationFlag">Mod</span>'+gui.state.noteTitle);
     else
       gui.$noteTitle.text(gui.state.noteTitle);
 
     // clear changes window if note is no longer modified
-    if (!gui.state.noteModified)
+    if (gui.state.noteClean)
       gui.$historyWindow.empty();
 
     // reset arrow box classes
@@ -670,9 +671,10 @@ function guiReferences(WN, getConnection){
     $(this).addClass('selected');
     gui.loadNote(guid, function(content, note){
       gui.populateNote(guid, content);
+      gui.state.generation = cm.changeGeneration();
       gui.updateState({
         showNoteList : false,
-        noteModified : false,
+        noteClean    : true,
         noteTitle    : note.title()
       });
     });
@@ -700,11 +702,11 @@ function guiReferences(WN, getConnection){
       } else {
         gui.updateNote(gui.state.currentNote, cm.getValue(), function(note){
           gui.transientAlert("Note "+gui.state.currentNote+" updated: "+note.title());
+          gui.state.generation = cm.changeGeneration();
           gui.updateState({
             staleHistory  : true,
-            noteModified  : false
+            noteClean     : true
           });
-          gui.state.staleHistory = true;
         })
       }
     }
@@ -717,10 +719,11 @@ function guiReferences(WN, getConnection){
         if (noteTitle !== null) {
           gui.generateNoteList(function(){
             gui.createNote(noteTitle, cm.getValue(), function(note){
+              gui.state.generation = cm.changeGeneration();
               gui.updateState({
                 staleHistory  : true,
                 currentNote   : note.guid,
-                noteModified  : false
+                noteClean     : true
               })
               gui.refreshNoteList({ noteTitle: noteTitle });
             })
@@ -734,14 +737,15 @@ function guiReferences(WN, getConnection){
   gui.$newNote.on('click', function(){
     var callback = function() {
       gui.state.currentNote = undefined; // undefined in updateState throws exception
+      cm.setValue('');
+      gui.state.generation = cm.changeGeneration();
       gui.updateState({
         noteTitle     : 'Untitled Note',
-        noteModified  : false,
+        noteClean     : true,
         staleHistory  : true
       });
-      cm.setValue('');
     }
-    if (gui.state.noteModified) {
+    if (!gui.state.noteClean) {
       gui.promptForConfirmation('Note has unsaved changes: okay to proceed?', callback);
     } else {
       callback();
@@ -1212,9 +1216,9 @@ function launchCodeMirror() {
 
   // flag note as modified when the 'change' event fires
   cm.on('change', function(){
-    if (!gui.state.noteModified) {
+    if (gui.state.noteClean == !cm.isClean(gui.state.generation)) {
       GUI.updateState({
-        noteModified : true
+        noteClean : cm.isClean(gui.state.generation)
       })
     }
   })
