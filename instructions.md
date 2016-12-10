@@ -7,6 +7,7 @@
 - Start proxy server by running `./proxy.py`
 - Open editor by browsing to <http://localhost:8080/>
 - Open viewer by browsing to <http://localhost:8080/?instructions.md>
+- Open validation report by browsing to <http://localhost:8080/validation/validate.html>
 
 ## Markdown Syntax ##
 
