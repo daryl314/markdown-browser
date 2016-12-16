@@ -1134,6 +1134,20 @@ var render = function(){
     }
   });
 
+  // confirm that lineMap entries are properly sorted
+  for (var i = 1; i < lineMap.length; i++) {
+    if (lineMap[i] < lineMap[i-1]) {
+      throw new Error("lineMap algorithm failure!");
+    }
+  }
+
+  // confirm that headingLookup entries are properly sorted
+  for (var i = 1; i < headingLookup.length; i++) {
+    if (headingLookup[i][0] < headingLookup[i-1][0]) {
+      throw new Error("headingLookup algorithm failure!");
+    }
+  }
+
   // scroll to the cursor location
   GUI.$previewWindow.scrollTop(currentScroll);
 
