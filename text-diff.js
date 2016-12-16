@@ -21,12 +21,24 @@
       .replace(/\n/g, "<br/>");
   }
 
-  // function to perform the diff operation
-  // requires diff function from diff.js for now
+  var diff_object = null;
+
+  // helper constants
+  var DIFF_INSERT = 1;
+  var DIFF_EQUAL = 0;
+  var DIFF_DELETE = -1;
+
+  // function to perform the diff operation (requires diff_match_patch)
   function doDiff(text1, text2) {
 
+    // create diff object if required
+    if (diff_object === null) {
+      diff_object = new diff_match_patch();
+    }
+
     // compare results
-    d = diff(text1, text2);
+    d = diff_object.diff_main(text1, text2);
+    diff_object.diff_cleanupSemantic(d);
 
     // perform diff line standardization
     for (var i = 0; i < d.length-2; i++) {
@@ -35,9 +47,9 @@
       //   OLD: Eq[abc  ]   Del[\ndef  ]   Eq[\nghi]
       //   NEW: Eq[abc\n]   Del[  def\n]   Eq[  ghi]
       if (
-          d[i  ][0] == diff.EQUAL  &&
-          d[i+1][0] == diff.DELETE &&
-          d[i+2][0] == diff.EQUAL  &&
+          d[i  ][0] == DIFF_EQUAL  &&
+          d[i+1][0] == DIFF_DELETE &&
+          d[i+2][0] == DIFF_EQUAL  &&
           d[i+1][1][0] == '\n'     &&
           d[i+2][1][0] == '\n'
       ) {
@@ -50,9 +62,9 @@
       //  OLD: Eq[...\nXX]   Ins[YYY\nXX]   Eq[ZZZ  ]
       //  NEW: Eq[...\n  ]   Ins[XXYYY\n]   Eq[XXZZZ]
       if (
-          d[i  ][0] == diff.EQUAL  &&
-          d[i+1][0] == diff.INSERT &&
-          d[i+2][0] == diff.EQUAL  &&
+          d[i  ][0] == DIFF_EQUAL  &&
+          d[i+1][0] == DIFF_INSERT &&
+          d[i+2][0] == DIFF_EQUAL  &&
           d[i  ][1].match(/\n/)    &&
           d[i+1][1].match(/\n/)    &&
           d[i  ][1].replace(/[\s\S]*\n(.*)/,'$1') == d[i+1][1].replace(/[\s\S]*\n(.*)/,'$1')
@@ -83,9 +95,9 @@
   function validateDiffs(text1, text2, d) {
     var txt1 = '', txt2 = '';
     for (var i = 0; i < d.length; i++) {
-      if (d[i][0] == diff.EQUAL || d[i][0] == diff.DELETE)
+      if (d[i][0] == DIFF_EQUAL || d[i][0] == DIFF_DELETE)
         txt1 += d[i][1];
-      if (d[i][0] == diff.EQUAL || d[i][0] == diff.INSERT)
+      if (d[i][0] == DIFF_EQUAL || d[i][0] == DIFF_INSERT)
         txt2 += d[i][1];
     }
     if (txt1 === text1 && txt2 === text2) {
@@ -115,9 +127,9 @@
 
         // special case for a full line change
         if (txtL === '' && txtR === '' && j+1 < lines.length) {
-          if (d[i][0] == diff.EQUAL) {
+          if (d[i][0] == DIFF_EQUAL) {
             createRow($table, 'line-equal', nL++, line, nR++, line);
-          } else if (d[i][0] == diff.INSERT) {
+          } else if (d[i][0] == DIFF_INSERT) {
             createRow($table, 'line-insert', '', '', nR++, line);
           } else {
             createRow($table, 'line-delete', nL++, line, '', '');
@@ -128,10 +140,10 @@
         else if (j+1 < lines.length || line.length > 0) {
 
           // append span content
-          if (d[i][0] == diff.EQUAL) {
+          if (d[i][0] == DIFF_EQUAL) {
             txtL += '<span class="chunk-equal">' + line + '</span>';
             txtR += '<span class="chunk-equal">' + line + '</span>';
-          } else if (d[i][0] == diff.INSERT) {
+          } else if (d[i][0] == DIFF_INSERT) {
             txtR += '<span class="chunk-insert">' + line + '</span>';
           } else {
             txtL += '<span class="chunk-delete">' + line + '</span>';
@@ -139,11 +151,11 @@
 
           // increment lines if applicable
           if (j+1 < lines.length || i+i == d.length) {
-            if (d[i][0] == diff.EQUAL) {
+            if (d[i][0] == DIFF_EQUAL) {
               createRow($table, 'line-change', nL++, txtL, nR++, txtR);
               txtL = '';
               txtR = '';
-            } else if (d[i][0] == diff.INSERT) {
+            } else if (d[i][0] == DIFF_INSERT) {
               createRow($table, 'line-change', '', '', nR++, txtR);
               txtR = '';
             } else {
@@ -196,9 +208,9 @@
     // display output as block
     for (var i = 0; i < d.length; i++) {
       text = escapeText(d[i][1]);
-      if (d[i][0] == diff.INSERT) {
+      if (d[i][0] == DIFF_INSERT) {
         $span = $('<span class="chunk-insert">')
-      } else if (d[i][0] == diff.DELETE) {
+      } else if (d[i][0] == DIFF_DELETE) {
         $span = $('<span class="chunk-delete">')
       } else {
         $span = $('<span class="chunk-equal">')

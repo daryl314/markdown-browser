@@ -53,7 +53,7 @@
   </style>
 
   <!-- APPLICATION RESOURCES -->
-  <script type="text/javascript">window.module={};//for diff.js node exports</script><script type="text/javascript" src="diff.js"></script>
+  <script type="text/javascript" src="lib/diff_match_patch-20121119.min.js"></script>
   <script type="text/javascript" src="marked.js"></script>
   <script type="text/javascript" src="markdown.js"></script>
   <script type="text/javascript" src="sample-markdown.js"></script>
@@ -65,6 +65,10 @@
     // FUNCTION TO COMPARE TEXT BLOCKS //
     /////////////////////////////////////
 
+    var diff_object = new diff_match_patch();
+    var DIFF_INSERT = 1;
+    var DIFF_EQUAL = 0;
+    var DIFF_DELETE = -1;
     function compareBlocks(text1, text2, title, $container) {
 
       // default to body for container
@@ -78,11 +82,12 @@
       $el2 = $('<section class="col-md-6">').appendTo($container);
 
       // compare results
-      d = diff(text1, text2);
+      d = diff_object.diff_main(text1, text2);
+      diff_object.diff_cleanupSemantic(d);
 
       // display output
       for (var i = 0; i < d.length; i++) {
-        if (d[i][0] == diff.EQUAL) {
+        if (d[i][0] == DIFF_EQUAL) {
           if (d[i][1].match(/\n/)) {
             var txt = d[i][1];
             var cap = (i > 1 ?
@@ -109,7 +114,7 @@
             $('<span>').addClass('flag').text( d[i][1] ).appendTo($el1);
             $('<span>').addClass('flag').text( d[i][1] ).appendTo($el2);
           }
-        } else if (d[i][0] == diff.DELETE) {
+        } else if (d[i][0] == DIFF_DELETE) {
           $('<span>').addClass('delete').text(d[i][1]).appendTo($el1);
         } else {
           $('<span>').addClass('add').text(d[i][1]).appendTo($el2);
