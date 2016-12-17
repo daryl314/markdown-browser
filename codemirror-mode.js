@@ -57,15 +57,14 @@ CodeMirror.defineMode('gfm-expanded', function(){
   var blockData = function(){
     var blockData = {
       b_code:     { seq:0,  start:/^ {4}.*/,              stop:null,        style:'solar-red'           },
-      fences1:    { seq:1,  start:/^ *`{3,}/,             stop:/.*`{3,}$/,  style:'solar-red'           },
-      fences2:    { seq:2,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'solar-red'           },
-      heading:    { seq:3,  start:/^ *#+ /,               stop:null,        style:'header solar-violet' },
-      lheading:   { seq:4,  start:/^ *(=|-){2,} *$/,      stop:null,        style:'hr solar-violet'     },
-      table:      { seq:5,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          },
-      hr:         { seq:6,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
-      blockquote: { seq:7,  start:/^ *>/,                 stop:null,        style:'solar-green'         },
-      list:       { seq:8,  start:/^ *(?:[*+-]|\d+\.) /,  stop:null,        style:'solar-magenta'       },
-      def:        { seq:9,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'solar-cyan'          }
+      fences:     { seq:1,  start:/^ *~{3,}/,             stop:/.*~{3,}$/,  style:'solar-red'           },
+      heading:    { seq:2,  start:/^ *#+ /,               stop:null,        style:'header solar-violet' },
+      lheading:   { seq:3,  start:/^ *(=|-){2,} *$/,      stop:null,        style:'hr solar-violet'     },
+      table:      { seq:4,  start:/^ *\|.*/,              stop:null,        style:'solar-blue'          },
+      hr:         { seq:5,  start:/^ *( *[-*_]){3,} *$/,  stop:null,        style:'hr solar-violet'     },
+      blockquote: { seq:6,  start:/^ *>/,                 stop:null,        style:'solar-green'         },
+      list:       { seq:7,  start:/^ *(?:[*+-]|\d+\.) /,  stop:null,        style:'solar-magenta'       },
+      def:        { seq:8,  start:/^ *\[.*?\]:.*/,        stop:null,        style:'solar-cyan'          }
     };
 
     // sequence of rule names
@@ -672,24 +671,20 @@ CodeMirror.defineMode('gfm-expanded', function(){
       // remove first item from queue
       var item = state.queue.shift(1);
 
-      // match stream to item
-      if (stream.match(item[0])) {
+      // if a zero-length token, recurse to skip over it
+      if (item[0].length == 0)
+        return this.token(stream,state);
 
-        // if a zero-length token, recurse to skip over it
-        if (item[0].length == 0)
-          return this.token(stream,state);
+      // if strem matches token, call assignToken function to assign style
+      else if (stream.match(item[0]))
+        return this.assignToken(stream, state, item[1]);
 
-        // otherwise call the assignToken function to assign token style
-        else
-          return this.assignToken(stream, state, item[1]);
-
-      // throw an exception if stream doesn't match queued token
-      } else {
+      // otherwise throw an exception since stream doesn't match queued token
+      else
         throw new Error(
           'Stream does not match token!\n' +
           'Token: ' + item[0] + '\n' +
           'Stream: ' + stream.string);
-      }
     },
 
     // perform block mode token processing
