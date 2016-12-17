@@ -53,6 +53,7 @@ function guiReferences(WN, getConnection){
     // windows
     $historyMenu     : $('#application-window section#history-list'),
     $historyList     : $('#application-window section#history-list ul.list-group'),
+    $historyWindow   : $('#application-window section#history-container'),
     $noteMenu        : $('#application-window section#nav-list'),
     $noteList        : $('#application-window section#nav-list ul.list-group'),
     $editorWindow    : $('#application-window main#content'),
@@ -61,7 +62,6 @@ function guiReferences(WN, getConnection){
     $previewContents : $('#application-window section#viewer-container div#viewer'),
     $helpWindow      : $('#application-window section#help-container'),
     $helpContents    : $('#application-window section#help-container div#rendered-help'),
-    $historyWindow   : $('#application-window section#history-container'),
     $tocWindow       : $('#application-window section#floating-toc-container'),
 
     // alert components
@@ -297,7 +297,8 @@ function guiReferences(WN, getConnection){
     // configure 'history' mode
     } else if (gui.state.currentTab == 'history') {
       gui.$viewHistory.addClass('arrow_box');
-      setWidthClass( gui.$historyWindow ).show();
+      gui.$historyWindow.addClass('col-md-10').show();
+      gui.$historyMenu.show();
 
     // configure 'help' mode
     } else if (gui.state.currentTab == 'help') {
