@@ -284,7 +284,7 @@ CodeMirror.defineMode('gfm-expanded', function(){
       strong2:  { seq:10, start:/^__/,        stop:/^__(?!_)/,    recursive:true,   style:'strong solar-yellow'                         },
       em1:      { seq:11, start:/^\b_/,       stop:/^_\b/,        recursive:true,   style:'em solar-yellow'                             },
       em2:      { seq:12, start:/^\*/,        stop:/^\*(?!\*)/,   recursive:true,   style:'em solar-yellow'                             },
-      i_code:   { seq:13, start:/^ *(`+)/,    stop:null,          recursive:false,  style:'solar-red'                                   },
+      i_code:   { seq:13, start:/^ *(`+)/,    stop:null,          recursive:false,  style:'solar-red'                                   }, // block and inline code
       del:      { seq:14, start:/^~~(?=\S)/,  stop:/^\S~~/,       recursive:true,   style:'strikethrough solar-yellow'                  }
     }
 
@@ -294,8 +294,9 @@ CodeMirror.defineMode('gfm-expanded', function(){
     inlineData.inlineSequence = inlineSequence;
 
     // callback function for inline code mode
+    // NOTE: this also handles block code
     inlineData.i_code.init = function(obj, stream, state, match) {
-      inlineData.i_code.stop = new RegExp('.*?[^`]\s*' + match[1] + '(?!`)');
+      inlineData.i_code.stop = new RegExp('.*?\s*' + match[1] + '(?!`)');
     }
 
     // callback function for recursive processing of link text
