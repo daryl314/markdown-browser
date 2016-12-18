@@ -772,6 +772,91 @@ EvernoteConnection = function(){
   }
 
 
+  /////////////////////
+  // SYNCHRONIZATION //
+  /////////////////////
+
+  //conn = new EvernoteConnection(localStorage.token, {}); meta = {}; conn.syncMetadata(meta)
+
+  EvernoteConnection.prototype.syncMetadata = function(meta, callback){
+    if (arguments.length < 1 || !(meta instanceof Object))
+      throw new Error('No metadata object provided');
+
+    var _this = this;
+
+    var syncFilter = new SyncChunkFilter({
+      includeNotes: true,
+      includeNoteResources: true,
+      includeNoteAttributes: true,
+      includeNotebooks: true,
+      includeTags: true,
+      includeSearches: false,
+      includeResources: true,
+      includeLinkedNotebooks: false,
+      includeExpunged: false,
+      includeNoteApplicationDataFullMap: true,
+      includeResourceApplicationDataFullMap: true,
+      includeNoteResourceApplicationDataFullMap: true,
+      includeSharedNote: false,
+      omitSharedNotebooks: true
+    });
+
+    // defaults
+    meta.lastSyncCount = meta.lastSyncCount || 0;
+    meta.lastSyncTime  = meta.lastSyncTime  || 0;
+    meta.blockSize     = meta.blockSize     || 100;
+    meta.notes         = meta.notes         || [];
+    meta.notebooks     = meta.notebooks     || [];
+    meta.resources     = meta.resources     || [];
+    meta.tags          = meta.tags          || [];
+
+    function fetchSyncData(meta) {
+      console.log("Fetching data starting from afterUSN="+meta.lastSyncCount);
+      _this.noteStore.getFilteredSyncChunk(
+        _this.authenticationToken,
+        meta.lastSyncCount,
+        meta.blockSize,
+        syncFilter,
+        function(data) {
+
+          if (!(data instanceof SyncChunk)) {
+            // error handling code goes here...
+          }
+
+          if (data.notes    ) meta.notes     = meta.notes    .concat(data.notes    );
+          if (data.notebooks) meta.notebooks = meta.notebooks.concat(data.notebooks);
+          if (data.resources) meta.resources = meta.resources.concat(data.resources);
+          if (data.tags     ) meta.tags      = meta.tags     .concat(data.tags     );
+
+          meta.lastSyncCount = data.chunkHighUSN;
+
+          if (data.chunkHighUSN < data.updateCount) {
+            fetchSyncData(meta);
+          } else {
+            meta.lastSyncTime = data.currentTime;
+          }
+        }
+      )
+    }
+
+    this.noteStore.getSyncState(this.authenticationToken, function(state){
+
+      // reset metadata if necessary
+      if (state.fullSyncBefore > meta.lastSyncTime && meta.lastSyncTime > 0) {
+        meta.lastSyncCount = 0;
+        meta.lastSyncTime = 0;
+      }
+
+      // perform synchronization
+      if (state.updateCount !== meta.lastSyncCount) {
+        fetchSyncData(meta);
+      } else {
+        console.log("No new data!");
+      }
+    })
+  }
+
+
   //////////////////////
   // FINAL PROCESSING //
   //////////////////////
