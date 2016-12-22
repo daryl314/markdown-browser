@@ -776,84 +776,277 @@ EvernoteConnection = function(){
   // SYNCHRONIZATION //
   /////////////////////
 
-  //conn = new EvernoteConnection(localStorage.token, {}); meta = {}; conn.syncMetadata(meta)
+  /* Process is documented at https://dev.evernote.com/media/pdf/edam-sync.pdf */
 
-  EvernoteConnection.prototype.syncMetadata = function(meta, callback){
-    if (arguments.length < 1 || !(meta instanceof Object))
-      throw new Error('No metadata object provided');
+  // constructor
+  var Synchronizer = function(conn, localFolder) {
+    if (!(conn instanceof EvernoteConnection))
+      EvernoteConnection.errorHandler('EvernoteConnection required as first argument!');
+    if (!(localFolder))
+      EvernoteConnection.errorHandler('Synchronization output location required as second argument!');
+    this._conn = conn;
+    this._location = localFolder;
+    this._syncFilter = Synchronizer._syncFilter();
+    this.meta = null;
+  }
 
+  // top-level function to perform synchronization
+  Synchronizer.prototype.synchronize = function(callback){
     var _this = this;
-
-    var syncFilter = new SyncChunkFilter({
-      includeNotes: true,
-      includeNoteResources: true,
-      includeNoteAttributes: true,
-      includeNotebooks: true,
-      includeTags: true,
-      includeSearches: false,
-      includeResources: true,
-      includeLinkedNotebooks: false,
-      includeExpunged: false,
-      includeNoteApplicationDataFullMap: true,
-      includeResourceApplicationDataFullMap: true,
-      includeNoteResourceApplicationDataFullMap: true,
-      includeSharedNote: false,
-      omitSharedNotebooks: true
-    });
-
-    // defaults
-    meta.lastSyncCount = meta.lastSyncCount || 0;
-    meta.lastSyncTime  = meta.lastSyncTime  || 0;
-    meta.blockSize     = meta.blockSize     || 100;
-    meta.notes         = meta.notes         || [];
-    meta.notebooks     = meta.notebooks     || [];
-    meta.resources     = meta.resources     || [];
-    meta.tags          = meta.tags          || [];
-
-    function fetchSyncData(meta) {
-      console.log("Fetching data starting from afterUSN="+meta.lastSyncCount);
-      _this.noteStore.getFilteredSyncChunk(
-        _this.authenticationToken,
-        meta.lastSyncCount,
-        meta.blockSize,
-        syncFilter,
-        function(data) {
-
-          if (!(data instanceof SyncChunk)) {
-            // error handling code goes here...
-          }
-
-          if (data.notes    ) meta.notes     = meta.notes    .concat(data.notes    );
-          if (data.notebooks) meta.notebooks = meta.notebooks.concat(data.notebooks);
-          if (data.resources) meta.resources = meta.resources.concat(data.resources);
-          if (data.tags     ) meta.tags      = meta.tags     .concat(data.tags     );
-
-          meta.lastSyncCount = data.chunkHighUSN;
-
-          if (data.chunkHighUSN < data.updateCount) {
-            fetchSyncData(meta);
-          } else {
-            meta.lastSyncTime = data.currentTime;
-          }
+    $.ajax({
+      dataType: "json",
+      url: _this._metadataFile(),
+      data: {},
+      success: function(m){
+        _this._conn._logHandler("Loaded metadata file: "+_this._metadataFile());
+        _this.meta = m;
+        _this._syncMetadata(callback);
+      },
+      error: function(e){
+        if (e.status == 404) {
+          _this._conn._logHandler("Metadata file not found: starting fresh synchronization");
+          _this.meta = Synchronizer._metaDefaults;
+          _this._syncMetadata(callback);
+        } else {
+          _this._conn._errorHandler("Server error -- "+e.statusText);
         }
-      )
+      }
+    });
+  }
+
+  // return the metadata json file
+  Synchronizer.prototype._metadataFile = function(){
+    return this._location+'/metadata.json';
+  }
+
+  // check metadata
+  Synchronizer.prototype._checkMetadata = function() {
+    var _this = this;
+    if (!(this.meta instanceof Object))
+      throw new Error('Invalid metadata object type');
+
+    // check that all required fields exist
+    [
+      'lastSyncCount',
+      'lastSyncTime',
+      'blockSize',
+      'notes',
+      'notebooks',
+      'resources',
+      'tags'
+    ].forEach(function(x){
+      if (_this.meta[x] === undefined || _this.meta[x] === null) {
+        throw new Error('Metadata field not defined: '+x);
+      }
+    })
+
+    // check properties
+    if (this.meta.lastSyncCount < 0)
+      throw new Error('meta.lastSyncCount must be a non-negative integer')
+
+  }
+
+  // post updated metadata
+  Synchronizer.prototype._postMetaData = function(callback) {
+    var _this = this;
+    this._conn._logHandler("Posting updated metadata to "+this._metadataFile());
+    $.ajax({
+      type: "POST",
+      url: '@writer/'+this._metadataFile(),
+      data: JSON.stringify(this.meta),
+      success: callback,
+      error: function(e){
+        _this._conn._errorHandler("Server error "+e.status+" -- "+e.statusText);
+      },
+      dataType: 'text'
+    });
+  }
+
+  // function to remove fields that are not needed for cache
+  Synchronizer.prototype._cleanMeta = function(meta) {
+
+    // clean note list
+    for (var i = 0; i < (meta.notes||[]).length; i++) {
+
+      // filter note fields
+      n = _.pick(meta.notes[i], [
+        'created',
+        'updated',
+        'deleted',
+        'guid',
+        'notebookGuid',
+        'title',
+        'updateSequenceNum',
+        'tagGuids',
+        'resources'
+      ]);
+
+      // filter note resource data
+      for (var j = 0; j < (meta.notes[i].resources||[]).length; j++) {
+        n.resources[j] = _.pick(n.resources[j], [
+          'guid',
+          'mime',
+          'updateSequenceNum',
+          'height',
+          'width'
+        ]);
+      }
+
+      // replace note with new object
+      meta.notes[i] = n;
     }
 
-    this.noteStore.getSyncState(this.authenticationToken, function(state){
+    // clean resource list
+    for (var i = 0; i < (meta.resources||[]).length; i++) {
+      meta.resources[i] = _.pick(meta.resources[i], [
+        'guid',
+        'mime',
+        'updateSequenceNum',
+        'height',
+        'width'
+      ]);
+    }
+
+    // clean notebook list
+    for (var i = 0; i < (meta.notebooks||[]).length; i++) {
+      meta.notebooks[i] = _.pick(meta.notebooks[i], [
+        'guid',
+        'name',
+        'stack',
+        'updateSequenceNum'
+      ])
+    }
+  }
+
+  //
+  Synchronizer.prototype._syncMetadata = function(callback){
+    var _this = this;
+    _this._checkMetadata();
+
+    // fetch synchronization state to determine path of action
+    _this._conn.noteStore.getSyncState(_this._conn.authenticationToken, function(state){
 
       // reset metadata if necessary
-      if (state.fullSyncBefore > meta.lastSyncTime && meta.lastSyncTime > 0) {
-        meta.lastSyncCount = 0;
-        meta.lastSyncTime = 0;
+      if (state.fullSyncBefore > _this.meta.lastSyncTime && _this.meta.lastSyncTime > 0) {
+        _this.meta.lastSyncCount = 0;
+        _this.meta.lastSyncTime = 0;
       }
 
       // perform synchronization
-      if (state.updateCount !== meta.lastSyncCount) {
-        fetchSyncData(meta);
+      if (state.updateCount !== _this.meta.lastSyncCount) {
+        _this._fetchNextChunk(callback);
       } else {
-        console.log("No new data!");
+        _this._conn._logHandler("No new synchronization data!");
+        if (callback) callback();
       }
     })
+  }
+
+  // fetch next sync chunk
+  Synchronizer.prototype._fetchNextChunk = function(callback) {
+    var _this = this;
+    _this._conn._logHandler("Fetching data starting from afterUSN="+_this.meta.lastSyncCount);
+
+    // callback function
+    var cb = function(data) {
+
+      // check for a bad result
+      if (!(data instanceof SyncChunk)) {
+        _this._conn._errorHandler("Error receiving sync chunk");
+        return
+      }
+
+      // strip unnecessary fields from sync chunk results
+      _this._cleanMeta(data);
+
+      // append chunk data
+      if (data.notes    ) _this.meta.notes     = _this.meta.notes    .concat(data.notes    );
+      if (data.notebooks) _this.meta.notebooks = _this.meta.notebooks.concat(data.notebooks);
+      if (data.resources) _this.meta.resources = _this.meta.resources.concat(data.resources);
+      if (data.tags     ) _this.meta.tags      = _this.meta.tags     .concat(data.tags     );
+
+      // set sync counter in metadata to match position in chunk
+      _this.meta.lastSyncCount = data.chunkHighUSN;
+
+      // if more chunks are available, fetch them
+      if (data.chunkHighUSN < data.updateCount) {
+        _this._postMetaData();
+        _this._fetchNextChunk(callback);
+      } else {
+        _this.meta.lastSyncTime = data.currentTime;
+        _this._postMetaData();
+        if (callback) callback();
+      }
+    }
+
+    // perform the chunk request
+    _this._conn.noteStore.getFilteredSyncChunk(
+      _this._conn.authenticationToken,  // token
+      _this.meta.lastSyncCount,         // starting point for update
+      _this.meta.blockSize,             // number of chunks to fetch
+      _this._syncFilter,                // chunk filter
+      cb                                // callback function
+    );
+  }
+
+  // function to process chunk data
+  Synchronizer.prototype._processSyncChunks = function(callback) {
+
+  }
+
+  ///// STATIC METHODS AND PROPERTIES /////
+
+  // create a connection
+  Synchronizer.connect = function(token, localFolder, opt) {
+    var conn = new EvernoteConnection(token, opt||{});
+    Synchronizer._instance = new Synchronizer(conn, localFolder);
+  }
+
+  // perform synchronization
+  Synchronizer.synchronize = function(callback) {
+    Synchronizer._instance._conn._checkObject(Synchronizer._instance, Synchronizer);
+    Synchronizer._instance.synchronize();
+  }
+
+  // metadata defaults
+  Synchronizer._metaDefaults = {
+    lastSyncCount : 0,    // no sync performed
+    lastSyncTime  : 0,    // no sync performed
+    blockSize     : 100,  // fetch 100 entries at a time
+    notes         : [],   // empty list to contain note data
+    notebooks     : [],   // empty list to contain notebook data
+    resources     : [],   // empty list to contain resource data
+    tags          : []    // empty list to contain tag data
+  }
+
+  // filter to use for sync chunks
+  Synchronizer._syncFilter = function(){
+    return new SyncChunkFilter({
+
+      // basic primitives
+      includeNotes                              : true,
+      includeResources                          : true,
+      includeNotebooks                          : true,
+      includeTags                               : true,
+      includeSearches                           : false,
+
+      // shared resources
+      includeLinkedNotebooks                    : false,
+      includeSharedNote                         : false,
+      omitSharedNotebooks                       : true,
+
+      // expunged notes
+      includeExpunged                           : false,
+
+      // note properties
+      includeNoteResources                      : true,
+      includeNoteAttributes                     : false,
+      includeNoteApplicationDataFullMap         : false,
+
+      // resource properties
+      includeResourceApplicationDataFullMap     : false,
+      includeNoteResourceApplicationDataFullMap : false
+    });
   }
 
 
@@ -863,6 +1056,9 @@ EvernoteConnection = function(){
 
   // attach WrappedNote class
   EvernoteConnection.WrappedNote = WrappedNote;
+
+  // attach Synchronizer class
+  EvernoteConnection.Synchronizer = Synchronizer;
 
   // return the nested item
   return EvernoteConnection;

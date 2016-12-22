@@ -18,6 +18,7 @@ mimeMap = {
     ".jpg"      : 'image/jpg',
     ".gif"      : 'image/gif',
     ".js"       : 'application/javascript',
+    ".json"     : 'application/json',
     ".css"      : 'text/css',
     ".md"       : 'text/plain',
     ".ico"      : 'image/x-icon',
@@ -119,7 +120,10 @@ class S(BaseHTTPRequestHandler):
     def do_POST(self):
         """Handler for POST requests"""
         data_string = self.rfile.read(int(self.headers['Content-Length']))
-        print("POST data: " + repr(data_string))
+        data_repr = repr(data_string)
+        if len(data_repr) > 1000:
+            data_repr = data_repr[:1000] + '...'
+        print("POST data: " + data_repr)
         # post to URL @FILE exports to a local file
         if self._getURL().startswith('/@writer/'):
             outFile = self._getURL()[9:]

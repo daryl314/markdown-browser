@@ -1404,6 +1404,16 @@ function loadLocalFile(mdFile) {
 }
 
 
+///////////////////////////////////
+// LOCAL SYNCHRONIZATION SUPPORT //
+///////////////////////////////////
+
+function syncToLocalStorage() {
+  EvernoteConnection.Synchronizer.connect(localStorage.token, 'syncData');
+  EvernoteConnection.Synchronizer.synchronize();
+}
+
+
 //////////////////////////////
 // SET EVERYTHING IN MOTION //
 //////////////////////////////
