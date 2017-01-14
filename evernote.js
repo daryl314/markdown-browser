@@ -1089,12 +1089,13 @@ EvernoteConnection = function(){
     };
 
     function saveNote(guid, version, content) {
-      ajax({
+      return ajax({
         type: "POST",
-        url: `@writer/${_this._location}/notes/${guid}.${version}`,
+        url: `@writer/${_this._location}/notes/${guid}/${version}`,
         data: content,
+        headers: { 'x-mkdir': true },
         dataType: 'text'
-      }).then( () => console.log(`Saved file: notes/${guid}.${version}`) );
+      }).then( () => console.log(`Saved file: notes/${guid}/${version}`) );
     };
 
     function getAndSaveNote(guid, version) {
@@ -1107,6 +1108,19 @@ EvernoteConnection = function(){
           saveNote(guid, version, data.content)
         })
       }
+    }
+
+    function saveVersionData(guid, v) {
+      return new Promise(function(resolve, reject) {
+        $.ajax({
+          type: "POST",
+          url: `@writer/${_this._location}/notes/${guid}/versions.json`,
+          data: JSON.stringify(v),
+          headers: { 'x-mkdir': true },
+          dataType: 'text'
+        }).done( () => resolve(v) )
+          .fail( reject )
+      })
     }
 
     function sleep(ms) {
@@ -1123,14 +1137,15 @@ EvernoteConnection = function(){
       } else {
         let guid = nextNote.value;
         let currentVersion = _this.notes.get(guid).updateSequenceNum;
-        if (files.includes(`${guid}.${currentVersion}`)) {
+        if (files.includes(`${guid}/${currentVersion}`)) {
           console.log(`Skipping note: ${_this.notes.get(guid).title} [${guid}]`);
           processNextNote(files,iterator);
         } else {
           console.log(`Processing note: ${_this.notes.get(guid).title} [${guid}]`);
           conn.listNoteVersions(guid)
+            .then( v => saveVersionData(guid,v) )
             .then( v => v.map( vv => vv.updateSequenceNum ) )
-            .then( v => v.filter( vv => !files.includes(`${guid}.${vv}`) ) )
+            .then( v => v.filter( vv => !files.includes(`${guid}/${vv}`) ) )
             .then( v => {
               Promise.all( v.map( vv => getAndSaveNote(guid,vv) ) )
                 .then(() => getAndSaveNote(guid,currentVersion) )

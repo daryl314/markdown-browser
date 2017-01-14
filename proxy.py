@@ -129,6 +129,12 @@ class S(BaseHTTPRequestHandler):
         # post to URL @FILE exports to a local file
         if self._getURL().startswith('/@writer/'):
             outFile = self._getURL()[9:]
+            if os.path.exists(os.path.dirname(outFile)) == False:
+                if self.headers.dict.get('x-mkdir','false') == 'true':
+                    os.makedirs(os.path.dirname(outFile))
+                else:
+                    self.send_error(403,'Output directory does not exist: %s' % os.path.dirname(outFile))
+                    return
             if outFile.split('.')[-1] in forbiddenExtensions:
                 self.send_error(403,'Invalid output file: %s' % outFile)
             else:
