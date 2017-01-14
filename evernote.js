@@ -1,3 +1,83 @@
+// https://dev.evernote.com/doc/reference/
+
+///////////////////////////
+// BASE CONNECTION CLASS //
+///////////////////////////
+
+class EvernoteConnectionBase {
+
+  constructor(token, url) {
+    if (token === undefined) {
+      throw new Error('Authentication token required!');
+    } else if (url === undefined) {
+      throw new Error('Note Store URL required!');
+    } else {
+      this.token = token;
+      var noteStoreTransport = new Thrift.BinaryHttpTransport(url);
+      var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
+      this._noteStore = new NoteStoreClient(noteStoreProtocol);
+    }
+  }
+
+  static defaultNotesMetadataResultSpec() {
+    return new NotesMetadataResultSpec({
+      includeTitle: true,             // include the note title
+      includeUpdated: true,           // include the update time
+      includeUpdateSequenceNum: true, // include the update sequence number
+      includeTagGuids: true,          // include the list of tag guids
+      includeNotebookGuid: true       // include the notebook guid
+    })
+  }
+
+  // convert Evernote note content to plain text
+  static stripFormatting(txt) {
+    return txt
+      .replace(/\s*<span.*?>([\S\s]*?)<\/span>\s*/g, '$1')  // clear span tags
+      .replace(/\n/g,'')                                    // clear newlines
+      .replace(/<\/div>[\s\n]*<div>/g, '</div><div>')       // clear whitespace between div tags
+      .replace(/<div><br.*?><\/div>/g, '<div></div>')       // convert <div><br/></div> to <div></div>
+      .replace(/(<\/?div>){1,2}/g,'\n')                     // convert <div> boundaries to newlines
+      .replace(/<br.*?>/g,'\n')                             // convert <br> to newlines
+      .replace(/<.*?>/g,'')                                 // strip any remaining tags
+      .replace(/\u00A0/g, ' ')                              // non-breaking spaces to spaces
+      .replace(/&nbsp;/g,' ')                               // &nbsp; -> ' '
+      .replace(/&lt;/g,'<')                                 // &lt;   -> '<'
+      .replace(/&gt;/g,'>')                                 // &gt;   -> '>'
+      .replace(/&apos;/g,"'")                               // &apos; -> "'"
+      .replace(/&quot;/g,'"')                               // &quot; -> '"'
+      .replace(/&#124;/g, '|')                              // &#124; -> '|'
+      .replace(/&amp;/g,'&')                                // &amp;  -> '&'
+      .replace(/^\n/, '')                                   // clear leading newline
+  }
+
+  // convert plain text to Evernote note format
+  static addFormatting(txt) {
+    var escaped = txt
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/(.+)/mg, '<div><span style="font-family: \'Courier New\';">$1</span></div>')
+      .replace(/^$/mg, '<div><span style="font-family: \'Courier New\';"><br /></span></div>');
+    return `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd"><en-note>${escaped}</en-note>`
+  }
+
+  _noteStorePromise(fn, ...args) {
+    return new Promise((resolve,reject) => {
+      this._noteStore[fn].call(this._noteStore, this.token, ...args, resolve, reject)
+    })
+  }
+
+  getNoteContent   (guid) { return this._noteStorePromise('getNoteContent'  , guid) }
+  listNoteVersions (guid) { return this._noteStorePromise('listNoteVersions', guid) }
+  listNotebooks    (guid) { return this._noteStorePromise('listNotebooks'   , guid) }
+  listTags         (guid) { return this._noteStorePromise('listTags'        , guid) }
+
+  getNoteVersion(guid, version, withResourcesData=false, withResourcesRecognition=false, withResourcesAlternateData=false) {
+    return this._noteStorePromise('getNoteVersion', guid, version, withResourcesData, withResourcesRecognition, withResourcesAlternateData) }
+
+}
+
+
 /////////////////////////////////////////////////
 // CONTAINER OBJECT FOR AN EVERNOTE CONNECTION //
 /////////////////////////////////////////////////
@@ -800,13 +880,13 @@ EvernoteConnection = function(){
       success: function(m){
         _this._conn._logHandler("Loaded metadata file: "+_this._metadataFile());
         _this.meta = m;
-        _this._syncMetadata(callback);
+        _this._syncMetadata(function(){ _this._processSyncChunks(callback) });
       },
       error: function(e){
         if (e.status == 404) {
           _this._conn._logHandler("Metadata file not found: starting fresh synchronization");
           _this.meta = Synchronizer._metaDefaults;
-          _this._syncMetadata(callback);
+          _this._syncMetadata(function(){ _this._processSyncChunks(callback) });
         } else {
           _this._conn._errorHandler("Server error -- "+e.statusText);
         }
@@ -991,6 +1071,86 @@ EvernoteConnection = function(){
 
   // function to process chunk data
   Synchronizer.prototype._processSyncChunks = function(callback) {
+    var _this = this;
+
+    // generate maps
+    this.notes     = new Map( this.meta.notes     .map(n => [n.guid,n]) );
+    this.notebooks = new Map( this.meta.notebooks .map(n => [n.guid,n]) );
+    this.tags      = new Map( this.meta.tags      .map(t => [t.guid,t]) );
+    this.resources = new Map( this.meta.resources .map(r => [r.guid,r]) );
+
+    var conn = new EvernoteConnectionBase(this._conn.authenticationToken, "@proxy-https/www.evernote.com/shard/s2/notestore");
+    var noteIterator = this.notes.keys();
+
+    function ajax(options) {
+      return new Promise(function(resolve, reject) {
+        $.ajax(options).done(resolve).fail(reject);
+      });
+    };
+
+    function saveNote(guid, version, content) {
+      ajax({
+        type: "POST",
+        url: `@writer/${_this._location}/notes/${guid}.${version}`,
+        data: content,
+        dataType: 'text'
+      }).then( () => console.log(`Saved file: notes/${guid}.${version}`) );
+    };
+
+    function getAndSaveNote(guid, version) {
+      if (_this.notes.get(guid).updateSequenceNum == version) {
+        return conn.getNoteContent(guid).then(content => {
+          saveNote(guid, version, content)
+        })
+      } else {
+        return conn.getNoteVersion(guid,version).then(data => {
+          saveNote(guid, version, data.content)
+        })
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise(function(resolve, reject) {
+        window.setTimeout(resolve, ms)
+      })
+    }
+
+    function processNextNote(files, iterator) {
+      var nextNote = iterator.next();
+      if (nextNote.done) {
+        console.log('Done processing notes');
+        callback();
+      } else {
+        let guid = nextNote.value;
+        let currentVersion = _this.notes.get(guid).updateSequenceNum;
+        if (files.includes(`${guid}.${currentVersion}`)) {
+          console.log(`Skipping note: ${_this.notes.get(guid).title} [${guid}]`);
+          processNextNote(files,iterator);
+        } else {
+          console.log(`Processing note: ${_this.notes.get(guid).title} [${guid}]`);
+          conn.listNoteVersions(guid)
+            .then( v => v.map( vv => vv.updateSequenceNum ) )
+            .then( v => v.filter( vv => !files.includes(`${guid}.${vv}`) ) )
+            .then( v => {
+              Promise.all( v.map( vv => getAndSaveNote(guid,vv) ) )
+                .then(() => getAndSaveNote(guid,currentVersion) )
+                .then(() => console.log(`Finished processing note: ${_this.notes.get(guid).title} [${guid}]`))
+                .then(() => sleep(5000))
+                .then(() => processNextNote(files,iterator))
+                .catch(err => console.error(err));
+            })
+        }
+      }
+    }
+
+    ajax('/@ls/'+_this._location+'/*')
+      .then(files => files.filter( f => f.startsWith(`${_this._location}/notes/`) ))
+      .then(files => files.map( f => f.split('/notes/').pop() ))
+      .then(files => processNextNote(files, noteIterator))
+      .catch(err => {
+        console.log(err);
+        barf
+      });
 
   }
 
@@ -1005,7 +1165,7 @@ EvernoteConnection = function(){
   // perform synchronization
   Synchronizer.synchronize = function(callback) {
     Synchronizer._instance._conn._checkObject(Synchronizer._instance, Synchronizer);
-    Synchronizer._instance.synchronize();
+    Synchronizer._instance.synchronize(callback);
   }
 
   // metadata defaults

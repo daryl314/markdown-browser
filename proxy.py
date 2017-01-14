@@ -92,10 +92,12 @@ class S(BaseHTTPRequestHandler):
             self.request('GET', self._getURL())
             
         # remap directory listing requests
-        elif self.path.startswith('/@ls/*'):
-            extension = self.path[7:]
+        elif self.path.startswith('/@ls/'):
+            searchString = self.path[5:]
+            extension = searchString.split('*')[1]
+            location = os.path.dirname(searchString) if len(os.path.dirname(searchString)) > 0 else '.'
             res = []
-            for directory,subdirectories,files in os.walk('.', followlinks=True):
+            for directory,subdirectories,files in os.walk(location, followlinks=True):
                 res = res + [ directory+'/'+f for f in files if f.endswith(extension) ]
             self._sendData(json.dumps(res), 'application/json')
 
