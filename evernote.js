@@ -74,7 +74,8 @@ class EvernoteConnectionBase {
 
   getNoteVersion(guid, version, withResourcesData=false, withResourcesRecognition=false, withResourcesAlternateData=false) {
     return this._noteStorePromise('getNoteVersion', guid, version, withResourcesData, withResourcesRecognition, withResourcesAlternateData) }
-
+  getResource(guid, withData=true, withRecognition=true, withAttributes=true, withAlternateData=false) {
+    return this._noteStorePromise('getResource', guid, withData, withRecognition, withAttributes, withAlternateData) }
 }
 
 
@@ -1071,7 +1072,6 @@ EvernoteConnection = function(){
 
   // function to process chunk data
   Synchronizer.prototype._processSyncChunks = function(callback) {
-    var _this = this;
 
     // generate maps
     this.notes     = new Map( this.meta.notes     .map(n => [n.guid,n]) );
@@ -1079,8 +1079,17 @@ EvernoteConnection = function(){
     this.tags      = new Map( this.meta.tags      .map(t => [t.guid,t]) );
     this.resources = new Map( this.meta.resources .map(r => [r.guid,r]) );
 
+    //
     var conn = new EvernoteConnectionBase(this._conn.authenticationToken, "@proxy-https/www.evernote.com/shard/s2/notestore");
     var noteIterator = this.notes.keys();
+
+    // synchronization base location
+    var loc = this._location;
+
+
+    /////////////////////
+    // PROMISE HELPERS //
+    /////////////////////
 
     function ajax(options) {
       return new Promise(function(resolve, reject) {
@@ -1088,17 +1097,26 @@ EvernoteConnection = function(){
       });
     };
 
-    function saveNote(guid, version, content) {
-      return ajax({
-        type: "POST",
-        url: `@writer/${_this._location}/notes/${guid}/${version}`,
-        data: content,
-        headers: { 'x-mkdir': true },
-        dataType: 'text'
-      }).then( () => console.log(`Saved file: notes/${guid}/${version}`) );
-    };
+    function sleep(s) {
+      return new Promise(function(resolve, reject) {
+        window.setTimeout(resolve, 1000*s)
+      })
+    }
+
+
+    //////////////////////
+    // FILE I/O HELPERS //
+    //////////////////////
 
     function getAndSaveNote(guid, version) {
+      function saveNote(guid, version, content) {
+        return ajax({
+          type: "POST",
+          url: `@writer/${loc}/notes/${guid}/${version}`,
+          data: content,
+          headers: { 'x-mkdir': true }
+        }).then( () => console.log(`Saved file: notes/${guid}/${version}`) );
+      };
       if (_this.notes.get(guid).updateSequenceNum == version) {
         return conn.getNoteContent(guid).then(content => {
           saveNote(guid, version, content)
@@ -1114,69 +1132,100 @@ EvernoteConnection = function(){
       return new Promise(function(resolve, reject) {
         $.ajax({
           type: "POST",
-          url: `@writer/${_this._location}/notes/${guid}/versions.json`,
+          url: `@writer/${loc}/notes/${guid}/versions.json`,
           data: JSON.stringify(v),
-          headers: { 'x-mkdir': true },
-          dataType: 'text'
+          headers: { 'x-mkdir': true }
         }).done( () => resolve(v) )
           .fail( reject )
       })
     }
 
-    function sleep(ms) {
-      return new Promise(function(resolve, reject) {
-        window.setTimeout(resolve, ms)
+    function saveResource(res) {
+      return ajax({
+        type:'POST',
+        url:`@writer/${loc}/resources/${res.guid}/${res.guid}`,
+        data:res.data.body,
+        contentType:'application/octet-stream',
+        processData:false,
+        headers:{'x-mkdir':true}
       })
     }
 
-    function processNote(guid, currentVersion, files, iterator, callback) {
-      conn.listNoteVersions(guid)
-        .then( v => saveVersionData(guid,v) )
-        .then( v => v.map( vv => vv.updateSequenceNum ) )
-        .then( v => v.filter( vv => !files.includes(`${guid}/${vv}`) ) )
-        .then( v => {
-          Promise.all( v.map( vv => getAndSaveNote(guid,vv) ) )
-            .then(() => getAndSaveNote(guid,currentVersion) )
-            .then(() => console.log(`Finished processing note: ${_this.notes.get(guid).title} [${guid}]`))
-            .then(() => sleep(10000))
-            .then(() => processNextNote(files,iterator,callback))
-            .catch(err => {
-              if (err instanceof EDAMSystemException && err.errorCode == 19) {
-                console.log(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
-                sleep((err.rateLimitDuration+5)*1000)
-                  .then(() => processNote(guid, currentVersion, files, iterator, callback));
-              } else {
-                console.error(err)
-              }
-            });
-        })
+    function saveResourceMetaData(res) {
+      var newRes = Object.assign({}, res);
+      newRes.data = Object.assign({}, res.data);
+      delete newRes.data.body;
+      return ajax({
+        type: "POST",
+        url: `@writer/${loc}/resources/${res.guid}/metadata.json`,
+        data: JSON.stringify(newRes),
+        headers: { 'x-mkdir': true }
+      }).then( () => res );
     }
 
-    function processNextNote(files, iterator, callback) {
-      var nextNote = iterator.next();
-      if (nextNote.done) {
-        console.log('Done processing notes');
-        if (callback) callback();
-      } else {
-        let guid = nextNote.value;
-        let currentVersion = _this.notes.get(guid).updateSequenceNum;
-        if (files.includes(`${guid}/${currentVersion}`)) {
-          console.log(`Skipping note: ${_this.notes.get(guid).title} [${guid}]`);
-          processNextNote(files,iterator,callback);
+
+    //////////////////////
+    // EXECUTE PROMISES //
+    //////////////////////
+
+    // start promise chain by getting a list files in sync location
+    var p = ajax(`/@ls/${loc}/*`);
+
+    // extend chain to process each note
+    this.notes.forEach((n) => {
+      p = p.then(files => {
+        if (files.includes(`${loc}/notes/${n.guid}/${n.updateSequenceNum}`)) {
+          console.log(`Skipping note: ${n.title} [${n.guid}]`);
+          return files;
         } else {
-          console.log(`Processing note: ${_this.notes.get(guid).title} [${guid}]`);
-          processNote(guid, currentVersion, files, iterator, callback);
+          console.log(`Processing note: ${n.title} [${n.guid}]`);
+          return conn.listNoteVersions(n.guid)
+            .then( v => saveVersionData(n.guid,v) )
+            .then( v => v.map( vv => vv.updateSequenceNum ) )
+            .then( v => v.filter( vv => !files.includes(`${loc}/notes/${n.guid}/${vv}`) ) )
+            .then( v => {
+              return Promise.all( v.map( vv => getAndSaveNote(n.guid,vv) ) )
+                .then(() => getAndSaveNote(n.guid,n.updateSequenceNum) )
+                .then(() => console.log(`Finished processing note: ${n.title} [${n.guid}]`))
+                .then(() => sleep(10))
+            })
+            .then( () => files )
         }
-      }
+      })
+    })
+
+    // extend chain to process each resource
+    this.resources.forEach((r) => {
+      p = p.then(files => {
+        if (files.includes(`${loc}/resources/${r.guid}/${r.guid}`)) {
+          console.log(`Skipping resource: [${r.guid}]`);
+          return files;
+        } else {
+          console.log(`Processing resource: [${r.guid}]`);
+          return conn.getResource(r.guid)
+            .then( saveResourceMetaData )
+            .then( saveResource )
+            .then( () => sleep(10) )
+            .then( () => files )
+        }
+      })
+    })
+
+    // execute callback
+    if (callback) {
+      p = p.then( () => callback() );
     }
 
-    ajax('/@ls/'+_this._location+'/*')
-      .then(files => files.filter( f => f.startsWith(`${_this._location}/notes/`) ))
-      .then(files => files.map( f => f.split('/notes/').pop() ))
-      .then(files => processNextNote(files, noteIterator, callback))
-      .catch(err => {
-        console.log(err);
-      });
+    // add error handler to recurse if rate limit was reached
+    p = p.catch(err => {
+      if (err instanceof EDAMSystemException && err.errorCode == 19) {
+        console.log(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
+        sleep(err.rateLimitDuration+5)
+          .then(() => this._processSyncChunks(callback));
+      } else {
+        console.error(err)
+      }
+    });
 
   }
 
