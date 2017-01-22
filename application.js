@@ -1410,7 +1410,7 @@ function loadLocalFile(mdFile) {
 
 function syncToLocalStorage() {
   EvernoteConnection.Synchronizer.connect(localStorage.token, 'syncData');
-  EvernoteConnection.Synchronizer.synchronize();
+  EvernoteConnection.Synchronizer.synchronize( function(){ console.log('Sync complete!') } );
 }
 
 

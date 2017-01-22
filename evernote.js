@@ -1129,31 +1129,43 @@ EvernoteConnection = function(){
       })
     }
 
-    function processNextNote(files, iterator) {
+    function processNote(guid, currentVersion, files, iterator, callback) {
+      conn.listNoteVersions(guid)
+        .then( v => saveVersionData(guid,v) )
+        .then( v => v.map( vv => vv.updateSequenceNum ) )
+        .then( v => v.filter( vv => !files.includes(`${guid}/${vv}`) ) )
+        .then( v => {
+          Promise.all( v.map( vv => getAndSaveNote(guid,vv) ) )
+            .then(() => getAndSaveNote(guid,currentVersion) )
+            .then(() => console.log(`Finished processing note: ${_this.notes.get(guid).title} [${guid}]`))
+            .then(() => sleep(10000))
+            .then(() => processNextNote(files,iterator,callback))
+            .catch(err => {
+              if (err instanceof EDAMSystemException && err.errorCode == 19) {
+                console.log(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
+                sleep((err.rateLimitDuration+5)*1000)
+                  .then(() => processNote(guid, currentVersion, files, iterator, callback));
+              } else {
+                console.error(err)
+              }
+            });
+        })
+    }
+
+    function processNextNote(files, iterator, callback) {
       var nextNote = iterator.next();
       if (nextNote.done) {
         console.log('Done processing notes');
-        callback();
+        if (callback) callback();
       } else {
         let guid = nextNote.value;
         let currentVersion = _this.notes.get(guid).updateSequenceNum;
         if (files.includes(`${guid}/${currentVersion}`)) {
           console.log(`Skipping note: ${_this.notes.get(guid).title} [${guid}]`);
-          processNextNote(files,iterator);
+          processNextNote(files,iterator,callback);
         } else {
           console.log(`Processing note: ${_this.notes.get(guid).title} [${guid}]`);
-          conn.listNoteVersions(guid)
-            .then( v => saveVersionData(guid,v) )
-            .then( v => v.map( vv => vv.updateSequenceNum ) )
-            .then( v => v.filter( vv => !files.includes(`${guid}/${vv}`) ) )
-            .then( v => {
-              Promise.all( v.map( vv => getAndSaveNote(guid,vv) ) )
-                .then(() => getAndSaveNote(guid,currentVersion) )
-                .then(() => console.log(`Finished processing note: ${_this.notes.get(guid).title} [${guid}]`))
-                .then(() => sleep(5000))
-                .then(() => processNextNote(files,iterator))
-                .catch(err => console.error(err));
-            })
+          processNote(guid, currentVersion, files, iterator, callback);
         }
       }
     }
@@ -1161,10 +1173,9 @@ EvernoteConnection = function(){
     ajax('/@ls/'+_this._location+'/*')
       .then(files => files.filter( f => f.startsWith(`${_this._location}/notes/`) ))
       .then(files => files.map( f => f.split('/notes/').pop() ))
-      .then(files => processNextNote(files, noteIterator))
+      .then(files => processNextNote(files, noteIterator, callback))
       .catch(err => {
         console.log(err);
-        barf
       });
 
   }
