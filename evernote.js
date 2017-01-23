@@ -1079,9 +1079,8 @@ EvernoteConnection = function(){
     this.tags      = new Map( this.meta.tags      .map(t => [t.guid,t]) );
     this.resources = new Map( this.meta.resources .map(r => [r.guid,r]) );
 
-    //
+    // instantiate connection to Evernote server
     var conn = new EvernoteConnectionBase(this._conn.authenticationToken, "@proxy-https/www.evernote.com/shard/s2/notestore");
-    var noteIterator = this.notes.keys();
 
     // synchronization base location
     var loc = this._location;
@@ -1097,6 +1096,26 @@ EvernoteConnection = function(){
       });
     };
 
+    function ajaxSave(url, data) {
+      var options = {
+        type: 'POST',
+        url: `@writer/${loc}/${url}`,
+        headers: { 'x-mkdir': true }
+      };
+      if (data instanceof Uint8Array) {
+        options.data = data;
+        options.contentType = 'application/octet-stream';
+        options.processData = false;
+      } else if (data instanceof Object) {
+        options.data = JSON.stringify(data);
+      } else if (typeof(data) === 'string') {
+        options.data = data;
+      } else {
+        throw new Error('Invalid data type');
+      }
+      return ajax(options)
+    }
+
     function sleep(s) {
       return new Promise(function(resolve, reject) {
         window.setTimeout(resolve, 1000*s)
@@ -1108,59 +1127,34 @@ EvernoteConnection = function(){
     // FILE I/O HELPERS //
     //////////////////////
 
-    function getAndSaveNote(guid, version) {
-      function saveNote(guid, version, content) {
-        return ajax({
-          type: "POST",
-          url: `@writer/${loc}/notes/${guid}/${version}`,
-          data: content,
-          headers: { 'x-mkdir': true }
-        }).then( () => console.log(`Saved file: notes/${guid}/${version}`) );
-      };
-      if (_this.notes.get(guid).updateSequenceNum == version) {
+    var getAndSaveNote = (guid, version) => {
+      if (this.notes.get(guid).updateSequenceNum == version) {
         return conn.getNoteContent(guid).then(content => {
-          saveNote(guid, version, content)
+          return ajaxSave(`notes/${guid}/${version}`, content)
+            .then( () => console.log(`Saved file: notes/${guid}/${version}`) )
         })
       } else {
         return conn.getNoteVersion(guid,version).then(data => {
-          saveNote(guid, version, data.content)
+          return ajaxSave(`notes/${guid}/${version}`, data.content)
+            .then( () => console.log(`Saved file: notes/${guid}/${version}`) )
         })
       }
     }
 
     function saveVersionData(guid, v) {
-      return new Promise(function(resolve, reject) {
-        $.ajax({
-          type: "POST",
-          url: `@writer/${loc}/notes/${guid}/versions.json`,
-          data: JSON.stringify(v),
-          headers: { 'x-mkdir': true }
-        }).done( () => resolve(v) )
-          .fail( reject )
-      })
+      return ajaxSave(`notes/${guid}/versions.json`, v).then( () => v )
     }
 
     function saveResource(res) {
-      return ajax({
-        type:'POST',
-        url:`@writer/${loc}/resources/${res.guid}/${res.guid}`,
-        data:res.data.body,
-        contentType:'application/octet-stream',
-        processData:false,
-        headers:{'x-mkdir':true}
-      })
+      return ajaxSave(`resources/${res.guid}/${res.guid}`, res.data.body)
     }
 
     function saveResourceMetaData(res) {
       var newRes = Object.assign({}, res);
       newRes.data = Object.assign({}, res.data);
       delete newRes.data.body;
-      return ajax({
-        type: "POST",
-        url: `@writer/${loc}/resources/${res.guid}/metadata.json`,
-        data: JSON.stringify(newRes),
-        headers: { 'x-mkdir': true }
-      }).then( () => res );
+      return ajaxSave(`resources/${res.guid}/metadata.json`, newRes)
+        .then( () => res )
     }
 
 
