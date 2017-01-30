@@ -105,11 +105,17 @@ class S(BaseHTTPRequestHandler):
         else:
             try:
                 ext = path.splitext(self.path)[1]
+                # use a mime type based on extension if defined
                 if ext in mimeMap:
-                    f = open(curdir + sep + self.path.replace('%20', ' '))
-                    self._sendData(f.read(), mimeMap[ext])
-                    f.close()
-                return
+                    mime = mimeMap[ext]
+                # use 'accept' mime type if one was provided
+                elif 'accept' in self.headers.dict and self.headers.dict['accept'].split(',')[0] != '*/*':
+                    mime = self.headers.dict['accept'].split(',')[0]
+                else:
+                    print('Extension not found in mime map: '+self.path)
+                f = open(curdir + sep + self.path.replace('%20', ' '))
+                self._sendData(f.read(), mime)
+                f.close()
             except IOError:
                 self.send_error(404,'File Not Found: %s' % self.path)
 
