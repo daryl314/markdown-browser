@@ -411,6 +411,58 @@ EvernoteConnection = function(){
 
   /* Process is documented at https://dev.evernote.com/media/pdf/edam-sync.pdf */
 
+  class EvernoteOffline {
+
+    constructor(localFolder) {
+      this._location = localFolder;
+    }
+
+    getMetadata() {
+      return EvernoteOffline.ajax({
+        type:     'GET',
+        dataType: 'json',
+        url:      `${this._location}/metadata.json`,
+        data:     {}
+      })
+        .then(m  => { this.meta = m } )
+        .then(() => EvernoteOffline.ajax(`/@ls/${this._location}/*`) )
+        .then(f  => { this._processFiles(f) } )
+    }
+
+    getNoteContent(guid) {
+      var lastVersion = this.fileData[guid].reduce((a,b) => Math.max(a,b), 0);
+      return EvernoteOffline.ajax({
+        type: 'GET',
+        dataType: 'xml',
+        url: `${this._location}/notes/${guid}/${lastVersion}`
+      })
+    }
+
+    _processFiles(files) {
+      this.fileData = {};
+      files.filter( (f) => f.startsWith(`${this._location}/notes/`) ).forEach( (f) => {
+        var [guid, version] = f.split('/notes/').pop().split('/');
+        this.fileData[guid] = this.fileData[guid] || [];
+        if (version !== 'versions.json')
+          this.fileData[guid].push( parseInt(version) );
+      })
+    }
+
+    static connect(location) {
+      EvernoteOffline._instance = new EvernoteOffline(location);
+      var _this = EvernoteOffline._instance;
+      return _this.getMetadata()
+    }
+
+    static ajax(options) {
+      return new Promise((resolve, reject) => {
+        $.ajax(options).done(resolve).fail(reject);
+      });
+    };
+
+  }
+
+
   // constructor
   var Synchronizer = function(conn, localFolder) {
     if (!(conn instanceof EvernoteConnection))
@@ -836,7 +888,8 @@ EvernoteConnection = function(){
   //////////////////////
 
   return {
-    Synchronizer: Synchronizer
+    Synchronizer: Synchronizer,
+    EvernoteOffline: EvernoteOffline
   }
 
 }();
