@@ -87,6 +87,28 @@ class EvernoteConnectionBase {
     return this._noteStorePromise('findNotesMetadata', filter, offset, maxNotes, resultSpec) }
   getFilteredSyncChunk(afterUSN, maxEntries, filter) {
     return this._noteStorePromise('getFilteredSyncChunk', afterUSN, maxEntries, filter) }
+
+  createNote(title, content, tagGuids=[]) {
+    if (title   === undefined) throw new Error('Title is required to create a note!');
+    if (content === undefined) throw new Error('Content is required to create a note!');
+    return this._noteStorePromise('createNote', new Note({
+      title     : title,
+      content   : content,
+      tagGuids  : tagGuids
+    }))
+  }
+
+  updateNote(guid, title, content, tagNames=[]) {
+    if (guid    === undefined) throw new Error('GUID is required to update a note!');
+    if (title   === undefined) throw new Error('Title is required to update a note!');
+    if (content === undefined) throw new Error('Content is required to update a note!');
+    return this._noteStorePromise('updateNote', new Note({
+      guid      : guid,
+      title     : title,
+      content   : content,
+      tagNames  : tagNames
+    }))
+  }
 }
 
 
