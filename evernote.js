@@ -85,28 +85,8 @@ class EvernoteConnectionBase {
     return this._noteStorePromise('getResource', guid, withData, withRecognition, withAttributes, withAlternateData) }
   findNotesMetadata(filter=EvernoteConnectionBase.defaultNoteFilter(), offset=0, maxNotes=100, resultSpec=EvernoteConnectionBase.defaultNotesMetadataResultSpec()) {
     return this._noteStorePromise('findNotesMetadata', filter, offset, maxNotes, resultSpec) }
-
-  createNote(title, content, tagGuids=[]) {
-    if (title   === undefined) throw new Error('Title is required to create a note!');
-    if (content === undefined) throw new Error('Content is required to create a note!');
-    return this._noteStorePromise('createNote', new Note({
-      title     : title,
-      content   : content,
-      tagGuids  : tagGuids
-    }))
-  }
-
-  updateNote(guid, title, content, tagNames=[]) {
-    if (guid    === undefined) throw new Error('GUID is required to update a note!');
-    if (title   === undefined) throw new Error('Title is required to update a note!');
-    if (content === undefined) throw new Error('Content is required to update a note!');
-    return this._noteStorePromise('updateNote', new Note({
-      guid      : guid,
-      title     : title,
-      content   : content,
-      tagNames  : tagNames
-    }))
-  }
+  getFilteredSyncChunk(afterUSN, maxEntries, filter) {
+    return this._noteStorePromise('getFilteredSyncChunk', afterUSN, maxEntries, filter) }
 }
 
 
@@ -424,7 +404,13 @@ EvernoteConnection = function(){
         url:      `${this._location}/metadata.json`,
         data:     {}
       })
-        .then(m  => { this.meta = m } )
+        .then(meta => {
+          this.meta = meta;
+          this.notes     = new Map( meta.notes     .map(n => [n.guid,n]) );
+          this.notebooks = new Map( meta.notebooks .map(n => [n.guid,n]) );
+          this.tags      = new Map( meta.tags      .map(t => [t.guid,t]) );
+          this.resources = new Map( meta.resources .map(r => [r.guid,r]) );
+        })
         .then(() => EvernoteOffline.ajax(`/@ls/${this._location}/*`) )
         .then(f  => { this._processFiles(f) } )
     }
@@ -438,12 +424,29 @@ EvernoteConnection = function(){
       })
     }
 
+    getNoteResourceMeta(guid) {
+      return Promise.all(
+        this.notes.get(guid).resources.map( r => {
+          return EvernoteOffline.ajax({
+            type: 'GET',
+            dataType: 'json',
+            url: `${this._location}/resources/${r.guid}/metadata.json`
+          }).then(res => {
+            res.data.bodyHash = Object.values(res.data.bodyHash).map(
+              x => (x < 16 ? '0' : '') + x.toString(16)
+            ).join('');
+            return res
+          })
+        })
+      )
+    }
+
     _processFiles(files) {
       this.fileData = {};
       files.filter( (f) => f.startsWith(`${this._location}/notes/`) ).forEach( (f) => {
         var [guid, version] = f.split('/notes/').pop().split('/');
         this.fileData[guid] = this.fileData[guid] || [];
-        if (version !== 'versions.json')
+        if (version !== 'versions.json' && version.match(/^\d+$/))
           this.fileData[guid].push( parseInt(version) );
       })
     }
