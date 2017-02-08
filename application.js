@@ -13,10 +13,13 @@
 // GUI CONTROL //
 /////////////////
 
-// function to return references once document is ready
-//  - WN: WrappedNote class for note handling
-//  - getConnection: function to pass actions to server
-function guiReferences(WN, getConnection){
+// function to configure GUI and return references once document is ready.  the
+// input argument is a function passes a WrappedNoteServer instance to the
+// provided callback function:
+//    getConnection( wnsInstance => {
+//      wnsInstance.doSomething();
+//    })
+function guiReferences(getConnection){
 
   ///// GUI ELEMENTS /////
 
@@ -116,7 +119,7 @@ function guiReferences(WN, getConnection){
     noteClean     : true,             // are there unsaved changes?
     generation    : null,             // generation number for clean note state
     hasServer     : false,            // is a server connection available?
-    currentNote   : undefined         // GUID of current note
+    currentNote   : null              // GUID of current note
   };
 
 
@@ -329,14 +332,14 @@ function guiReferences(WN, getConnection){
 
     // sorted list of unique notebooks
     var notebooks = _.chain(notes)
-      .pluck('notebook')
+      .map(n => n.notebook)
       .unique()
       .sortBy(function(x){
         return x.toLowerCase()
       }).value();
 
     // notes grouped by their notebook
-    var groupedNotes = _.groupBy(notes, 'notebook');
+    var groupedNotes = _.groupBy(notes, n=>n.notebook);
 
     // reset note list
     gui.$noteList.empty();
@@ -385,12 +388,12 @@ function guiReferences(WN, getConnection){
     }
 
     // append menu entry for current version
-    gui.$historyList.empty().append(historyItem(note.version(), note.updatedStr()));
+    gui.$historyList.empty().append(historyItem(note.version, note.updatedStr));
 
     // append menu entries for older versions
     // NOTE: this should be returning wrapped Notes
     for (var i = 0; i < versionData.length; i++) {
-      gui.$historyList.append(historyItem(versionData[i].version(), versionData[i].updatedStr()));
+      gui.$historyList.append(historyItem(versionData[i].version, versionData[i].updatedStr));
     }
   }
 
@@ -505,54 +508,50 @@ function guiReferences(WN, getConnection){
 
   ///// SERVER CONNECTIVITY /////
 
-  // generate/refresh note list
-  gui.refreshNoteList = function(callback) {
-    getConnection(function(conn){
-      gui.populateNoteList(WN.getNoteData());
-      if (callback) callback();
-    })
-  }
-
-  // generate note list (no-op if already done)
-  gui.generateNoteList = function(callback) {
-    if (!WN.hasConnection()) {
-      gui.refreshNoteList(callback);
-    } else if (callback) {
-      callback();
+  // generate a list of notes on server
+  gui.generateNoteList = function(refresh, callback) {
+    if (callback === undefined) {
+      callback = refresh;
+      refresh = false;
     }
-  }
-
-  // load a note
-  gui.loadNote = function(guid, callback) {
     getConnection(function(conn){
-      var note = conn.getNote(guid);
-      var cb = undefined;
-      if (callback)
-        cb = function(content) { callback(content, note) };
-      note.fetchContent(cb);
+      if (refresh) {
+        conn.fetchMetaData().then(() => {
+          gui.populateNoteList(conn.notes);
+          if (callback) callback();
+        })
+      } else {
+        gui.populateNoteList(conn.notes);
+        if (callback) callback();
+      }
     })
   }
 
-  // load note version data
-  gui.loadNoteVersions = function(guid, versions, callback) {
+  // load note contents with optional version number(s)
+  gui.loadNoteContents = function(guid, versions, callback) {
+    if (callback === undefined) {
+      callback = versions;
+      versions = null;
+    }
     getConnection(function(conn){
       var note = conn.getNote(guid);
-      note.fetchContent(versions, callback);
-    });
+      note.getContent(versions).then(content => {
+        if (callback) callback(content, note)
+      })
+    })
   }
 
   // update a note
   gui.updateNote = function(guid, content, callback) {
     getConnection(function(conn) {
-      var note = conn.getNote(guid);
-      note.update(content, callback);
+      conn.getNote(guid).updateContent(content).then(callback);
     });
   }
 
   // create a new note
   gui.createNote = function(title, content, callback) {
     getConnection(function(conn) {
-      conn.newNote(title, content, callback)
+      conn.newNote(title, content).then(callback);
     });
   }
 
@@ -560,17 +559,9 @@ function guiReferences(WN, getConnection){
   gui.fetchNoteVersions = function(guid, callback) {
     getConnection(function(conn) {
       var note = conn.getNote(guid);
-      var cb = undefined;
-      if (callback)
-        cb = function(versionList) { callback(versionList, note) };
-      note.versions(cb);
-    })
-  }
-
-  // refresh connection
-  gui.refreshConnection = function(callback) {
-    getConnection(function(conn) {
-      WN.refreshConnection(callback);
+      note.getVersions().then(versionList => {
+        if (callback) callback(versionList, note);
+      })
     })
   }
 
@@ -580,7 +571,7 @@ function guiReferences(WN, getConnection){
   // bind to clicking on 'History' tab
   gui.$viewHistory.on('click', function(){
     if (gui.state.currentTab !== 'history') {
-      if (gui.state.currentNote === undefined) {
+      if (gui.state.currentNote === null) {
         gui.transientAlert("No note currently loaded!")
       } else if (gui.state.staleHistory) {
         gui.state.diffCache = {}; // clear cache
@@ -630,16 +621,16 @@ function guiReferences(WN, getConnection){
   // bind to clicking on 'Changes' tab --> preview note changes from server version
   gui.$viewChanges.on('click', function(){
     if (gui.state.currentTab !== 'changes') {
-      if (gui.state.currentNote === undefined) {
+      if (gui.state.currentNote === null) {
         gui.transientAlert("No note currently loaded!")
       } else {
-        gui.loadNote(gui.state.currentNote, function(oldContent, note){
+        gui.loadNoteContents(gui.state.currentNote, function(oldContent, note){
           gui.updateState({
             currentTab  : 'changes',
             floatingTOC : false,
             showHelp    : false
           });
-          compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title()));
+          compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title));
         })
       }
     }
@@ -670,13 +661,13 @@ function guiReferences(WN, getConnection){
     var guid = $(this).data('guid');
     gui.$noteList.find('a.list-group-item.selected').removeClass('selected');
     $(this).addClass('selected');
-    gui.loadNote(guid, function(content, note){
+    gui.loadNoteContents(guid, function(content, note){
       gui.populateNote(guid, content);
       gui.state.generation = cm.changeGeneration();
       gui.updateState({
         showNoteList : false,
         noteClean    : true,
-        noteTitle    : note.title()
+        noteTitle    : note.title
       });
     });
   });
@@ -688,7 +679,7 @@ function guiReferences(WN, getConnection){
       return $(this).data('sequence')}
     ).toArray();
     gui.$historyWindow.empty();
-    gui.loadNoteVersions(gui.state.currentNote, selectedItems, function(contentArr){
+    gui.loadNoteContents(gui.state.currentNote, selectedItems, function(contentArr){
       gui.computeVersionDiffs(selectedItems, contentArr, gui.state.diffCache);
       // wait until all data are ready in case of click backlog
       if (gui.diffReady()) gui.renderNoteDiffs();
@@ -698,11 +689,11 @@ function guiReferences(WN, getConnection){
   // 'Save' --> update a note
   gui.$saveNote.on('click', function(){
     if (gui.state.hasServer) {
-      if (gui.state.currentNote === undefined) {
+      if (gui.state.currentNote === null) {
         gui.transientAlert("No note currently loaded!")
       } else {
         gui.updateNote(gui.state.currentNote, cm.getValue(), function(note){
-          gui.transientAlert("Note "+gui.state.currentNote+" updated: "+note.title());
+          gui.transientAlert("Note "+gui.state.currentNote+" updated: "+note.title);
           gui.state.generation = cm.changeGeneration();
           gui.updateState({
             staleHistory  : true,
@@ -724,9 +715,10 @@ function guiReferences(WN, getConnection){
               gui.updateState({
                 staleHistory  : true,
                 currentNote   : note.guid,
+                noteTitle     : noteTitle,
                 noteClean     : true
               })
-              gui.refreshNoteList({ noteTitle: noteTitle });
+              gui.generateNoteList();
             })
           });
         }
@@ -737,7 +729,7 @@ function guiReferences(WN, getConnection){
   // 'New' --> reset editor
   gui.$newNote.on('click', function(){
     var callback = function() {
-      gui.state.currentNote = undefined; // undefined in updateState throws exception
+      gui.state.currentNote = null; // undefined in updateState throws exception
       cm.setValue('');
       gui.state.generation = cm.changeGeneration();
       gui.updateState({
@@ -756,9 +748,8 @@ function guiReferences(WN, getConnection){
   // 'Refresh' --> Refresh connection with server
   gui.$refresh.on('click', function() {
     if (gui.state.hasServer) {
-      gui.refreshConnection(function() {
+      gui.generateNoteList(true, function() {
         gui.transientAlert("Refreshed server connection");
-        gui.populateNoteList(WN.getNoteData());
       })
     }
   })
@@ -1265,51 +1256,38 @@ function launchCodeMirror() {
 // SERVER CONNECTIVITY //
 /////////////////////////
 
-// return an Evernote server connection
+// return an Evernote server connection (creating if required)
 function getEvernoteConnection(callback) {
 
-  // alias to WrappedNote class
-  var WN = EvernoteConnection.WrappedNote;
-
-  // if a connection exists, use it
-  if (WN.hasConnection()) {
-    if (callback) callback(WN);
-
-  // otherwise create connection
-  } else {
+  // create a connection if one doesn't exist
+  if (!getEvernoteConnection.instance) {
 
     // prompt user for token if it isn't set in local storage
     if (localStorage.getItem('token') === null)
       getEvernoteConnection.updateToken();
 
-    // create a connection notification
-    var $el = GUI.persistentAlert('Connecting to Evernote...');
-
-    // connection options
-    var opt = {
-      searchTags    : ['markdown'],
-      saveTags      : ['markdown'],
-      errorLogger   : GUI.persistentWarning,
-      messageLogger : GUI.transientAlert
-    }
-
     // create connection
-    WN.connect(localStorage.getItem('token'), opt, function() {
-
-      // raise an exception if connection failed
-      if (!WN.hasConnection()) {
-        GUI.persistentWarning("Failed to connect to Evernote!");
-        throw new Error("Unable to connect to Evernote");
-
-      // otherwise notify user and trigger callback
-      } else {
-        $el.remove();
-        GUI.transientAlert("Connected to Evernote!");
-        //populateNoteList(WN.getNoteData());
-        if (callback) callback(WN);
+    getEvernoteConnection.instance = new WrappedNoteServer(
+      localStorage.getItem('token'),
+      "@proxy-https/www.evernote.com/shard/s2/notestore",
+      {
+        searchTags    : ['markdown'],
+        saveTags      : ['markdown'],
+        errorLogger   : GUI.persistentWarning,
+        messageLogger : GUI.transientAlert
       }
+    )
+  }
+
+  // fetch metadata if required, and then execute callback
+  if (getEvernoteConnection.instance.conn.noteMap) {
+    callback(getEvernoteConnection.instance)
+  } else {
+    getEvernoteConnection.instance.fetchMetaData().then( () => {
+      callback(getEvernoteConnection.instance)
     })
   }
+
 }
 
 // attach a function to update developer token
@@ -1454,10 +1432,7 @@ function loadJavascriptFile() {
 $(function(){
 
   // get gui references
-  window.GUI = guiReferences(
-    EvernoteConnection.WrappedNote,
-    getEvernoteConnection
-  );
+  window.GUI = guiReferences(getEvernoteConnection);
 
   // local file to load (if any)
   var mdFile = document.URL.split('?')[1];
