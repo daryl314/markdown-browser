@@ -156,35 +156,42 @@ class EvernoteConnectionCached extends EvernoteConnectionBase {
         this.messageLogger(`Fetched note content for ${guid} from cache`)
         resolve(this.cache.get(guid))
       })
+        .then( content => this.textContent ? EvernoteConnectionBase.stripFormatting(content) : content )
     } else {
       return this.getNoteContent(guid)
-        .then( content => this.textContent ? EvernoteConnectionBase.stripFormatting(content) : content )
         .then( content => {
           this.messageLogger(`Fetched note content for ${guid} from server`)
           this.cache.set(guid, content);
           return content
         })
+        .then( content => this.textContent ? EvernoteConnectionBase.stripFormatting(content) : content )
     }
   }
 
   // cached note version fetch
   getNoteVersionCached(guid, version) {
     var key = `${guid}|${version}`;
+    var out;
     if (this.cache.has(key)) {
-      return new Promise((resolve,reject) => {
+      out = new Promise((resolve,reject) => {
         this.messageLogger(`Fetched note version for ${key} from cache`)
         resolve(this.cache.get(key))
-      })
+      });
     } else {
-      return this.getNoteVersion(guid, version)
+      out = this.getNoteVersion(guid, version)
         .then( v => {
           this.messageLogger(`Fetched note version for ${key} from server`);
-          if (this.textContent)
-            v.content = EvernoteConnectionBase.stripFormatting(v.content);
           this.cache.set(key, v);
           return v
-        })
+        });
     }
+    return out.then( v => {
+      if (this.textContent) {
+        v = new Note(v);
+        v.content = EvernoteConnectionBase.stripFormatting(v.content);
+      }
+      return v
+    })
   }
 
   // create a new note
