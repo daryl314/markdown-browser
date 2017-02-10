@@ -190,6 +190,13 @@ function guiReferences(getConnection){
 
   }());
 
+  window.addEventListener("error", function (e) {
+    gui.persistentWarning(`ERROR: ${e.error.message}`);
+    console.error(e.error.message);
+    console.log(e);
+    return false;
+  });
+
 
   ///// GUI HANDLERS /////
 
