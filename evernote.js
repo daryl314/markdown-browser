@@ -78,6 +78,7 @@ class EvernoteConnectionBase {
   listNoteVersions (guid) { return this._noteStorePromise('listNoteVersions', guid) }
   listNotebooks    ()     { return this._noteStorePromise('listNotebooks'         ) }
   listTags         ()     { return this._noteStorePromise('listTags'              ) }
+  getSyncState     ()     { return this._noteStorePromise('getSyncState'          ) }
 
   getNoteVersion(guid, version, withResourcesData=false, withResourcesRecognition=false, withResourcesAlternateData=false) {
     return this._noteStorePromise('getNoteVersion', guid, version, withResourcesData, withResourcesRecognition, withResourcesAlternateData) }
@@ -412,481 +413,150 @@ class WrappedNoteServer {
 }
 
 
-EvernoteConnection = function(){
+//////////////////////////////
+// HANDLER FOR OFFLINE DATA //
+//////////////////////////////
 
-  /////////////////////
-  // SYNCHRONIZATION //
-  /////////////////////
+class EvernoteOffline {
 
-  /* Process is documented at https://dev.evernote.com/media/pdf/edam-sync.pdf */
-
-  class EvernoteOffline {
-
-    constructor(localFolder) {
-      this._location = localFolder;
-    }
-
-    getMetadata() {
-      return EvernoteOffline.ajax({
-        type:     'GET',
-        dataType: 'json',
-        url:      `${this._location}/metadata.json`,
-        data:     {}
-      })
-        .then(meta => {
-          this.meta = meta;
-          this.notes     = new Map( meta.notes     .map(n => [n.guid,n]) );
-          this.notebooks = new Map( meta.notebooks .map(n => [n.guid,n]) );
-          this.tags      = new Map( meta.tags      .map(t => [t.guid,t]) );
-          this.resources = new Map( meta.resources .map(r => [r.guid,r]) );
-        })
-        .then(() => EvernoteOffline.ajax(`/@ls/${this._location}/*`) )
-        .then(f  => { this._processFiles(f) } )
-    }
-
-    getNoteContent(guid) {
-      var lastVersion = this.fileData[guid].reduce((a,b) => Math.max(a,b), 0);
-      return EvernoteOffline.ajax({
-        type: 'GET',
-        dataType: 'xml',
-        url: `${this._location}/notes/${guid}/${lastVersion}`
-      })
-    }
-
-    getNoteResourceMeta(guid) {
-      return Promise.all(
-        this.notes.get(guid).resources.map( r => {
-          return EvernoteOffline.ajax({
-            type: 'GET',
-            dataType: 'json',
-            url: `${this._location}/resources/${r.guid}/metadata.json`
-          }).then(res => {
-            res.data.bodyHash = Object.values(res.data.bodyHash).map(
-              x => (x < 16 ? '0' : '') + x.toString(16)
-            ).join('');
-            return res
-          })
-        })
-      )
-    }
-
-    _processFiles(files) {
-      this.fileData = {};
-      files.filter( (f) => f.startsWith(`${this._location}/notes/`) ).forEach( (f) => {
-        var [guid, version] = f.split('/notes/').pop().split('/');
-        this.fileData[guid] = this.fileData[guid] || [];
-        if (version !== 'versions.json' && version.match(/^\d+$/))
-          this.fileData[guid].push( parseInt(version) );
-      })
-    }
-
-    static connect(location) {
-      EvernoteOffline._instance = new EvernoteOffline(location);
-      var _this = EvernoteOffline._instance;
-      return _this.getMetadata()
-    }
-
-    static ajax(options) {
-      return new Promise((resolve, reject) => {
-        $.ajax(options).done(resolve).fail(reject);
-      });
-    };
-
-  }
-
-
-  // constructor
-  var Synchronizer = function(conn, localFolder) {
-    if (!(conn instanceof EvernoteConnection))
-      EvernoteConnection.errorHandler('EvernoteConnection required as first argument!');
-    if (!(localFolder))
-      EvernoteConnection.errorHandler('Synchronization output location required as second argument!');
-    this._conn = conn;
+  constructor(localFolder) {
     this._location = localFolder;
-    this._syncFilter = Synchronizer._syncFilter();
-    this.meta = null;
   }
 
-  // top-level function to perform synchronization
-  Synchronizer.prototype.synchronize = function(callback){
-    var _this = this;
-    $.ajax({
-      dataType: "json",
-      url: _this._metadataFile(),
-      data: {},
-      success: function(m){
-        _this._conn._logHandler("Loaded metadata file: "+_this._metadataFile());
-        _this.meta = m;
-        _this._syncMetadata(function(){ _this._processSyncChunks(callback) });
-      },
-      error: function(e){
-        if (e.status == 404) {
-          _this._conn._logHandler("Metadata file not found: starting fresh synchronization");
-          _this.meta = Synchronizer._metaDefaults;
-          _this._syncMetadata(function(){ _this._processSyncChunks(callback) });
-        } else {
-          _this._conn._errorHandler("Server error -- "+e.statusText);
-        }
-      }
-    });
-  }
-
-  // return the metadata json file
-  Synchronizer.prototype._metadataFile = function(){
-    return this._location+'/metadata.json';
-  }
-
-  // check metadata
-  Synchronizer.prototype._checkMetadata = function() {
-    var _this = this;
-    if (!(this.meta instanceof Object))
-      throw new Error('Invalid metadata object type');
-
-    // check that all required fields exist
-    [
-      'lastSyncCount',
-      'lastSyncTime',
-      'blockSize',
-      'notes',
-      'notebooks',
-      'resources',
-      'tags'
-    ].forEach(function(x){
-      if (_this.meta[x] === undefined || _this.meta[x] === null) {
-        throw new Error('Metadata field not defined: '+x);
-      }
+  getMetadata() {
+    return EvernoteOffline.ajax({
+      type:     'GET',
+      dataType: 'json',
+      url:      `${this._location}/metadata.json`,
+      data:     {}
     })
-
-    // check properties
-    if (this.meta.lastSyncCount < 0)
-      throw new Error('meta.lastSyncCount must be a non-negative integer')
-
+      .then(meta => {
+        this.meta = meta;
+        this.notes     = new Map( meta.notes     .map(n => [n.guid,n]) );
+        this.notebooks = new Map( meta.notebooks .map(n => [n.guid,n]) );
+        this.tags      = new Map( meta.tags      .map(t => [t.guid,t]) );
+        this.resources = new Map( meta.resources .map(r => [r.guid,r]) );
+      })
+      .then(() => EvernoteOffline.ajax(`/@ls/${this._location}/*`) )
+      .then(f  => { this._processFiles(f) } )
   }
 
-  // post updated metadata
-  Synchronizer.prototype._postMetaData = function(callback) {
-    var _this = this;
-    this._conn._logHandler("Posting updated metadata to "+this._metadataFile());
-    $.ajax({
-      type: "POST",
-      url: '@writer/'+this._metadataFile(),
-      data: JSON.stringify(this.meta),
-      success: callback,
-      error: function(e){
-        _this._conn._errorHandler("Server error "+e.status+" -- "+e.statusText);
-      },
-      dataType: 'text'
-    });
-  }
-
-  // function to remove fields that are not needed for cache
-  Synchronizer.prototype._cleanMeta = function(meta) {
-
-    // clean note list
-    for (var i = 0; i < (meta.notes||[]).length; i++) {
-
-      // filter note fields
-      n = _.pick(meta.notes[i], [
-        'created',
-        'updated',
-        'deleted',
-        'guid',
-        'notebookGuid',
-        'title',
-        'updateSequenceNum',
-        'tagGuids',
-        'resources'
-      ]);
-
-      // filter note resource data
-      for (var j = 0; j < (meta.notes[i].resources||[]).length; j++) {
-        n.resources[j] = _.pick(n.resources[j], [
-          'guid',
-          'mime',
-          'updateSequenceNum',
-          'height',
-          'width'
-        ]);
-      }
-
-      // replace note with new object
-      meta.notes[i] = n;
-    }
-
-    // clean resource list
-    for (var i = 0; i < (meta.resources||[]).length; i++) {
-      meta.resources[i] = _.pick(meta.resources[i], [
-        'guid',
-        'mime',
-        'updateSequenceNum',
-        'height',
-        'width'
-      ]);
-    }
-
-    // clean notebook list
-    for (var i = 0; i < (meta.notebooks||[]).length; i++) {
-      meta.notebooks[i] = _.pick(meta.notebooks[i], [
-        'guid',
-        'name',
-        'stack',
-        'updateSequenceNum'
-      ])
-    }
-  }
-
-  //
-  Synchronizer.prototype._syncMetadata = function(callback){
-    var _this = this;
-    _this._checkMetadata();
-
-    // fetch synchronization state to determine path of action
-    _this._conn.noteStore.getSyncState(_this._conn.authenticationToken, function(state){
-
-      // reset metadata if necessary
-      if (state.fullSyncBefore > _this.meta.lastSyncTime && _this.meta.lastSyncTime > 0) {
-        _this.meta.lastSyncCount = 0;
-        _this.meta.lastSyncTime = 0;
-      }
-
-      // perform synchronization
-      if (state.updateCount !== _this.meta.lastSyncCount) {
-        _this._fetchNextChunk(callback);
-      } else {
-        _this._conn._logHandler("No new synchronization data!");
-        if (callback) callback();
-      }
+  getNoteContent(guid) {
+    var lastVersion = this.fileData[guid].reduce((a,b) => Math.max(a,b), 0);
+    return EvernoteOffline.ajax({
+      type: 'GET',
+      dataType: 'xml',
+      url: `${this._location}/notes/${guid}/${lastVersion}`
     })
   }
 
-  // fetch next sync chunk
-  Synchronizer.prototype._fetchNextChunk = function(callback) {
-    var _this = this;
-    _this._conn._logHandler("Fetching data starting from afterUSN="+_this.meta.lastSyncCount);
-
-    // callback function
-    var cb = function(data) {
-
-      // check for a bad result
-      if (!(data instanceof SyncChunk)) {
-        _this._conn._errorHandler("Error receiving sync chunk");
-        return
-      }
-
-      // strip unnecessary fields from sync chunk results
-      _this._cleanMeta(data);
-
-      // append chunk data
-      if (data.notes    ) _this.meta.notes     = _this.meta.notes    .concat(data.notes    );
-      if (data.notebooks) _this.meta.notebooks = _this.meta.notebooks.concat(data.notebooks);
-      if (data.resources) _this.meta.resources = _this.meta.resources.concat(data.resources);
-      if (data.tags     ) _this.meta.tags      = _this.meta.tags     .concat(data.tags     );
-
-      // set sync counter in metadata to match position in chunk
-      _this.meta.lastSyncCount = data.chunkHighUSN;
-
-      // if more chunks are available, fetch them
-      if (data.chunkHighUSN < data.updateCount) {
-        _this._postMetaData();
-        _this._fetchNextChunk(callback);
-      } else {
-        _this.meta.lastSyncTime = data.currentTime;
-        _this._postMetaData();
-        if (callback) callback();
-      }
-    }
-
-    // perform the chunk request
-    _this._conn.noteStore.getFilteredSyncChunk(
-      _this._conn.authenticationToken,  // token
-      _this.meta.lastSyncCount,         // starting point for update
-      _this.meta.blockSize,             // number of chunks to fetch
-      _this._syncFilter,                // chunk filter
-      cb                                // callback function
-    );
+  getNoteResourceMeta(guid) {
+    return Promise.all(
+      this.notes.get(guid).resources.map( r => {
+        return EvernoteOffline.ajax({
+          type: 'GET',
+          dataType: 'json',
+          url: `${this._location}/resources/${r.guid}/metadata.json`
+        }).then(res => {
+          res.data.bodyHash = Object.values(res.data.bodyHash).map(
+            x => (x < 16 ? '0' : '') + x.toString(16)
+          ).join('');
+          return res
+        })
+      })
+    )
   }
 
-  // function to process chunk data
-  Synchronizer.prototype._processSyncChunks = function(callback) {
+  _processFiles(files) {
+    this.fileData = {};
+    files.filter( (f) => f.startsWith(`${this._location}/notes/`) ).forEach( (f) => {
+      var [guid, version] = f.split('/notes/').pop().split('/');
+      this.fileData[guid] = this.fileData[guid] || [];
+      if (version !== 'versions.json' && version.match(/^\d+$/))
+        this.fileData[guid].push( parseInt(version) );
+    })
+  }
 
-    // generate maps
-    this.notes     = new Map( this.meta.notes     .map(n => [n.guid,n]) );
-    this.notebooks = new Map( this.meta.notebooks .map(n => [n.guid,n]) );
-    this.tags      = new Map( this.meta.tags      .map(t => [t.guid,t]) );
-    this.resources = new Map( this.meta.resources .map(r => [r.guid,r]) );
+  static connect(location) {
+    EvernoteOffline._instance = new EvernoteOffline(location);
+    var _this = EvernoteOffline._instance;
+    return _this.getMetadata()
+  }
 
-    // instantiate connection to Evernote server
-    var conn = new EvernoteConnectionBase(this._conn.authenticationToken, "@proxy-https/www.evernote.com/shard/s2/notestore");
+  static ajax(options) {
+    return new Promise((resolve, reject) => {
+      $.ajax(options).done(resolve).fail(reject);
+    });
+  };
 
-    // synchronization base location
-    var loc = this._location;
+}
 
 
-    /////////////////////
-    // PROMISE HELPERS //
-    /////////////////////
+//////////////////////////////////////////
+// CLASS TO HANDLE PROXY SERVER FILE IO //
+//////////////////////////////////////////
 
-    function ajax(options) {
-      return new Promise(function(resolve, reject) {
-        $.ajax(options).done(resolve).fail(reject);
-      });
+class ProxyServerIO {
+
+  // wrap jQuery ajax call in a promise
+  static ajax(options) {
+    return new Promise(function(resolve, reject) {
+      $.ajax(options).done(resolve).fail(reject);
+    });
+  };
+
+  // load a file from proxy server
+  static load(url, dataType) {
+    return ProxyServerIO.ajax({
+      dataType  : dataType,
+      url       : url,
+      data      : {}
+    })
+  }
+
+  // save a file to proxy server
+  static save(url, data) {
+    var options = {
+      type: 'POST',
+      url: `@writer/${url}`,
+      headers: { 'x-mkdir': true }
     };
-
-    function ajaxSave(url, data) {
-      var options = {
-        type: 'POST',
-        url: `@writer/${loc}/${url}`,
-        headers: { 'x-mkdir': true }
-      };
-      if (data instanceof Uint8Array) {
-        options.data = data;
-        options.contentType = 'application/octet-stream';
-        options.processData = false;
-      } else if (data instanceof Object) {
-        options.data = JSON.stringify(data);
-      } else if (typeof(data) === 'string') {
-        options.data = data;
-      } else {
-        throw new Error('Invalid data type');
-      }
-      return ajax(options)
+    if (data instanceof Uint8Array) {
+      options.data = data;
+      options.contentType = 'application/octet-stream';
+      options.processData = false;
+    } else if (data instanceof Object) {
+      options.data = JSON.stringify(data);
+    } else if (typeof(data) === 'string') {
+      options.data = data;
+    } else {
+      throw new Error('Invalid data type');
     }
-
-    function sleep(s) {
-      return new Promise(function(resolve, reject) {
-        window.setTimeout(resolve, 1000*s)
-      })
-    }
-
-
-    //////////////////////
-    // FILE I/O HELPERS //
-    //////////////////////
-
-    var getAndSaveNote = (guid, version) => {
-      if (this.notes.get(guid).updateSequenceNum == version) {
-        return conn.getNoteContent(guid).then(content => {
-          return ajaxSave(`notes/${guid}/${version}`, content)
-            .then( () => console.log(`Saved file: notes/${guid}/${version}`) )
-        })
-      } else {
-        return conn.getNoteVersion(guid,version).then(data => {
-          return ajaxSave(`notes/${guid}/${version}`, data.content)
-            .then( () => console.log(`Saved file: notes/${guid}/${version}`) )
-        })
-      }
-    }
-
-    function saveVersionData(guid, v) {
-      return ajaxSave(`notes/${guid}/versions.json`, v).then( () => v )
-    }
-
-    function saveResource(res) {
-      return ajaxSave(`resources/${res.guid}/${res.guid}`, res.data.body)
-    }
-
-    function saveResourceMetaData(res) {
-      var newRes = Object.assign({}, res);
-      newRes.data = Object.assign({}, res.data);
-      delete newRes.data.body;
-      return ajaxSave(`resources/${res.guid}/metadata.json`, newRes)
-        .then( () => res )
-    }
-
-
-    //////////////////////
-    // EXECUTE PROMISES //
-    //////////////////////
-
-    // start promise chain by getting a list files in sync location
-    var p = ajax(`/@ls/${loc}/*`);
-
-    // extend chain to process each note
-    this.notes.forEach((n) => {
-      p = p.then(files => {
-        if (files.includes(`${loc}/notes/${n.guid}/${n.updateSequenceNum}`)) {
-          console.log(`Skipping note: ${n.title} [${n.guid}]`);
-          return files;
-        } else {
-          console.log(`Processing note: ${n.title} [${n.guid}]`);
-          return conn.listNoteVersions(n.guid)
-            .then( v => saveVersionData(n.guid,v) )
-            .then( v => v.map( vv => vv.updateSequenceNum ) )
-            .then( v => v.filter( vv => !files.includes(`${loc}/notes/${n.guid}/${vv}`) ) )
-            .then( v => {
-              return Promise.all( v.map( vv => getAndSaveNote(n.guid,vv) ) )
-                .then(() => getAndSaveNote(n.guid,n.updateSequenceNum) )
-                .then(() => console.log(`Finished processing note: ${n.title} [${n.guid}]`))
-                .then(() => sleep(10))
-            })
-            .then( () => files )
-        }
-      })
-    })
-
-    // extend chain to process each resource
-    this.resources.forEach((r) => {
-      p = p.then(files => {
-        if (files.includes(`${loc}/resources/${r.guid}/${r.guid}`)) {
-          console.log(`Skipping resource: [${r.guid}]`);
-          return files;
-        } else {
-          console.log(`Processing resource: [${r.guid}]`);
-          return conn.getResource(r.guid)
-            .then( saveResourceMetaData )
-            .then( saveResource )
-            .then( () => sleep(10) )
-            .then( () => files )
-        }
-      })
-    })
-
-    // execute callback
-    if (callback) {
-      p = p.then( () => callback() );
-    }
-
-    // add error handler to recurse if rate limit was reached
-    p = p.catch(err => {
-      if (err instanceof EDAMSystemException && err.errorCode == 19) {
-        console.log(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
-        sleep(err.rateLimitDuration+5)
-          .then(() => this._processSyncChunks(callback));
-      } else {
-        console.error(err)
-      }
-    });
-
+    return ProxyServerIO.ajax(options)
   }
 
-  ///// STATIC METHODS AND PROPERTIES /////
-
-  // create a connection
-  Synchronizer.connect = function(token, localFolder, opt) {
-    var conn = new EvernoteConnection(token, opt||{});
-    Synchronizer._instance = new Synchronizer(conn, localFolder);
+  static ls(loc, search="*") {
+    return ProxyServerIO.ajax(`/@ls/${loc}/${search}`);
   }
 
-  // perform synchronization
-  Synchronizer.synchronize = function(callback) {
-    Synchronizer._instance._conn._checkObject(Synchronizer._instance, Synchronizer);
-    Synchronizer._instance.synchronize(callback);
-  }
+}
 
-  // metadata defaults
-  Synchronizer._metaDefaults = {
-    lastSyncCount : 0,    // no sync performed
-    lastSyncTime  : 0,    // no sync performed
-    blockSize     : 100,  // fetch 100 entries at a time
-    notes         : [],   // empty list to contain note data
-    notebooks     : [],   // empty list to contain notebook data
-    resources     : [],   // empty list to contain resource data
-    tags          : []    // empty list to contain tag data
-  }
 
-  // filter to use for sync chunks
-  Synchronizer._syncFilter = function(){
-    return new SyncChunkFilter({
+/////////////////////
+// SYNCHRONIZATION //
+/////////////////////
+
+/* Process is documented at https://dev.evernote.com/media/pdf/edam-sync.pdf */
+
+class Synchronizer {
+
+  constructor(token, url, localFolder, maxResourceSize=Infinity, opt={}, ioHandler=ProxyServerIO) {
+    this._conn = new EvernoteConnectionCached(token, url, opt);
+    this._location = localFolder;
+    this._maxResourceSize = maxResourceSize;
+    this._ioHandler = ioHandler;
+    this.meta = null;
+    this._syncFilter = new SyncChunkFilter({
 
       // basic primitives
       includeNotes                              : true,
@@ -914,14 +584,320 @@ EvernoteConnection = function(){
     });
   }
 
-
-  //////////////////////
-  // FINAL PROCESSING //
-  //////////////////////
-
-  return {
-    Synchronizer: Synchronizer,
-    EvernoteOffline: EvernoteOffline
+  // return the metadata json file
+  get metadataFile() {
+    return this._location+'/metadata.json';
   }
 
-}();
+  // sleep for the specified number of seconds
+  static sleep(s) {
+    return new Promise(function(resolve, reject) {
+      window.setTimeout(resolve, 1000*s)
+    })
+  }
+
+  // log a message in a promise chain
+  _logMessage(msg, p) {
+    return p.then( x => {
+      this._conn.messageLogger(msg);
+      return x
+    })
+  }
+
+  ///// FILE IO UTILITIES /////
+
+  // load the metadata json file
+  _loadMetadata() {
+    return this._logMessage(`Loaded metadata file: ${this.metadataFile}`,
+      this._ioHandler.load(this.metadataFile, 'json'))
+  }
+
+  // save the metadata json file
+  _saveMetadata() {
+    return this._logMessage(`Posted updated metadata to file: ${this.metadataFile}`,
+      this._ioHandler.save(this.metadataFile, this.meta))
+  }
+
+  // get a list of resources
+  _listResources() {
+    return this._logMessage(`Listed resources at ${this._location}`,
+      this._ioHandler.ls(this._location))
+  }
+
+  // fetch a note from server and save to local storage
+  _getAndSaveNote(guid, version) {
+    if (this.notes.get(guid).updateSequenceNum == version) {
+      return this._conn.getNoteContent(guid).then(content => {
+        return this._logMessage(`Saved file: notes/${guid}/${version}`,
+          this._ioHandler.save(`${this._location}/notes/${guid}/${version}`, content))
+      })
+    } else {
+      return this._conn.getNoteVersion(guid,version).then(data => {
+        return this._logMessage(`Saved file: notes/${guid}/${version}`,
+          this._ioHandler.save(`${this._location}/notes/${guid}/${version}`, data.content))
+      })
+    }
+  }
+
+  // save note version data
+  _saveVersionData(guid, v) {
+    return this._logMessage(`Saved note version data for ${guid}`,
+      this._ioHandler.save(`${this._location}/notes/${guid}/versions.json`, v).then( () => v ))
+  }
+
+  // save resource contents
+  _saveResource(res) {
+    return this._logMessage(`Saved resource ${res.attributes.fileName} [${res.guid}]`,
+      this._ioHandler.save(`${this._location}/resources/${res.guid}/${res.guid}`, res.data.body).then( () => res ))
+  }
+
+  // save resource metadata
+  _saveResourceMetaData(res) {
+    var newRes = Object.assign({}, res);
+    newRes.data = Object.assign({}, res.data);
+    delete newRes.data.body;
+    return this._logMessage(`Saved resource metadata for ${res.attributes.fileName} [${res.guid}]`,
+      this._ioHandler.save(`${this._location}/resources/${res.guid}/metadata.json`, newRes).then( () => res ))
+  }
+
+  ///// SYNCHRONIZATION AND DEPENDENCIES /////
+
+  // top-level function to perform Synchronization
+  synchronize() {
+    return this._loadMetadata()
+      .catch(e => {
+        if (e.status == 404) {
+          this._conn.messageLogger("Metadata file not found: starting fresh synchronization");
+          return { // metadata defaults
+            lastSyncCount : 0,    // no sync performed
+            lastSyncTime  : 0,    // no sync performed
+            blockSize     : 100,  // fetch 100 entries at a time
+            notes         : [],   // empty list to contain note data
+            notebooks     : [],   // empty list to contain notebook data
+            resources     : [],   // empty list to contain resource data
+            tags          : []    // empty list to contain tag data
+          }
+        } else {
+          throw new Error(`Server error -- ${e.statusText}`);
+        }
+      })
+      .then(m => {
+        this.meta = m;
+        let p = this._syncMetadata();
+        return p.then(() => this._processSyncChunks())
+      })
+  }
+
+  // check metadata
+  _checkMetadata() {
+
+    // confirm that metadata property is an object
+    if (!(this.meta instanceof Object))
+      throw new Error('Invalid metadata object type');
+
+    // check that all required fields exist
+    [
+      'lastSyncCount',
+      'lastSyncTime',
+      'blockSize',
+      'notes',
+      'notebooks',
+      'resources',
+      'tags'
+    ].forEach(x => {
+      if (this.meta[x] === undefined || this.meta[x] === null) {
+        throw new Error('Metadata field not defined: '+x);
+      }
+    })
+
+    // check properties
+    if (this.meta.lastSyncCount < 0)
+      throw new Error('meta.lastSyncCount must be a non-negative integer')
+
+  }
+
+  // function to remove fields that are not needed for cache
+  _cleanMetadata(meta) {
+
+    // fields to keep
+    var fieldsToKeep = {
+      note: [
+        'created',
+        'updated',
+        'deleted',
+        'guid',
+        'notebookGuid',
+        'title',
+        'updateSequenceNum',
+        'tagGuids',
+        'resources'
+      ],
+      resource:  [
+        'guid',
+        'mime',
+        'data',
+        'updateSequenceNum',
+        'height',
+        'width'
+      ],
+      notebook: [
+        'guid',
+        'name',
+        'stack',
+        'updateSequenceNum'
+      ]
+    }
+
+    // process a resource
+    function processResource(res) {
+      if (res.data && res.data.bodyHash) {
+        res.data.bodyHash = Object.values(res.data.bodyHash).map(
+          x => (x < 16 ? '0' : '') + x.toString(16)
+        ).join('');
+      }
+      return _.pick(res, fieldsToKeep.resource)
+    }
+
+    // clean note list
+    meta.notes = (meta.notes || []).map(n => {
+      n = _.pick(n, fieldsToKeep.note);
+      n.resources = (n.resources || []).map(processResource);
+      return n
+    })
+
+    // clean resource list
+    meta.resources = (meta.resources || []).map(processResource);
+
+    // clean notebook list
+    meta.notebooks = (meta.notebooks || []).map(n => _.pick(n, fieldsToKeep.notebook));
+  }
+
+  // synchronize metadata
+  _syncMetadata() {
+
+    // check that current metadata are valid
+    this._checkMetadata();
+
+    // fetch synchronization state to determine path of action
+    return this._conn.getSyncState(this._conn.token).then(state => {
+
+      // reset metadata if necessary
+      if (state.fullSyncBefore > this.meta.lastSyncTime && this.meta.lastSyncTime > 0) {
+        this.meta.lastSyncCount = 0;
+        this.meta.lastSyncTime = 0;
+      }
+
+      // perform synchronization
+      if (state.updateCount !== this.meta.lastSyncCount) {
+        return this._fetchNextChunk();
+      } else {
+        this._conn.messageLogger("No new synchronization data!");
+        return new Promise((resolve,reject) => resolve()); // no-op promise
+      }
+    })
+  }
+
+  // fetch next sync chunk
+  _fetchNextChunk() {
+    this._conn.messageLogger("Fetching data starting from afterUSN="+this.meta.lastSyncCount);
+    return this._conn.getFilteredSyncChunk(
+      this.meta.lastSyncCount,         // starting point for update
+      this.meta.blockSize,             // number of chunks to fetch
+      this._syncFilter                 // chunk filter
+    ).then(data => {
+
+      // strip unnecessary fields from sync chunk results
+      this._cleanMetadata(data);
+
+      // append chunk data
+      if (data.notes    ) this.meta.notes     = this.meta.notes    .concat(data.notes    );
+      if (data.notebooks) this.meta.notebooks = this.meta.notebooks.concat(data.notebooks);
+      if (data.resources) this.meta.resources = this.meta.resources.concat(data.resources);
+      if (data.tags     ) this.meta.tags      = this.meta.tags     .concat(data.tags     );
+
+      // set sync counter in metadata to match position in chunk
+      this.meta.lastSyncCount = data.chunkHighUSN;
+
+      // if more chunks are available, fetch them
+      if (data.chunkHighUSN < data.updateCount) {
+        this._saveMetadata();
+        return this._fetchNextChunk();
+      } else {
+        this.meta.lastSyncTime = data.currentTime;
+        this._saveMetadata();
+        return this.meta;
+      }
+    })
+  }
+
+  // function to process chunk data
+  _processSyncChunks() {
+
+    // generate maps
+    this.notes     = new Map( this.meta.notes     .map(n => [n.guid,n]) );
+    this.notebooks = new Map( this.meta.notebooks .map(n => [n.guid,n]) );
+    this.tags      = new Map( this.meta.tags      .map(t => [t.guid,t]) );
+    this.resources = new Map( this.meta.resources .map(r => [r.guid,r]) );
+
+    // start promise chain by getting a list files in sync location
+    var p = this._listResources();
+
+    // extend chain to process each note
+    this.notes.forEach((n) => {
+      p = p.then(files => {
+        if (files.includes(`${this._location}/notes/${n.guid}/${n.updateSequenceNum}`)) {
+          console.log(`Skipping note: ${n.title} [${n.guid}]`);
+          return files;
+        } else {
+          console.log(`Processing note: ${n.title} [${n.guid}]`);
+          return this._conn.listNoteVersions(n.guid)
+            .then( v => this._saveVersionData(n.guid,v) )
+            .then( v => v.map( vv => vv.updateSequenceNum ) )
+            .then( v => v.filter( vv => !files.includes(`${this._location}/notes/${n.guid}/${vv}`) ) )
+            .then( v => {
+              return Promise.all( v.map( vv => this._getAndSaveNote(n.guid,vv) ) )
+                .then(() => this._getAndSaveNote(n.guid,n.updateSequenceNum) )
+                .then(() => console.log(`Finished processing note: ${n.title} [${n.guid}]`))
+                .then(() => Synchronizer.sleep(10))
+            })
+            .then( () => files )
+        }
+      })
+    })
+
+    // extend chain to process each resource
+    this.resources.forEach((r) => {
+      p = p.then(files => {
+        if (files.includes(`${this._location}/resources/${r.guid}/${r.guid}`)) {
+          console.log(`Skipping existing resource: [${r.guid}]`);
+          return files;
+        } else if (r.data.size > this._maxResourceSize) {
+          console.log(`Skipping large resource (${r.data.size}): [${r.guid}]`);
+          return files;
+        } else {
+          console.log(`Processing resource: [${r.guid}]`);
+          return this._conn.getResource(r.guid)
+            .then( (res) => this._saveResourceMetaData(res) )
+            .then( (res) => this._saveResource(res) )
+            .then( () => Synchronizer.sleep(10) )
+            .then( () => files )
+        }
+      })
+    })
+
+    // add error handler to recurse if rate limit was reached
+    p = p.catch(err => {
+      if (err instanceof EDAMSystemException && err.errorCode == 19) {
+        console.log(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
+        Synchronizer.sleep(err.rateLimitDuration+5)
+          .then(() => this._processSyncChunks(callback));
+      } else {
+        console.error(err)
+      }
+    });
+
+    // return the promise
+    return p
+  }
+
+}
