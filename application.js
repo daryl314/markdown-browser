@@ -1393,9 +1393,57 @@ function loadLocalFile(mdFile) {
 // LOCAL SYNCHRONIZATION SUPPORT //
 ///////////////////////////////////
 
+function viewLocalStorage() {
+  EvernoteOffline.connect('syncData').then( () => {
+    var conn = EvernoteOffline._instance;
+
+    gui.updateState({
+      currentTab  : 'viewer',
+      floatingTOC : false,
+      showHelp    : false
+    });
+    gui.$previewWindow.hide();
+    $('#browser-menu').add('#browser-notes').add('#browser-viewer').show();
+
+    var meta = conn.meta;
+    var tr = meta.notes.map( (n) => `<tr data-guid="${n.guid}"><td>${n.title}</td></tr>` );
+    $('#browser-notes').html( `<table width="100%" style="table-layout:fixed;font-size:0.8em;" border="1">${tr.join('\n')}</table>`);
+
+    $('#browser-notes').on('click', 'tr', function(){
+      var note = conn.notes.get( $(this).data('guid') );
+      conn.getNoteContent($(this).data('guid')).then(content => {
+          $('#browser-viewer').html( $(content).find('en-note').html() );
+          var hashLookup = new Map(note.resources.map(r => [r.data.bodyHash,r]));
+          $('#browser-viewer en-media').each( function() {
+            var mimeType = $(this).attr('type');
+            var resData = hashLookup.get($(this).attr('hash'));
+            var resLink = `syncData/resources/${resData.guid}/${resData.guid}`;
+            if (mimeType.startsWith('image/')) {
+              $(this).replaceWith(`<img src="${resLink}">`);
+            } else if (mimeType == 'application/pdf') {
+              $(this).replaceWith(`<object data='${resLink}' type='application/pdf' height="800" width="600"><a href='${resLink}'>${resLink}.pdf</a></object>`);
+            } else {
+              throw new Error(`Unrecognized mime type: ${mimeType}`);
+            }
+          });
+        })
+    })
+
+    conn.getNoteContent('4c337201-7320-4bf3-a646-ec096796ed16')
+      .then( (content) => {
+        $('#browser-viewer').html( $(content).find('en-note').html() );
+      });
+  })
+}
+
 function syncToLocalStorage() {
-  EvernoteConnection.Synchronizer.connect(localStorage.token, 'syncData');
-  EvernoteConnection.Synchronizer.synchronize( function(){ console.log('Sync complete!') } );
+  var sync = new Synchronizer(
+    localStorage.token,
+    "@proxy-https/www.evernote.com/shard/s2/notestore",
+    'syncData',
+    1e7
+  );
+  sync.synchronize().then(() => console.log('Sync complete!'));
 }
 
 
