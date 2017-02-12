@@ -8,6 +8,7 @@
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 import SocketServer
 from os import curdir, sep, path
+import subprocess
 import httplib
 import os
 import json
@@ -105,17 +106,18 @@ class S(BaseHTTPRequestHandler):
         else:
             try:
                 ext = path.splitext(self.path)[1]
-                # use a mime type based on extension if defined
-                if ext in mimeMap:
-                    mime = mimeMap[ext]
-                # use 'accept' mime type if one was provided
-                elif 'accept' in self.headers.dict and self.headers.dict['accept'].split(',')[0] != '*/*':
-                    mime = self.headers.dict['accept'].split(',')[0]
+                fileName = curdir + sep + self.path.replace('%20', ' ')
+                if os.path.isfile(fileName):
+                    if ext in mimeMap:
+                        mime = mimeMap[ext]
+                    else:
+                        mime = subprocess.check_output(["file",'--mime-type',fileName]).rstrip().split(' ')[-1]
+                        print('Detected mime type for '+self.path+': '+mime)
+                    f = open(fileName)
+                    self._sendData(f.read(), mime)
+                    f.close()
                 else:
-                    print('Extension not found in mime map: '+self.path)
-                f = open(curdir + sep + self.path.replace('%20', ' '))
-                self._sendData(f.read(), mime)
-                f.close()
+                    self.send_error(404,'File Not Found: %s' % self.path)
             except IOError:
                 self.send_error(404,'File Not Found: %s' % self.path)
 
