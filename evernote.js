@@ -283,10 +283,171 @@ class EvernoteConnectionCached extends EvernoteConnectionBase {
 // NOTE CONTAINER CLASS //
 //////////////////////////
 
-class WrappedNote {
+class Abstract {
+
+  // constructor: ensure that class being constructed is concrete
+  constructor (subClass) {
+    if (subClass === undefined) {
+      throw new TypeError('Subclass required in Abstract constructor');
+    } else if (new.target === subClass) {
+      throw new TypeError(`Cannot construct ${subClass.name} instances directly`);
+    }
+  }
+
+  // throw an error if a required method doesn't exist
+  checkMethod(m) {
+    if (this[m] === undefined) {
+      throw new TypeError("Must override method: "+m);
+    }
+  }
+
+  // throw an error if a required getter doesn't exist
+  checkGetter(m) {
+    if (this.__lookupGetter__(m) === undefined) {
+      throw new TypeError("Must provide a getter: "+m);
+    }
+  }
+}
+
+class WrappedNoteRO extends Abstract {
+  constructor(subClass) {
+    super(subClass || WrappedNoteRO);
+
+    // check for required getters
+    this.checkGetter('title');
+    this.checkGetter('notebook');
+    this.checkGetter('updated');
+    this.checkGetter('tags');
+    this.checkGetter('guid');
+  }
+
+  // getter for update time as a string
+  get updatedStr() {
+    return WrappedNoteRO.dateString(this.updated)
+  }
+
+  // getter for tags as a string
+  get tagStr() {
+    return this.tags.join(',')
+  }
+
+  // format a date as a string
+  static dateString(d) {
+    return new Intl.DateTimeFormat("en-US", {
+      year    : 'numeric',
+      month   : '2-digit',
+      day     : '2-digit',
+      hour    : '2-digit',
+      minute  : '2-digit',
+      second  : '2-digit',
+      hour12  : false
+    }).format(new Date(d))
+  }
+
+}
+
+class WrappedNoteRW extends WrappedNoteRO {
+  constructor(subClass) {
+    super(subClass || WrappedNoteRW);
+    if (new.target === WrappedNoteRW) {
+      throw new TypeError("Cannot construct WrappedNoteRW instances directly");
+    }
+  }
+}
+
+class StaticWrappedNote extends WrappedNoteRO {
+  constructor (note, meta) {
+    super();
+    this._note = note;
+    this._tags = (note.tagGuids||[]).map( g => meta.tags.filter( t => t.guid == g )[0].name );
+    this._notebook = meta.notebooks.filter( nb => nb.guid == note.notebookGuid )[0].name;
+  }
+  get title    () { return this._note.title   }
+  get notebook () { return this._notebook     }
+  get tags     () { return this._tags         }
+  get updated  () { return this._note.updated }
+  get guid     () { return this._note.guid    }
+}
+
+class WrappedNoteROCollection {
+
+  constructor() {
+    this._notes = [];
+    this._filteredNotes = null;
+    this._field = 'updated';
+    this._reverse = true;
+    this._filter = null;
+  }
+
+  get notes() {
+    if (this._filteredNotes !== null) {
+      return this._filteredNotes;
+    } else {
+      return this._notes;
+    }
+  }
+
+  add(note) {
+    if (note instanceof WrappedNoteRO) {
+      this._notes.push(note);
+    } else {
+      throw new TypeError('Must add a WrappedNoteRO');
+    }
+  }
+
+  sortBy(field, reverse=false) {
+
+    // use string representation of tag list
+    if (field == 'tags')
+      field = 'tagStr';
+
+    // sort numeric fields
+    if (field == 'updated') {
+      if (reverse) {
+        this._notes.sort( (a,b) => b[field] - a[field] );
+      } else {
+        this._notes.sort( (a,b) => a[field] - b[field] );
+      }
+
+    // sort string fields
+    } else {
+      if (reverse) {
+        this._notes.sort( (a,b) => b[field].toLowerCase() > a[field].toLowerCase() ? 1 : -1 );
+      } else {
+        this._notes.sort( (a,b) => b[field].toLowerCase() > a[field].toLowerCase() ? -1 : 1 );
+      }
+    }
+
+    // repeat filter if one exists
+    if (this._filter !== null) {
+      this.filter(this._filter);
+    } else {
+      this._filteredNotes = null;
+    }
+
+    // save the sort settings
+    this._field = field;
+    this._reverse = reverse;
+
+  }
+
+  map(fn) {
+    return this.notes.map(fn);
+  }
+
+  filter(fn) {
+    this._filteredNotes = this._notes.filter(fn);
+    this._filter = fn;
+    return this._filteredNotes;
+  }
+
+}
+
+class WrappedNote extends WrappedNoteRW {
 
   // given a Note or NoteMetadata object, encapsulate it in a class with server connectivity
   constructor(conn, note) {
+    super();
     if (!(conn instanceof EvernoteConnectionBase))
       EvernoteConnection.errorHandler('EvernoteConnection required as first argument!');
     if (!(note instanceof Note) && !(note instanceof NoteMetadata))
@@ -319,7 +480,7 @@ class WrappedNote {
   get notebook   () { return this._conn.notebookMap.get(this._note.notebookGuid).name }
   get version    () { return this._note.updateSequenceNum                             }
   get updated    () { return this._note.updated                                       }
-  get updatedStr () { return WrappedNote.dateString(this._note.updated)              }
+  get tags       () { return (this._note.tagGuids||[]).map( g => this._conn.tagMap.get(g).name ) }
 
   // return a copy of the object
   copy() {
@@ -350,19 +511,6 @@ class WrappedNote {
   getVersions() {
     return this._conn.listNoteVersions(this.guid)
       .then( versions => versions.map(v => WrappedNote.fromVersion(this, v)) )
-  }
-
-  // format a date as a string
-  static dateString(d) {
-    return new Intl.DateTimeFormat("en-US", {
-      year    : 'numeric',
-      month   : '2-digit',
-      day     : '2-digit',
-      hour    : '2-digit',
-      minute  : '2-digit',
-      second  : '2-digit',
-      hour12  : false
-    }).format(new Date(d))
   }
 
 }
