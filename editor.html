@@ -340,6 +340,55 @@
       border-bottom: 1px solid #eeeeee;
     }
 
+    /* Browser */
+
+    table#browser-note-list {
+      table-layout:fixed;
+      font-size:0.8em;
+      width:100%;
+    }
+
+    table#browser-note-list, table#browser-note-list th, table#browser-note-list td {
+      border: 1px solid grey;
+      border-collapse: collapse;
+    }
+
+    table#browser-note-list th, table#browser-note-list td {
+      padding-left: 5px;
+      padding-right: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    table#browser-note-list th {
+      background-color: lightgrey;
+      font-weight: bold;
+    }
+
+    table#browser-note-list th.sort-asc::before {
+      content: "\25bc";
+    }
+
+    table#browser-note-list th.sort-dsc::before {
+      content: "\25b2";
+    }
+
+    #browser-menu > ul {
+      font-size: 0.8em;
+      list-style-type: none;
+      padding-left: 0;
+    }
+
+    #browser-menu > ul ul {
+      list-style-type: none;
+      padding-left:10px;
+    }
+
+    #browser-menu, #browser-notes, #browser-viewer {
+      height:100vh;
+      overflow-y:scroll;
+    }
 
   </style>
 </head>
@@ -439,18 +488,19 @@
     </section>
 
     <!-- BROWSING WINDOW -->
-    <section id="browser-menu" style="display:none" class="col-md-2" role="complementary">
+    <section id="browser-menu" style="display:none" class="col-md-1" role="complementary">
       <ul>
         <li>Notes</li>
-        <li>Notebooks</li>
-        <li>Tags</li>
+        <li id="browser-menu-notebooks">Notebooks<ul></ul></li>
+        <li id="browser-menu-tags">Tags<ul></ul></li>
         <li>Atlas</li>
         <li>Trash</li>
       </ul>
     </section>
     <section id="browser-notes" style="display:none" class="col-md-5" role="complementary">
+      <table id="browser-note-list"></table>
     </section>
-    <section id="browser-viewer" style="display:none" class="col-md-5" role="complementary">
+    <section id="browser-viewer" style="display:none" class="col-md-6" role="complementary">
     </section>
 
     <!-- HELP TEXT WINDOW -->
@@ -464,7 +514,7 @@
     </section>
 
     <!-- HISTORY WINDOWS -->
-    <section id="history-list" class="col-md-2" style="display:none" role="complientary">
+    <section id="history-list" class="col-md-2" style="display:none; height:100vh; overflow-y:scroll" role="complientary">
       <ul class="list-group">
         <li class="list-group-item">
           <span class="badge">1</span>

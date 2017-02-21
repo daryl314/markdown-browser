@@ -1394,8 +1394,64 @@ function loadLocalFile(mdFile) {
 ///////////////////////////////////
 
 function viewLocalStorage() {
+
   EvernoteOffline.connect('syncData').then( () => {
     var conn = EvernoteOffline._instance;
+    var notes = new WrappedNoteROCollection();
+    conn.meta.notes.forEach(n => {
+      if (n.deleted === null) {
+        notes.add(new StaticWrappedNote(n,conn.meta))
+      }
+    });
+    notes.sortBy('updated', true);
+
+    window.wnc = notes;
+
+    var tagNoteCounts = new Map(conn.meta.tags.map(t => [t.name, 0]));
+    var notebookNoteCounts = new Map(conn.meta.notebooks.map(nb => [nb.name,0]));
+    notes._notes.forEach(n => {
+      notebookNoteCounts.set(n.notebook, notebookNoteCounts.get(n.notebook)+1);
+      n.tags.forEach(t => {
+        tagNoteCounts.set(t, tagNoteCounts.get(t)+1);
+      });
+    });
+
+    var notebooksByStack = {};
+    conn.meta.notebooks.forEach(nb => {
+      let stack = nb.stack || "Default";
+      notebooksByStack[stack] = notebooksByStack[stack] || [];
+      notebooksByStack[stack].push(nb);
+    });
+    Object.keys(notebooksByStack).sort().forEach(k => {
+      let li = notebooksByStack[k].map( nb => `<li data-guid="${nb.guid}">${nb.name} [${notebookNoteCounts.get(nb.name)}]</li>` );
+      $('#browser-menu li#browser-menu-notebooks > ul').append(
+        `<li>${k}<ul>${li.join('\n')}</ul></li>`
+      )
+    });
+
+    var tagMap = new Map(conn.meta.tags.map(t => [t.guid,t]));
+    var tagChildren = new Map(conn.meta.tags.map(t => [t.guid, []]));
+    var rootTags = [];
+    conn.meta.tags.forEach(t => {
+      let parent = t.parentGuid;
+      if (parent) {
+        tagChildren.get(parent).push(t.guid);
+      } else {
+        rootTags.push(t.guid);
+      }
+    });
+    function tagToHtml(guid) {
+      let nTagged = tagNoteCounts.get(tagMap.get(guid).name);
+      if (tagChildren.get(guid).length > 0) {
+        var children = tagChildren.get(guid).map(g => tagToHtml(g)).join('');
+        return `<li data-guid="${guid}">${tagMap.get(guid).name} [${nTagged}]<ul>${children}</ul></li>`
+      } else {
+        return `<li data-guid="${guid}">${tagMap.get(guid).name} [${nTagged}]</li>`
+      }
+    }
+    rootTags.forEach(t => {
+      $('#browser-menu li#browser-menu-tags > ul').append(tagToHtml(t));
+    });
 
     gui.updateState({
       currentTab  : 'viewer',
@@ -1405,11 +1461,41 @@ function viewLocalStorage() {
     gui.$previewWindow.hide();
     $('#browser-menu').add('#browser-notes').add('#browser-viewer').show();
 
-    var meta = conn.meta;
-    var tr = meta.notes.map( (n) => `<tr data-guid="${n.guid}"><td>${n.title}</td></tr>` );
-    $('#browser-notes').html( `<table width="100%" style="table-layout:fixed;font-size:0.8em;" border="1">${tr.join('\n')}</table>`);
+    function render() {
+      var tr = notes.map( n => `<tr data-guid="${n.guid}">
+        <td>${n.updatedStr}</td>
+        <td>${n.title}</td>
+        <td>${n.notebook}</td>
+        <td>${n.tags}</td>
+      </tr>` ).join('\n');
+      $('table#browser-note-list').html(
+        `<thead>
+          <tr>
+            <th style="width:20%" data-field="updated" class="sort-asc">Updated</th>
+            <th style="width:40%" data-field="title">Title</th>
+            <th style="width:20%" data-field="notebook">Notebook</th>
+            <th style="width:20%" data-field="tags">Tags</th>
+          </tr>
+        </thead><tbody>
+          ${tr}
+        </tbody>`
+      );
+    }
 
-    $('#browser-notes').on('click', 'tr', function(){
+    render();
+
+    $('#browser-notes').on('click', 'thead th', function(){
+      var field = $(this).data('field');
+      var sort_rev = $(this).hasClass('sort-dsc');
+      notes.sortBy(field, sort_rev);
+      render();
+      $('#browser-notes thead th')
+        .removeClass('sort-asc sort-dsc')
+        .filter( function(){ return $(this).data('field') == field } )
+        .addClass( sort_rev ? 'sort-asc' : 'sort-dsc' )
+    });
+
+    $('#browser-notes').on('click', 'tbody tr', function(){
       var note = conn.notes.get( $(this).data('guid') );
       conn.getNoteContent($(this).data('guid')).then(content => {
           $('#browser-viewer').html( $(content).find('en-note').html() );
@@ -1427,7 +1513,23 @@ function viewLocalStorage() {
             }
           });
         })
-    })
+    });
+
+    $('#browser-menu li#browser-menu-notebooks').on('click', 'li', function(event){
+      event.stopPropagation();
+      var notebook = conn.notebooks.get( $(this).data('guid') ).name;
+      console.log("Filtering for notebook: "+notebook);
+      notes.filter( n => n.notebook == notebook );
+      render();
+    });
+
+    $('#browser-menu li#browser-menu-tags').on('click', 'li', function(event){
+      event.stopPropagation();
+      var tag = conn.tags.get( $(this).data('guid') ).name;
+      console.log("Filtering for tag: "+tag)
+      notes.filter( n => n.tags.includes(tag) );
+      render();
+    });
 
     conn.getNoteContent('4c337201-7320-4bf3-a646-ec096796ed16')
       .then( (content) => {
