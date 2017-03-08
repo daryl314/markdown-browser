@@ -13,329 +13,582 @@
 // GUI CONTROL //
 /////////////////
 
-// function to configure GUI and return references once document is ready.  the
-// input argument is a function passes a WrappedNoteServer instance to the
-// provided callback function:
-//    getConnection( wnsInstance => {
-//      wnsInstance.doSomething();
-//    })
-function guiReferences(getConnection){
+class NotificationHandler {
 
-  ///// GUI ELEMENTS /////
-
-  // object containing handles to elements
-  gui = {
-
-    // container for menu bar
-    $mainMenu        : $('body > header#main-menu'),
-
-    // File menu
-    $fileMenu        : $('body > header#main-menu li#fileMenu'),
-    $loadMenuItem    : $('body > header#main-menu a#showNoteList'),
-    $newNote         : $('body > header#main-menu a#newNote'),
-    $saveNote        : $('body > header#main-menu a#saveNote'),
-    $saveNoteAs      : $('body > header#main-menu a#saveNoteAs'),
-    $refresh         : $('body > header#main-menu a#refreshConnection'),
-    $updateToken     : $('body > header#main-menu a#updateToken'),
-
-    // Nav menu
-    $navMenu         : $('body > header#main-menu ul#navMenu'),
-    $noteTitle       : $('body > header#main-menu li#noteTitle'),
-    $toggleTOC       : $('body > header#main-menu a#toggleFloatingTOC'),
-
-    // Tabs
-    $viewEditor      : $('body > header#main-menu a#viewEditor'),
-    $viewHistory     : $('body > header#main-menu a#viewHistory'),
-    $viewViewer      : $('body > header#main-menu a#viewViewer'),
-    $viewChanges     : $('body > header#main-menu a#viewChanges'),
-    $viewHelp        : $('body > header#main-menu a#viewHelp'),
-
-    // floating table of contents
-    $floatingTOC     : $('#application-window ul#floating-toc'),
-
-    // windows
-    $historyMenu     : $('#application-window section#history-list'),
-    $historyList     : $('#application-window section#history-list ul.list-group'),
-    $historyWindow   : $('#application-window section#history-container'),
-    $noteMenu        : $('#application-window section#nav-list'),
-    $noteList        : $('#application-window section#nav-list ul.list-group'),
-    $editorWindow    : $('#application-window main#content'),
-    $editor          : $('#application-window main#content textarea#editor'),
-    $previewWindow   : $('#application-window section#viewer-container'),
-    $previewContents : $('#application-window section#viewer-container div#viewer'),
-    $helpWindow      : $('#application-window section#help-container'),
-    $helpContents    : $('#application-window section#help-container div#rendered-help'),
-    $tocWindow       : $('#application-window section#floating-toc-container'),
+  constructor() {
 
     // alert components
-    $promptTemplate  : $('#promptTemplate'),
-    $promptOverlay   : $('#overlay-background'),
-    $promptBody      : $('#promptTemplate #modalTitle'),
-    $promptInput     : $('#promptTemplate .modal-body input'),
-    $promptOK        : $('#promptTemplate button.btn-primary'),
-    $alertContainer  : $('#alertContainer'),
-    $alertTemplate   : $('#alertTemplate')
-  };
+    this.$promptTemplate  = $('#promptTemplate');
+    this.$promptOverlay   = $('#overlay-background');
+    this.$promptBody      = $('#promptTemplate #modalTitle');
+    this.$promptInput     = $('#promptTemplate .modal-body input');
+    this.$promptOK        = $('#promptTemplate button.btn-primary');
+    this.$alertContainer  = $('#alertContainer');
+    this.$alertTemplate   = $('#alertTemplate')
 
-  // return a jquery selection containing a list of selectors
-  function wrapList(a) {
-    var $el = $(a[0]);
-    for (var i = 0; i < a.length; i++)
-      $el = $el.add(a[i]);
+    // collection of elements to show/hide in dialog box prompts
+    this.$dialogElements = this.$promptTemplate
+      .add(this.$promptOverlay)
+      .add(this.$promptInput.parent());
+  }
+
+  // helper function to create a new notification window
+  _createNotification(message) {
+    return this.$alertTemplate
+      .clone()
+      .appendTo(this.$alertContainer)
+      .attr('id','')
+      .show()
+      .append(message);
+  }
+
+  // create a persistent alert window
+  persistentAlert(message) {
+    return this._createNotification(message).addClass('alert-info');
+  }
+
+  // create a transient alert window (hide after 5 seconds)
+  transientAlert(message) {
+    var $el = this._createNotification(message).addClass('alert-info').delay(5000).slideUp();
+    window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
     return $el;
   }
 
-  // attach a wrapped set of tabs
-  gui.$allTabs = wrapList([
-    gui.$viewEditor,
-    gui.$viewViewer,
-    gui.$viewHistory,
-    gui.$viewChanges,
-    gui.$viewHelp
-  ]);
+  // create a persistent warning window
+  persistentWarning(message) {
+    return this._createNotification(message).addClass('alert-danger');
+  }
 
-  // attach a wrapped set of windows
-  gui.$allWindows = wrapList([
-    gui.$historyMenu,
-    gui.$historyWindow,
-    gui.$editorWindow,
-    gui.$previewWindow,
-    gui.$noteMenu,
-    gui.$tocWindow,
-    gui.$helpWindow
-  ]);
+  // create a transient warning window (hide after 5 seconds)
+  transientWarning(message) {
+    var $el = this._createNotification(message).addClass('alert-danger').delay(5000).slideUp();
+    window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
+    return $el;
+  }
 
-
-  ///// STATE VARIABLES /////
-
-  gui.state = {
-    staleHistory  : true,             // is note history list out-of-date?
-    diffCache     : {},               // cached version diff data
-    currentTab    : "editor",         // currently selected tab
-    showNoteList  : false,            // should note list be rendered?
-    noteTitle     : 'Untitled Note',  // title of current note
-    floatingTOC   : false,            // display floating TOC menu?
-    showHelp      : false,            // display help instead of preview?
-    noteClean     : true,             // are there unsaved changes?
-    generation    : null,             // generation number for clean note state
-    hasServer     : false,            // is a server connection available?
-    currentNote   : null              // GUID of current note
-  };
-
-
-  ///// DIALOG BOXES /////
-
-  (function() {
-
-    // create a new notification window
-    gui.createNotification = function(message) {
-      return gui.$alertTemplate
-        .clone()
-        .appendTo(gui.$alertContainer)
-        .attr('id','')
-        .show()
-        .append(message);
-    }
-
-    // create a persistent alert window
-    gui.persistentAlert = function(message) {
-      return gui.createNotification(message).addClass('alert-info');
-    }
-
-    // create a transient alert window (hide after 5 seconds)
-    gui.transientAlert = function(message) {
-      $el = gui.createNotification(message).addClass('alert-info').delay(5000).slideUp();
-      window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
-      return $el;
-    }
-
-    // create a persistent warning window
-    gui.persistentWarning = function(message) {
-      return gui.createNotification(message).addClass('alert-danger');
-    }
-
-    // create a transient warning window (hide after 5 seconds)
-    gui.transientWarning = function(message) {
-      $el = gui.createNotification(message).addClass('alert-danger').delay(5000).slideUp();
-      window.setTimeout( function(){$el.remove()}, 6000 ); // clean up element after hiding
-      return $el;
-    }
-
-    // collection of elements to show/hide in dialog box prompts
-    var $dialogElements = gui.$promptTemplate
-      .add(gui.$promptOverlay)
-      .add(gui.$promptInput.parent());
-
-    // prompt user for input
-    gui.promptForInput = function(message, default_entry, callback) {
-      $dialogElements.show();
-      gui.$promptBody.text(message);
-      gui.$promptInput.val(default_entry);
-      gui.$promptOK.off('click').one('click', function(){
+  // prompt user for input
+  promptForInput(message, default_entry) {
+    return new Promise((resolve,reject) => {
+      this.$dialogElements.show();
+      this.$promptBody.text(message);
+      this.$promptInput.val(default_entry);
+      this.$promptOK.off('click').one('click', function(){
         $dialogElements.hide();
-        if (callback) callback( gui.$promptInput.val() );
+        resolve( this.$promptInput.val() );
       });
-    }
+    })
+  }
 
-    // prompt user for confirmation
-    gui.promptForConfirmation = function(message, callback) {
-      $dialogElements.show();
-      gui.$promptBody.text(message);
-      gui.$promptInput.parent().hide();
-      gui.$promptOK.off('click').one('click', function(){
+  // prompt user for confirmation
+  promptForConfirmation(message) {
+    return new Promise((resolve,reject) => {
+      this.$dialogElements.show();
+      this.$promptBody.text(message);
+      this.$promptInput.parent().hide();
+      this.$promptOK.off('click').one('click', function(){
         $dialogElements.hide();
-        if (callback) callback();
+        resolve();
       });
-    }
+    })
+  }
 
-  }());
+}
 
-  window.addEventListener("error", function (e) {
-    gui.persistentWarning(`ERROR: ${e.error.message}`);
-    console.error(e.error.message);
-    console.log(e);
-    return false;
-  });
+class GuiControl {
 
+  constructor(cm, wns) {
 
-  ///// GUI HANDLERS /////
+    // attach server if one was provided
+    this.server = wns ? wns : null;
 
-  gui.updateState = function(stateUpdate) {
+    // attach CodeMirror instance
+    this.cm = cm ? cm : null;
 
-    // check input
-    if (stateUpdate !== undefined && typeof(stateUpdate) !== 'object')
-      throw new Error("Invalid input");
+    // attach jQuery references to GUI elements
+    this._attachReferences();
 
-    // iterate over state change keys and set in GUI state
-    if (stateUpdate) {
-      var k = Object.keys(stateUpdate);
-      for (var i = 0; i < k.length; i++) {
-        if (gui.state[k[i]] === undefined) {
-          throw new Error("Invalid state key: "+k[i]);
-        } else {
-          gui.state[k[i]] = stateUpdate[k[i]];
-        }
-      }
-    }
+    // enumeration for tabs
+    this.tabs = {
+      editor  : 1,
+      viewer  : 2,
+      changes : 3,
+      history : 4,
+      help    : 5
+    };
 
-    // set note title
-    if (!gui.state.noteClean)
-      gui.$noteTitle.html('<span class="modificationFlag">Mod</span>'+gui.state.noteTitle);
-    else
-      gui.$noteTitle.text(gui.state.noteTitle);
+    // state properties that trigger a refresh
+    this.state = {
+      currentNote   : null,             // GUID of current note
+      currentTab    : this.tabs.editor, // currently selected tab
+      floatingTOC   : false,            // display floating TOC menu?
+      noteClean     : true,             // are there unsaved changes?
+      noteTitle     : 'Untitled Note',  // title of current note
+      showNoteList  : false             // should note list be rendered?
+    };
 
-    // clear changes window if note is no longer modified
-    if (gui.state.noteClean)
-      gui.$historyWindow.empty();
+    // other properties
+    this.diffCache     = {};            // cached version diff data
+    this.generation    = null;          // generation number for clean note state
+    this.staleHistory  = true;          // is note history list out-of-date?
 
-    // reset arrow box classes
-    gui.$allTabs.removeClass('arrow_box');
+    // add a global error listener
+    window.addEventListener("error", (e) => {
+      this.persistentWarning(`ERROR: ${e.error.message}`);
+      console.error(e.error.message);
+      console.log(e);
+      return false;
+    });
 
-    // hide all windows
-    gui.$allWindows.hide();
+    // attach event handlers
+    this._registerCallbacks();
 
-    // disable/enable menu items with server connection
-    $serverItems = gui.$loadMenuItem.parent()
-      .add(gui.$saveNote.parent())
-      .add(gui.$saveNoteAs.parent())
-      .add(gui.$refresh.parent());
-    if (gui.state.hasServer) {
-      $serverItems.removeClass('disabled');
-      gui.$fileMenu.show();
-    } else {
-      $serverItems.addClass('disabled');
-      gui.$fileMenu.hide();
-    }
-
-    // reset column size classes
-    gui.$previewWindow.removeClass('col-md-4 col-md-5 col-md-6 col-md-8 col-md-10');
-    gui.$editorWindow.removeClass('col-md-4 col-md-5 col-md-6');
-    gui.$historyWindow.removeClass('col-md-10 col-md-12');
-
-    // disable tabs that require loaded notes if applicable
-    if (gui.state.currentNote) {
-      gui.$viewHistory.parent('li').removeClass('disabled');
-      gui.$viewChanges.parent('li').removeClass('disabled');
-    } else {
-      gui.$viewHistory.parent('li').addClass('disabled');
-      gui.$viewChanges.parent('li').addClass('disabled');
-    }
-
-    // show floating TOC menu if requested
-    if (gui.state.floatingTOC) {
-      gui.$tocWindow.show();
-    }
-
-    // show note list menu if requested
-    if (gui.state.showNoteList) {
-      gui.$noteMenu.show();
-    }
-
-    // helper function to set column width class based on state
-    function setWidthClass($el) {
-      if ($el.length == 2 && gui.state.showNoteList && gui.state.floatingTOC) {
-        $el.addClass('col-md-4');
-      } else if ($el.length == 2 && (gui.state.showNoteList || gui.state.floatingTOC) ) {
-        $el.addClass('col-md-5');
-      } else if ($el.length == 2) {
-        $el.addClass('col-md-6');
-      } else if ($el.length == 1 && gui.state.showNoteList && gui.state.floatingTOC) {
-        $el.addClass('col-md-8');
-      } else if ($el.length == 1 && (gui.state.showNoteList || gui.state.floatingTOC) ) {
-        $el.addClass('col-md-10');
-      } else if ($el.length == 1) {
-        $el.addClass('col-md-12');
-      }
-      return $el;
-    }
-
-    // configure 'editor' mode
-    if (gui.state.currentTab == 'editor') {
-      gui.$viewEditor.addClass('arrow_box');
-      setWidthClass( gui.$editorWindow.add(gui.$previewWindow) ).show();
-
-    // configure 'viewer' mode
-    } else if (gui.state.currentTab == 'viewer') {
-      gui.$viewViewer.addClass('arrow_box');
-      setWidthClass( gui.$previewWindow ).show();
-
-    // configure 'changes' mode
-  } else if (gui.state.currentTab == 'changes') {
-      gui.$viewChanges.addClass('arrow_box');
-      setWidthClass( gui.$historyWindow ).show();
-
-    // configure 'history' mode
-    } else if (gui.state.currentTab == 'history') {
-      gui.$viewHistory.addClass('arrow_box');
-      gui.$historyWindow.addClass('col-md-10').show();
-      gui.$historyMenu.show();
-
-    // configure 'help' mode
-    } else if (gui.state.currentTab == 'help') {
-      gui.$viewHelp.addClass('arrow_box');
-      setWidthClass( gui.$editorWindow.add(gui.$helpWindow) ).show();
-
-    // otherwise an error
-    } else {
-      throw new Error("Invalid tab state: "+gui.state.currentTab);
-    }
-
+    // create a dialog handler
+    this.dialogHandler = new NotificationHandler();
 
   }
 
-  // function to navigate to a table of contents cross-reference
-  gui.navigationHandler = function(event){
-    if (this !== gui.$toggleTOC[0]) {
-      var $target = $( $(this).data('href') );
-      gui.$previewWindow.scrollTop(gui.$previewWindow.scrollTop() + $target.position().top);
-    }
-  };
+  // attach a data connections
+  attachServer(wns) {
+    this.server = wns;
+    this._debouncedRefresh();
+  }
 
+  // attach a CodeMirror instance
+  attachCodeMirror(cm) {
+    this.cm = cm;
+  }
+
+  // getters for properties that trigger a refresh
+  get currentNote  () { return this.state.currentNote  }
+  get currentTab   () { return this.state.currentTab   }
+  get floatingTOC  () { return this.state.floatingTOC  }
+  get noteClean    () { return this.state.noteClean    }
+  get noteTitle    () { return this.state.noteTitle    }
+  get showNoteList () { return this.state.showNoteList }
+
+  // other getters
+  get hasServer    () { return this.server != null     }
+  get isWritable   () { }
+
+  // setters for state properties that trigger a refresh
+  set currentNote  (v) { this.state.currentNote  = v; this._debouncedRefresh(); }
+  set currentTab   (v) { this.state.currenTab    = v; this._debouncedRefresh(); }
+  set floatingTOC  (v) { this.state.floatingTOC  = v; this._debouncedRefresh(); }
+  set noteClean    (v) { this.state.noteClean    = v; this._debouncedRefresh(); }
+  set noteTitle    (v) { this.state.noteTitle    = v; this._debouncedRefresh(); }
+  set showNoteList (v) { this.state.showNoteList = v; this._debouncedRefresh(); }
+
+  // throttled call to refresh function
+  _debouncedRefresh() {
+    var _this = this;
+    if (!this._refreshTimer) {
+      var callback = function() {
+        _this._refreshTimer = undefined;
+        _this.refresh();
+      }
+      this._refreshTimer = window.setTimeout(callback, 50);
+    }
+  }
+
+  // refresh gui to reflect state changes
+  refresh() {
+
+    // helper function to clear width classes
+    function clearWidthClasses($el) {
+      $el.removeClass('col-md-1 col-md-2 col-md-3 col-md-4 col-md-5 col-md-6 col-md-7 col-md-8 col-md-9 col-md-10 col-md-11 col-md-12');
+    }
+
+    // helper function to set column width class based on state
+    var setWidthClass = ($el) => {
+      let width = 12 - (this.showNoteList ? 2 : 0) - (this.floatingTOC ? 2 : 0);
+      if ($el.length == 2) {
+        $el.addClass(`col-md-${width/2}`)
+      } else {
+        $el.addClass(`col-md-${width}`)
+      }
+      return $el;
+    }
+
+    ///// SHOW AND HIDE GUI ELEMENTS /////
+
+    // set note title
+    if (!this.noteClean)
+      this.$noteTitle.html('<span class="modificationFlag">Mod</span>'+this.noteTitle);
+    else
+      this.$noteTitle.text(this.noteTitle);
+
+    // clear changes window if note is no longer modified
+    if (this.noteClean)
+      this.$historyWindow.empty();
+
+    // reset arrow box classes
+    this.$allTabs.removeClass('arrow_box');
+
+    // hide all windows
+    this.$allWindows.hide();
+
+    // disable/enable menu items with server connection
+    if (this.hasServer) {
+      this.$serverItems.removeClass('disabled');
+      this.$fileMenu.show();
+    } else {
+      this.$serverItems.addClass('disabled');
+      this.$fileMenu.hide();
+    }
+
+    // reset column size classes
+    clearWidthClasses(this.$previewWindow.add(this.$editorWindow).add(this.$historyWindow));
+
+    // disable tabs that require loaded notes if applicable
+    if (this.currentNote) {
+      this.$viewHistory.parent('li').removeClass('disabled');
+      this.$viewChanges.parent('li').removeClass('disabled');
+    } else {
+      this.$viewHistory.parent('li').addClass('disabled');
+      this.$viewChanges.parent('li').addClass('disabled');
+    }
+
+    // show floating TOC menu if requested
+    if (this.floatingTOC) {
+      this.$tocWindow.show();
+    }
+
+    // show note list menu if requested
+    if (this.showNoteList) {
+      this.$noteMenu.show();
+    }
+
+    ///// CONFIGURE TAB DISPLAY /////
+
+    switch (this.currentTab) {
+
+      case this.tabs.editor:
+        this.$viewEditor.addClass('arrow_box');
+        setWidthClass( this.$editorWindow.add(this.$previewWindow) ).show();
+        break;
+
+      case this.tabs.viewer:
+        this.$viewViewer.addClass('arrow_box');
+        setWidthClass( this.$previewWindow ).show();
+        break;
+
+      case this.tabs.changes:
+        this.$viewChanges.addClass('arrow_box');
+        setWidthClass( this.$historyWindow ).show();
+        break;
+
+      case this.tabs.history:
+        this.$viewHistory.addClass('arrow_box');
+        this.$historyWindow.addClass('col-md-10').show();
+        this.$historyMenu.show();
+        break;
+
+      case this.tabs.help:
+        this.$viewHelp.addClass('arrow_box');
+        setWidthClass( this.$editorWindow.add(this.$helpWindow) ).show();
+        break;
+
+      default:
+        throw new Error("Invalid tab state: "+this.state.currentTab);
+    }
+  }
+
+  ///// HELPER FUNCTIONS /////
+
+  // attach jQuery references to object
+  _attachReferences() {
+
+    // container for menu bar
+    this.$mainMenu        = $('body > header#main-menu');
+
+    // File menu
+    this.$fileMenu        = $('body > header#main-menu li#fileMenu');
+    this.$loadMenuItem    = $('body > header#main-menu a#showNoteList');
+    this.$newNote         = $('body > header#main-menu a#newNote');
+    this.$saveNote        = $('body > header#main-menu a#saveNote');
+    this.$saveNoteAs      = $('body > header#main-menu a#saveNoteAs');
+    this.$refresh         = $('body > header#main-menu a#refreshConnection');
+    this.$updateToken     = $('body > header#main-menu a#updateToken');
+
+    // Nav menu
+    this.$navMenu         = $('body > header#main-menu ul#navMenu');
+    this.$noteTitle       = $('body > header#main-menu li#noteTitle');
+    this.$toggleTOC       = $('body > header#main-menu a#toggleFloatingTOC');
+
+    // Tabs
+    this.$viewEditor      = $('body > header#main-menu a#viewEditor');
+    this.$viewHistory     = $('body > header#main-menu a#viewHistory');
+    this.$viewViewer      = $('body > header#main-menu a#viewViewer');
+    this.$viewChanges     = $('body > header#main-menu a#viewChanges');
+    this.$viewHelp        = $('body > header#main-menu a#viewHelp');
+
+    // floating table of contents
+    this.$floatingTOC     = $('#application-window ul#floating-toc');
+
+    // windows
+    this.$historyMenu     = $('#application-window section#history-list');
+    this.$historyList     = $('#application-window section#history-list ul.list-group');
+    this.$historyWindow   = $('#application-window section#history-container');
+    this.$noteMenu        = $('#application-window section#nav-list');
+    this.$noteList        = $('#application-window section#nav-list ul.list-group');
+    this.$editorWindow    = $('#application-window main#content');
+    this.$editor          = $('#application-window main#content textarea#editor');
+    this.$previewWindow   = $('#application-window section#viewer-container');
+    this.$previewContents = $('#application-window section#viewer-container div#viewer');
+    this.$helpWindow      = $('#application-window section#help-container');
+    this.$helpContents    = $('#application-window section#help-container div#rendered-help');
+    this.$tocWindow       = $('#application-window section#floating-toc-container');
+
+    // attach a wrapped set of tabs
+    this.$allTabs = [
+      this.$viewEditor,
+      this.$viewViewer,
+      this.$viewHistory,
+      this.$viewChanges,
+      this.$viewHelp
+    ].reduce( (a,b) => a.add($(b)), $() );
+
+    // attach a wrapped set of windows
+    this.$allWindows = [
+      this.$historyMenu,
+      this.$historyWindow,
+      this.$editorWindow,
+      this.$previewWindow,
+      this.$noteMenu,
+      this.$tocWindow,
+      this.$helpWindow
+    ].reduce( (a,b) => a.add($(b)), $() );
+
+    // collection of elements to disable without a writable connection
+    this.$serverItems = this.$loadMenuItem.parent()
+      .add(this.$saveNote.parent())
+      .add(this.$saveNoteAs.parent())
+      .add(this.$refresh.parent());
+
+  }
+
+  // attach to jQuery events
+  _registerCallbacks() {
+
+    // reference gui object for jQuery callbacks
+    var _this = this;
+
+    // bind to clicking on 'History' tab
+    this.$viewHistory.off('click').on('click', function(){
+      if (_this.currentTab !== _this.tabs.history) {
+        if (_this.currentNote === null) {
+          _this.transientAlert("No note currently loaded!")
+        } else if (_this.staleHistory) {
+          _this.diffCache = {}; // clear cache
+          _this.currentTab = _this.tabs.history;
+          _this.floatingTOC = false;
+          _this.showHelp = false;
+          _this.server.connect()
+            .then(conn => {
+              let note = conn.getNote(_this.currentNote);
+              note.getVersions().then(versionData => {
+                _this.populateNoteHistory(note, versionData);
+                _this.staleHistory = false;
+              })
+            })
+        }
+      }
+    });
+
+    // bind to clicking on 'Editor' tab
+    this.$viewEditor.off('click').on('click', function(){
+      if (_this.currentTab !== _this.tabs.editor) {
+        _this.currentTab = _this.tabs.editor;
+        _this.floatingTOC = false;
+        _this.showHelp = false;
+      }
+    });
+
+    // bind to clicking on 'Viewer' tab
+    this.$viewViewer.off('click').on('click', function(){
+      if (_this.currentTab !== _this.tabs.viewer) {
+        _this.currentTab = _this.tabs.viewer;
+        _this.floatingTOC = false;
+        _this.showHelp = false;
+      }
+    })
+
+    // bind to clicking on 'Help' tab
+    this.$viewHelp.off('click').on('click', function(){
+      if (_this.currentTab !== _this.tabs.help) {
+        _this.currentTab = _this.tabs.help;
+        _this.floatingTOC = false;
+        _this.showHelp = true;
+      }
+    })
+
+    // bind to clicking on 'Changes' tab --> preview note changes from server version
+    this.$viewChanges.off('click').on('click', function(){
+      if (_this.currentTab !== _this.tabs.changes) {
+        if (_this.currentNote === null) {
+          _this.transientAlert("No note currently loaded!")
+        } else {
+          _this.server.connect()
+            .then(conn => {
+              let note = conn.getNote(_this.currentNote);
+              note.getContent()
+                .then(oldContent => {
+                  _this.currentTab = _this.tabs.changes;
+                  _this.floatingTOC = false;
+                  _this.showHelp = false;
+                  compareBlocks(oldContent, _this.cm.getValue(), _this.diffOptions(note.title));
+                })
+            })
+        }
+      }
+    })
+
+    // bind to table of contents entry clicks
+    function navigationHandler(event){
+      if (this !== _this.$toggleTOC[0]) {
+        var $target = $( $(this).data('href') );
+        _this.$previewWindow.scrollTop(_this.$previewWindow.scrollTop() + $target.position().top);
+      }
+    };
+    this.$navMenu.off('click').on('click', 'a', navigationHandler);
+    this.$floatingTOC.off('click').on('click', 'a', navigationHandler);
+    this.$previewWindow.off('click').on('click', 'toc a', navigationHandler);
+
+    // 'Toggle Floating Menu' --> toggle display of floating TOC menu
+    this.$toggleTOC.off('click').on('click', function(){
+      _this.floatingTOC = !_this.floatingTOC;
+    })
+
+    // bind to 'Load' menu and trigger refresh on first click
+    this.$loadMenuItem.off('click').on('click', function(){
+      if (_this.hasServer) {
+        _this.showNoteList = true;
+        _this.server.connect().then(conn => {
+          _this.populateNoteList(conn.notes);
+        })
+      }
+    })
+
+    // bind to clicks on notes in note list
+    this.$noteList.off('click').on('click', 'a', function(){
+      var guid = $(this).data('guid');
+      _this.$noteList.find('a.list-group-item.selected').removeClass('selected');
+      $(this).addClass('selected');
+      _this.server.connect()
+        .then(conn => {
+          let note = conn.getNote(guid);
+          note.getContent().then(content => {
+            _this.populateNote(guid, content);
+            _this.generation = _this.cm.changeGeneration();
+            _this.showNoteList = false;
+            _this.noteClean = true;
+            _this.noteTitle = note.title;
+          })
+        })
+    });
+
+    // bind to clicks on history items
+    this.$historyMenu.off('click').on('click', 'a', function(){
+      $(this).toggleClass('active');
+      var selectedItems = _this.$historyList.find('a.active').map( function(){
+        return $(this).data('sequence')}
+      ).toArray();
+      _this.$historyWindow.empty();
+      _this.server.connect()
+        .then(conn => conn.getNote(_this.currentNote).getContent(selectedItems))
+        .then(contentArr => {
+          _this.computeVersionDiffs(selectedItems, contentArr, _this.diffCache);
+          // wait until all data are ready in case of click backlog
+          if (_this.diffReady()) _this.renderNoteDiffs();
+        })
+    })
+
+    // 'Save' --> update a note
+    this.$saveNote.off('click').on('click', function(){
+      if (_this.hasServer) {
+        if (_this.currentNote === null) {
+          _this.transientAlert("No note currently loaded!")
+        } else {
+          _this.server.connect()
+            .then(conn => {
+              let note = conn.getNote(_this.currentNote);
+              note.setContent(_this.cm.getValue()).then(() => {
+                _this.transientAlert("Note "+_this.currentNote+" updated: "+note.title);
+                _this.generation = _this.cm.changeGeneration();
+                _this.staleHistory = true;
+                _this.noteClean = true;
+              })
+            })
+        }
+      }
+    });
+
+    // 'Save As' --> write a new note to server
+    this.$saveNoteAs.off('click').on('click', function(){
+      if (_this.hasServer) {
+        _this.promptForInput('New note name', 'Untitled').then(noteTitle => {
+          if (noteTitle !== null) {
+            _this.server.connect()
+              .then(conn => conn.newNote(noteTitle, _this.cm.getValue()))
+              .then(note => {
+                _this.generation = _this.cm.changeGeneration();
+                _this.staleHistory = true;
+                _this.currentNote = note.guid;
+                _this.noteTitle = noteTitle;
+                _this.noteClean = true;
+                _this.populateNoteList(conn.notes);
+              })
+          }
+        })
+      }
+    })
+
+    // 'New' --> reset editor
+    this.$newNote.off('click').on('click', function(){
+      var callback = function() {
+        _this.currentNote = null; // undefined in updateState throws exception
+        _this.cm.setValue('');
+        _this.generation = _this.cm.changeGeneration();
+        _this.noteTitle = 'Untitled Note';
+        _this.noteClean = true;
+        _this.staleHistory = true;
+      }
+      if (!_this.noteClean) {
+        _this.promptForConfirmation('Note has unsaved changes: okay to proceed?').then(() => callback());
+      } else {
+        callback();
+      }
+    })
+
+    // 'Refresh' --> Refresh connection with server
+    this.$refresh.off('click').on('click', function() {
+      if (_this.hasServer) {
+        _this.server.connect()
+          .then(conn => conn.fetchMetaData())
+          .then(conn => {
+            _this.populateNoteList(conn.notes);
+            _this.transientAlert("Refreshed server connection");
+          })
+      }
+    })
+
+  }
+
+  ///// DIALOG BOXES /////
+
+  persistentAlert       (message) { return this.dialogHandler.persistentAlert       (message) }
+  transientAlert        (message) { return this.dialogHandler.transientAlert        (message) }
+  persistentWarning     (message) { return this.dialogHandler.persistentWarning     (message) }
+  transientWarning      (message) { return this.dialogHandler.transientWarning      (message) }
+  promptForConfirmation (message) { return this.dialogHandler.promptForConfirmation (message) }
+  promptForInput(message, default_entry) {
+    return this.dialogHandler.promptForInput(message, default_entry)
+  }
 
   ///// DATA VIEWS /////
 
   // render note list
-  gui.populateNoteList = function(notes) {
+  populateNoteList(notes) {
 
     // sorted list of unique notebooks
     var notebooks = _.chain(notes)
@@ -349,86 +602,74 @@ function guiReferences(getConnection){
     var groupedNotes = _.groupBy(notes, n=>n.notebook);
 
     // reset note list
-    gui.$noteList.empty();
+    this.$noteList.empty();
 
     // iterate over notebooks
-    _.each(notebooks, function(notebook){
-
-      //
-      gui.$noteList.append(
-        '<li class="list-group-item active">' + notebook + '</li>'
-      );
-
-      // iterate over notes in notebook
-      var notes = _.sortBy(groupedNotes[notebook], function(n){return n.title.toLowerCase()});
-      _.each(notes, function(note) {
-
-        //
-        gui.$noteList.append(
-          '<a href="#" class="list-group-item" data-guid="'+note.guid+'">' + note.title + '</a>'
-        );
-      });
+    notebooks.forEach(notebook => {
+      this.$noteList.append(`<li class="list-group-item active">${notebook}</li>`);
+      _.sortBy(groupedNotes[notebook], n => n.title.toLowerCase()).forEach(note => {
+        this.$noteList.append(`<a href="#" class="list-group-item" data-guid="${note.guid}">${note.title}</a>`);
+      })
     });
   }
 
-  // populate GUI with note content
-  gui.populateNote = function(guid, content) {
+  // populate editor with note content
+  populateNote(guid, content) {
 
     // put note content in editor
-    cm.setValue(content);
+    this.cm.setValue(content);
 
     // if note has changed, flag note history list as stale and update its attached note guid
-    if (gui.state.currentNote !== guid)
-      gui.state.staleHistory = true;
+    if (this.currentNote !== guid)
+      this.staleHistory = true;
 
     // update GUID of current note
-    gui.state.currentNote = guid;
-
+    this.currentNote = guid;
   }
 
   // generate note history menu for a specified note
-  gui.populateNoteHistory = function(note, versionData) {
+  populateNoteHistory(note, versionData) {
 
     // helper function to create a history menu item
     function historyItem(version, date) {
-      return '<a href="#" class="list-group-item" data-sequence="'+version+'">' + date + '</a>'
+      return `<a href="#" class="list-group-item" data-sequence="${version}">${date}</a>`
     }
 
     // append menu entry for current version
-    gui.$historyList.empty().append(historyItem(note.version, note.updatedStr));
+    this.$historyList.empty().append(historyItem(note.version, note.updatedStr));
 
     // append menu entries for older versions
     // NOTE: this should be returning wrapped Notes
-    for (var i = 0; i < versionData.length; i++) {
-      gui.$historyList.append(historyItem(versionData[i].version, versionData[i].updatedStr));
-    }
+    versionData.forEach(v => {
+      this.$historyList.append(historyItem(v.version, v.updatedStr));
+    })
   }
 
   // generate viw of note diff data
-  gui.renderNoteDiffs = function() {
+  renderNoteDiffs() {
 
     // get selected item list
-    var $el = GUI.$historyList.find('a.active');
+    var $el = this.$historyList.find('a.active');
     var selectedItems = $el.map( function(){return $(this).data('sequence')} ).toArray();
 
     // clear history window
-    GUI.$historyWindow.empty();
+    this.$historyWindow.empty();
 
     // if only one version is selected, display the content of this version
     if (selectedItems.length == 1) {
-      GUI.$historyWindow
+      this.$historyWindow
         .append('<h2>' + $($el[0]).text() + '</h2>')
-        .append('<div class="text-diff">' + escapeText(gui.state.diffCache[selectedItems[0]][null]) + '</div>')
+        .append('<div class="text-diff">' + escapeText(this.diffCache[selectedItems[0]][null]) + '</div>')
 
     // otherwise show diffs between selected versions
     } else {
       for (var i = selectedItems.length-2; i >= 0; i--) {
         compareBlocks(
-          gui.state.diffCache[ selectedItems[i+1] ][ null ],
-          gui.state.diffCache[ selectedItems[i]   ][ null ],
-          gui.diffOptions(
+          this.diffCache[ selectedItems[i+1] ][ null ],
+          this.diffCache[ selectedItems[i]   ][ null ],
+          this.diffOptions(
             $($el[i+1]).text() + ' &rarr; ' + $($el[i]).text(),
-            gui.state.diffCache[ selectedItems[i+1] ][ selectedItems[i] ]
+            this.diffCache[ selectedItems[i+1] ][ selectedItems[i] ]
           )
         );
       }
@@ -439,18 +680,18 @@ function guiReferences(getConnection){
   ///// HELPER FUNCTIONS /////
 
   // options to pass to diff function
-  gui.diffOptions = function(title, d) {
+  diffOptions(title, d) {
     return {
       title       : title,
       diffData    : d,
-      $container  : gui.$historyWindow,
+      $container  : this.$historyWindow,
       validate    : true,
       style       : 'adjacent'
     }
   }
 
   // compute diffs between a list of note versions
-  gui.computeVersionDiffs = function(keyArr, contentArr, diffCache) {
+  computeVersionDiffs(keyArr, contentArr, diffCache) {
 
     // add entries for keys (version numbers) if they aren't already in cache
 
@@ -485,10 +726,10 @@ function guiReferences(getConnection){
   }
 
   // return true if all note diff data are ready
-  gui.diffReady = function() {
+  diffReady() {
 
     // currently selected versions in version list
-    var selectedItems = gui.$historyList.find('a.active').map( function(){return $(this).data('sequence')} ).toArray();
+    var selectedItems = this.$historyList.find('a.active').map( function(){return $(this).data('sequence')} ).toArray();
 
     // if only one item is selected, don't need anything in cache
     if (selectedItems.length < 2) {
@@ -500,8 +741,8 @@ function guiReferences(getConnection){
 
         // if an entry doesn't exist for the current pair, return false
         if (!(
-            gui.state.diffCache[selectedItems[i+1]] &&
-            gui.state.diffCache[selectedItems[i+1]][selectedItems[i]]
+            this.diffCache[selectedItems[i+1]] &&
+            this.diffCache[selectedItems[i+1]][selectedItems[i]]
         )) {
           return false
         }
@@ -511,282 +752,314 @@ function guiReferences(getConnection){
       return true
     }
   }
-
-
-  ///// SERVER CONNECTIVITY /////
-
-  // generate a list of notes on server
-  gui.generateNoteList = function(refresh, callback) {
-    if (callback === undefined) {
-      callback = refresh;
-      refresh = false;
-    }
-    getConnection(function(conn){
-      if (refresh) {
-        conn.fetchMetaData().then(() => {
-          gui.populateNoteList(conn.notes);
-          if (callback) callback();
-        })
-      } else {
-        gui.populateNoteList(conn.notes);
-        if (callback) callback();
-      }
-    })
-  }
-
-  // load note contents with optional version number(s)
-  gui.loadNoteContents = function(guid, versions, callback) {
-    if (callback === undefined) {
-      callback = versions;
-      versions = null;
-    }
-    getConnection(function(conn){
-      var note = conn.getNote(guid);
-      note.getContent(versions).then(content => {
-        if (callback) callback(content, note)
-      })
-    })
-  }
-
-  // update a note
-  gui.updateNote = function(guid, content, callback) {
-    getConnection(function(conn) {
-      conn.getNote(guid).updateContent(content).then(callback);
-    });
-  }
-
-  // create a new note
-  gui.createNote = function(title, content, callback) {
-    getConnection(function(conn) {
-      conn.newNote(title, content).then(callback);
-    });
-  }
-
-  // fetch a note version list
-  gui.fetchNoteVersions = function(guid, callback) {
-    getConnection(function(conn) {
-      var note = conn.getNote(guid);
-      note.getVersions().then(versionList => {
-        if (callback) callback(versionList, note);
-      })
-    })
-  }
-
-
-  ///// ATTACH TO EVENTS /////
-
-  // bind to clicking on 'History' tab
-  gui.$viewHistory.on('click', function(){
-    if (gui.state.currentTab !== 'history') {
-      if (gui.state.currentNote === null) {
-        gui.transientAlert("No note currently loaded!")
-      } else if (gui.state.staleHistory) {
-        gui.state.diffCache = {}; // clear cache
-        gui.updateState({
-          currentTab  : 'history',
-          floatingTOC : false,
-          showHelp    : false
-        });
-        gui.fetchNoteVersions(gui.state.currentNote, function(versionData, note) {
-          gui.populateNoteHistory(note, versionData);
-          gui.state.staleHistory = false;
-        })
-      }
-    }
-  });
-
-  // bind to clicking on 'Editor' tab
-  gui.$viewEditor.on('click', function(){
-    if (gui.state.currentTab !== 'editor')
-      gui.updateState({
-        currentTab  : 'editor',
-        floatingTOC : false,
-        showHelp    : false
-      });
-  });
-
-  // bind to clicking on 'Viewer' tab
-  gui.$viewViewer.on('click', function(){
-    if (gui.state.currentTab !== 'viewer')
-      gui.updateState({
-        currentTab  : 'viewer',
-        floatingTOC : true,
-        showHelp    : false
-      });
-  })
-
-  // bind to clicking on 'Help' tab
-  gui.$viewHelp.on('click', function(){
-    if (gui.state.currentTab !== 'help')
-      gui.updateState({
-        currentTab  : 'help',
-        floatingTOC : false,
-        showHelp    : true
-      });
-  })
-
-  // bind to clicking on 'Changes' tab --> preview note changes from server version
-  gui.$viewChanges.on('click', function(){
-    if (gui.state.currentTab !== 'changes') {
-      if (gui.state.currentNote === null) {
-        gui.transientAlert("No note currently loaded!")
-      } else {
-        gui.loadNoteContents(gui.state.currentNote, function(oldContent, note){
-          gui.updateState({
-            currentTab  : 'changes',
-            floatingTOC : false,
-            showHelp    : false
-          });
-          compareBlocks(oldContent, cm.getValue(), gui.diffOptions(note.title));
-        })
-      }
-    }
-  })
-
-  // bind to table of contents entry clicks
-  gui.$navMenu.on('click', 'a', gui.navigationHandler);
-  gui.$floatingTOC.on('click', 'a', gui.navigationHandler);
-  gui.$previewWindow.on('click', 'toc a', gui.navigationHandler);
-
-  // 'Toggle Floating Menu' --> toggle display of floating TOC menu
-  gui.$toggleTOC.on('click', function(){
-    gui.updateState({
-      floatingTOC: !gui.state.floatingTOC
-    })
-  })
-
-  // bind to 'Load' menu and trigger refresh on first click
-  gui.$loadMenuItem.on('click', function(){
-    if (gui.state.hasServer) {
-      gui.updateState({ showNoteList : true });
-      gui.generateNoteList();
-    }
-  })
-
-  // bind to clicks on notes in note list
-  gui.$noteList.on('click', 'a', function(){
-    var guid = $(this).data('guid');
-    gui.$noteList.find('a.list-group-item.selected').removeClass('selected');
-    $(this).addClass('selected');
-    gui.loadNoteContents(guid, function(content, note){
-      gui.populateNote(guid, content);
-      gui.state.generation = cm.changeGeneration();
-      gui.updateState({
-        showNoteList : false,
-        noteClean    : true,
-        noteTitle    : note.title
-      });
-    });
-  });
-
-  // bind to clicks on history items
-  gui.$historyMenu.on('click', 'a', function(){
-    $(this).toggleClass('active');
-    var selectedItems = gui.$historyList.find('a.active').map( function(){
-      return $(this).data('sequence')}
-    ).toArray();
-    gui.$historyWindow.empty();
-    gui.loadNoteContents(gui.state.currentNote, selectedItems, function(contentArr){
-      gui.computeVersionDiffs(selectedItems, contentArr, gui.state.diffCache);
-      // wait until all data are ready in case of click backlog
-      if (gui.diffReady()) gui.renderNoteDiffs();
-    })
-  })
-
-  // 'Save' --> update a note
-  gui.$saveNote.on('click', function(){
-    if (gui.state.hasServer) {
-      if (gui.state.currentNote === null) {
-        gui.transientAlert("No note currently loaded!")
-      } else {
-        gui.updateNote(gui.state.currentNote, cm.getValue(), function(note){
-          gui.transientAlert("Note "+gui.state.currentNote+" updated: "+note.title);
-          gui.state.generation = cm.changeGeneration();
-          gui.updateState({
-            staleHistory  : true,
-            noteClean     : true
-          });
-        })
-      }
-    }
-  });
-
-  // 'Save As' --> write a new note to server
-  gui.$saveNoteAs.on('click', function(){
-    if (gui.state.hasServer) {
-      gui.promptForInput('New note name', 'Untitled', function(noteTitle) {
-        if (noteTitle !== null) {
-          gui.generateNoteList(function(){
-            gui.createNote(noteTitle, cm.getValue(), function(note){
-              gui.state.generation = cm.changeGeneration();
-              gui.updateState({
-                staleHistory  : true,
-                currentNote   : note.guid,
-                noteTitle     : noteTitle,
-                noteClean     : true
-              })
-              gui.generateNoteList();
-            })
-          });
-        }
-      })
-    }
-  });
-
-  // 'New' --> reset editor
-  gui.$newNote.on('click', function(){
-    var callback = function() {
-      gui.state.currentNote = null; // undefined in updateState throws exception
-      cm.setValue('');
-      gui.state.generation = cm.changeGeneration();
-      gui.updateState({
-        noteTitle     : 'Untitled Note',
-        noteClean     : true,
-        staleHistory  : true
-      });
-    }
-    if (!gui.state.noteClean) {
-      gui.promptForConfirmation('Note has unsaved changes: okay to proceed?', callback);
-    } else {
-      callback();
-    }
-  })
-
-  // 'Refresh' --> Refresh connection with server
-  gui.$refresh.on('click', function() {
-    if (gui.state.hasServer) {
-      gui.generateNoteList(true, function() {
-        gui.transientAlert("Refreshed server connection");
-      })
-    }
-  })
-
-
-  ///// CLEANUP /////
-
-  return gui;
 }
 
 
 ////////////////////////////
-// CACHED LATEX RENDERING //
+// SCROLL SYNCHRONIZATION //
 ////////////////////////////
 
-// convert a latex string to HTML code (with caching to speed procesing)
-var cachedLatex = {}; // cache
-function latexToHTML(latex, isBlock) {
-  if (cachedLatex[latex]) {
-    return cachedLatex[latex];
-  } else {
-    try {
-      out = katex.renderToString(latex, {
-        displayMode: isBlock,
-        throwOnError: false
-      });
-      cachedLatex[latex] = out;
-      return out;
-    } catch (err) {
-      return '<span style="color:red">' + err + '</span>'
+class ScrollSync {
+
+  constructor(cm, $el, $toc) {
+
+    // attach CodeMirror instance, preview window container, and table of contents
+    this.cm = cm;
+    this.$el = $el;
+    this.$toc = $toc;
+
+    // line number lookup array
+    this.lineMap = null;
+
+    // heading location lookup array
+    this.headingLookup = null;
+
+    // counters for number of triggered scroll actions.  this lets the scrolled
+    // window know that its scrolling was triggered by a user scroll in the ohter
+    // window.  otherwise there is a circular dependency and the windows fight with
+    // each other
+    this.scrollState = {
+      editorCount : 0,
+      viewerCount : 0
+    };
+
+    // don't generate debugging data
+    this.debug = false;
+
+    // reference to this for callbacks
+    var _this = this;
+
+    // initialize scroll sync data
+    this.refresh();
+
+    // bind function to scroll preview window to editor location
+    this.cm.off('scroll');
+    this.cm.on('scroll',
+      _.debounce(
+        function(){ _this.scrollTo(_this.visibleLines().top); },
+        100,
+        {maxWait:100}
+      )
+    );
+
+    // bind function to scroll editor window to preview location
+    this.$el.off('scroll').on('scroll',
+      _.debounce(
+        function(){ _this.scrollFrom($(this).scrollTop()); },
+        100,
+        {maxWait:100}
+      )
+    );
+  }
+
+  // refresh scroll sync information
+  refresh() {
+    var _this = this;
+
+    // capture line numbers
+    var x = [], y = [];
+    var lineRefs = this.$el.find('[data-source-line]').each( function(){
+      x.push( parseInt($(this).attr('data-source-line'))                          );
+      y.push( $(this).position().top + _this.$el.scrollTop()  );
+    })
+
+    // interpolate/extrapolate to create a line number lookup array
+    this.lineMap = this.interpolate(x, y, 1, this.cm.lastLine());
+
+    // capture heading locations
+    this.headingLookup = [];
+    this.$el.find(':header').each( function(){
+      var matchingToc = _this.$toc.find("a[data-href='#" + $(this).attr('id') + "']");
+      if (matchingToc.length > 0) {
+        _this.headingLookup.push([
+          $(this).position().top + _this.$el.scrollTop(),
+          matchingToc
+        ])
+      }
+    });
+
+    // confirm that lineMap entries are properly sorted
+    for (var i = 1; i < this.lineMap.length; i++) {
+      if (this.lineMap[i] < this.lineMap[i-1]) {
+        throw new Error("lineMap algorithm failure!");
+      }
+    }
+
+    // confirm that headingLookup entries are properly sorted
+    for (var i = 1; i < this.headingLookup.length; i++) {
+      if (this.headingLookup[i][0] < this.headingLookup[i-1][0]) {
+        throw new Error("headingLookup algorithm failure!");
+      }
+    }
+  }
+
+  // function to return viewer position associated with editor position
+  editorPosToViewerPos(line, marker) {
+    var h = this.$el.height();
+    if (marker == 'bottom') {
+      return this.lineMap[line-1] - h*1;
+    } else if (marker == 'center') {
+      return this.lineMap[line-1] - h*0.5;
+    } else {
+      return this.lineMap[line-1] - h*0;
+    }
+  }
+
+  // function to return editor position associated with viewer position
+  viewerPosToEditorPos(line) {
+    var _this = this;
+
+    // binary search function
+    function binSearch(a, b, val) {
+      if (b - a == 1) {
+        if (_this.lineMap[b] == val) {
+          return b;
+        } else if (_this.lineMap[a] == val) {
+          return a;
+        } else {
+          return a + (val - _this.lineMap[a])/(_this.lineMap[b] - _this.lineMap[a]);
+        }
+      } else {
+        var m = Math.round((a+b)/2);
+        if (val > _this.lineMap[m]) {
+          return binSearch(m, b, val);
+        } else {
+          return binSearch(a, m, val);
+        }
+      }
+    }
+
+    // perform search
+    return Math.max(
+      1,
+      Math.round(
+        binSearch(1, this.lineMap.length-1, line)
+      )
+    );
+  }
+
+  // function to return closest header to a position
+  parentHeader(pos) {
+    var _this = this;
+
+    // binary search function
+    function binSearch(a, b, val) {
+      if (b - a == 1) {
+        if (_this.headingLookup[b] == val) {
+          return _this.headingLookup[b][1];
+        } else if (_this.lineMap[a] == val) {
+          return _this.headingLookup[a][1];
+        } else {
+          return _this.headingLookup[a][1];
+        }
+      } else {
+        var m = Math.round((a+b)/2);
+        if (val < _this.headingLookup[m][0]) {
+          return binSearch(a, m, val);
+        } else {
+          return binSearch(m, b, val);
+        }
+      }
+    }
+
+    // perform search
+    var last = this.headingLookup.length-1;
+    if (last == -1) {
+      return;
+    } else if (pos > this.headingLookup[last][0]) {
+      return this.headingLookup[last][1];
+    } else {
+      return binSearch(0, this.headingLookup.length-1, pos);
+    }
+
+  }
+
+
+  // average adjacent points
+  collapseRepeated(x_vec, y_vec) {
+    var head = 0, tail = 0;
+    while (tail < x_vec.length) {
+      if (tail+1 < x_vec.length && x_vec[tail] == x_vec[tail+1]) {
+        var x_tail = x_vec[tail];
+        var sum    = y_vec[tail];
+        var count = 1;
+        while (x_vec[++tail] == x_tail) {
+          sum += y_vec[tail];
+          count++;
+        }
+        x_vec[head  ] = x_tail;
+        y_vec[head++] = sum / count;
+      } else {
+        x_vec[head  ] = x_vec[tail  ];
+        y_vec[head++] = y_vec[tail++];
+      }
+    }
+    x_vec.splice(head, tail-head);
+    y_vec.splice(head, tail-head);
+  }
+
+  // dump location data to matlab format
+  dumpPoints(x, y, name) {
+    txt = [name + ' = ['];
+    if (!x) {
+      x = [];
+      for (var i = 0; i < y.length; i++) {
+        x.push(i+1);
+      }
+    }
+    for (var i = 0; i < x.length; i++) {
+      txt.push('    '+x[i]+' '+y[i]);
+    }
+    txt.push('];');
+    this.$el.append(txt.join('<br>\n'))+'<br>\n';
+  }
+
+  // interpolate data to a linear range
+  interpolate(x_vec, y_vec, xi, xf) {
+    var out = [], x1, x2, y1, y2, m;
+    if (this.debug) this.dumpPoints(x_vec, y_vec, 'initial');
+
+    this.collapseRepeated(x_vec, y_vec);
+    if (this.debug) this.dumpPoints(x_vec, y_vec, 'collapsed');
+
+    var updateSlope = function(){
+      x1 = x2; x2 = x_vec.shift();
+      y1 = y2; y2 = y_vec.shift();
+      m = (y2-y1)/(x2-x1);
+    }
+    updateSlope(); updateSlope(); // grab first 2 points
+    for (var x = xi; x < xf; x++) {
+      if (x > x2 && x_vec.length > 0) {
+        updateSlope();  // update slope if outside range and still have data
+      }
+      out.push(y1 + m*(x-x1)); // add interpolated point to output array
+    }
+    if (this.debug) this.dumpPoints(null, out, 'interpolated');
+    return out;
+  }
+
+  // scroll preview window to the location matching specified editor line number
+  scrollTo(line, marker) {
+
+    // if the update count is nonzero, this was a scroll triggered by a preview
+    // window scroll (and not a user scroll).  decrement the scroll count and
+    // return.
+    if (this.scrollState.editorCount > 0) {
+      this.scrollState.editorCount -= 1;
+      return
+    }
+
+    // otherwise this was a user scroll, so trigger a corresponding scroll in the
+    // preview window
+    else {
+      this.scrollState.viewerCount += 1;
+      this.$el.scrollTop( this.editorPosToViewerPos(line,marker) );
+      return
+    }
+
+  }
+
+  // scroll editor to line number matching specified preview scroll location
+  scrollFrom(line) {
+
+    // identify closest header and corresponding TOC entry
+    var matchingToc = this.parentHeader(line);
+
+    // style closest header
+    if (matchingToc) {
+      this.$toc.find('li').removeClass('active visible');
+      matchingToc.parent('li').addClass('active');
+      matchingToc.parentsUntil(this.$toc, 'li').addClass('visible');
+
+    }
+
+    // if the update count is nonzero, this was a scroll triggered by an editor
+    // window scroll (and not a user scroll).  decrement the scroll count and
+    // return
+    if (this.scrollState.viewerCount > 0) {
+      this.scrollState.viewerCount -= 1;
+      return
+    }
+
+    // otherwise this was a user scroll, so trigger a corresponding scroll in the
+    // editor window
+    else {
+      this.scrollState.editorCount += 1;
+      this.cm.scrollTo(null, this.cm.heightAtLine(this.viewerPosToEditorPos(line)-1, 'local'));
+      return
+    }
+  }
+
+  // return locations of lines in editor window
+  visibleLines(){
+    var scrollInfo = this.cm.getScrollInfo();
+    var topLine    = this.cm.lineAtHeight(scrollInfo.top                          , 'local');
+    var bottomLine = this.cm.lineAtHeight(scrollInfo.top + scrollInfo.clientHeight, 'local');
+    var maxLine    = this.cm.lineCount() - 1;
+    return {
+      top:    topLine,
+      bottom: Math.min(maxLine, bottomLine),
+      cursor: Math.min(maxLine, this.cm.getCursor().line)
     }
   }
 }
@@ -796,516 +1069,99 @@ function latexToHTML(latex, isBlock) {
 // MARKDOWN RENDERING //
 ////////////////////////
 
-// function to extract header data and generate a markdown table of contents list
-function extractTOC($el) {
+class MarkdownRenderer {
 
-  // identify lowest-level header
-  var minHeader = Math.min.apply(null,
-    $el.find(':header').not('h1').map(function(){
-      return parseInt($(this).prop('tagName').slice(1))
+  constructor() {
+    this.latexCache = {};
+  }
+
+  // function to render markdown into the specified element
+  renderMarkdown(x, $el) {
+
+    // convert markdown to HTML
+    var html = markdown.toHTML(
+      x.replace(/\[TOC\]/gi, '<toc></toc>') // TOC jQuery can find
+      ,{includeLines:true}
+    );
+
+    // process <latex> tags
+    html = html.replace(/(<latex.*?>)([\s\S]*?)(<\/latex>)/g, (match,p1,p2,p3) => {
+      return p1 + this.latexToHTML(p2) + p3;
     })
-  );
 
-  // generate markdown
-  return $el.find(':header').not('h1').map(function(){
-    var level = parseInt($(this).prop("tagName").slice(1));
-    var spaces = Array(1+2*(level-minHeader)).join(' ');
-    return spaces + "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
-  }).toArray().join('\n')
-}
+    // populate specified element with text converted to markdown
+    $el.html(html);
 
-// function to render markdown into the specified element
-renderMarkdown = function(x, $el) {
+    // create a table of contents
+    var toc = markdown.toHTML(this.extractTOC($el));
 
-  // convert markdown to HTML
-  var html = markdown.toHTML(
-    x.replace(/\[TOC\]/gi, '<toc></toc>') // TOC jQuery can find
-    ,{includeLines:true}
-  );
+    // convert anchors to data-href attributes
+    toc = toc.replace(/href/g, 'href="#" data-href');
 
-  // process <latex> tags
-  html = html.replace(/(<latex.*?>)([\s\S]*?)(<\/latex>)/g, function(match,p1,p2,p3){
-    return p1 + latexToHTML(p2) + p3;
-  })
+    // fill TOC elements
+    $el.find('toc').html(toc.replace(/ul>/g, 'ol>'));
 
-  // populate specified element with text converted to markdown
-  $el.html(html);
+    // remove line number tags from TOC entries
+    $el.find('toc [data-source-line]').each(function(){
+      $(this).attr('data-source-line', null)
+    });
 
-  // create a table of contents
-  var toc = markdown.toHTML(extractTOC($el));
+    // style tables
+    $el.find('table').addClass('table table-striped table-hover table-condensed');
+    $el.find('thead').addClass('btn-primary');
 
-  // convert anchors to data-href attributes
-  toc = toc.replace(/href/g, 'href="#" data-href');
+    // perform syntax highlighting
+    $el.find('pre code').each(function(i, block) { hljs.highlightBlock(block); });
 
-  // fill TOC elements
-  $el.find('toc').html(toc.replace(/ul>/g, 'ol>'));
+    // create bootstrap alert boxes
+    $el.find('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
+    $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
 
-  // remove line number tags from TOC entries
-  $el.find('toc [data-source-line]').each(function(){
-    $(this).attr('data-source-line', null)
-  });
+    // open hyperlinks in a new tab
+    $el.find('a').filter(function(){ return $(this).attr('href') && $(this).attr('href')[0] != '#' }).attr({target: '_blank'});
 
-  // style tables
-  $el.find('table').addClass('table table-striped table-hover table-condensed');
-  $el.find('thead').addClass('btn-primary');
-
-  // perform syntax highlighting
-  $el.find('pre code').each(function(i, block) { hljs.highlightBlock(block); });
-
-  // create bootstrap alert boxes
-  $el.find('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
-  $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
-
-  // open hyperlinks in a new tab
-  $el.find('a').filter(function(){ return $(this).attr('href') && $(this).attr('href')[0] != '#' }).attr({target: '_blank'});
-
-  // return data to caller
-  return {
-    toc: toc
-  };
-
-}
-
-
-/////////////////////////
-// CODEMIRROR HANDLING //
-/////////////////////////
-
-// average adjacent points
-collapseRepeated = function(x_vec, y_vec) {
-  var head = 0, tail = 0;
-  while (tail < x_vec.length) {
-    if (tail+1 < x_vec.length && x_vec[tail] == x_vec[tail+1]) {
-      var x_tail = x_vec[tail];
-      var sum    = y_vec[tail];
-      var count = 1;
-      while (x_vec[++tail] == x_tail) {
-        sum += y_vec[tail];
-        count++;
-      }
-      x_vec[head  ] = x_tail;
-      y_vec[head++] = sum / count;
-    } else {
-      x_vec[head  ] = x_vec[tail  ];
-      y_vec[head++] = y_vec[tail++];
-    }
-  }
-  x_vec.splice(head, tail-head);
-  y_vec.splice(head, tail-head);
-}
-
-// dump location data to matlab format
-dumpPoints = function(x, y, name) {
-  txt = [name + ' = ['];
-  if (!x) {
-    x = [];
-    for (var i = 0; i < y.length; i++) {
-      x.push(i+1);
-    }
-  }
-  for (var i = 0; i < x.length; i++) {
-    txt.push('    '+x[i]+' '+y[i]);
-  }
-  txt.push('];');
-  GUI.$previewContents.append(txt.join('<br>\n'))+'<br>\n';
-}
-
-// interpolate data to a linear range
-interpolate = function(x_vec, y_vec, xi, xf) {
-  var out = [], x1, x2, y1, y2, m;
-  //dumpPoints(x_vec, y_vec, 'initial');
-  collapseRepeated(x_vec, y_vec);
-  //dumpPoints(x_vec, y_vec, 'collapsed');
-  var updateSlope = function(){
-    x1 = x2; x2 = x_vec.shift();
-    y1 = y2; y2 = y_vec.shift();
-    m = (y2-y1)/(x2-x1);
-  }
-  updateSlope(); updateSlope(); // grab first 2 points
-  for (var x = xi; x < xf; x++) {
-    if (x > x2 && x_vec.length > 0) {
-      updateSlope();  // update slope if outside range and still have data
-    }
-    out.push(y1 + m*(x-x1)); // add interpolated point to output array
-  }
-  //dumpPoints(null, out, 'interpolated');
-  return out;
-}
-
-// return locations of lines in editor window
-visibleLines = function(){
-  var scrollInfo = cm.getScrollInfo();
-  var topLine    = cm.lineAtHeight(scrollInfo.top                          , 'local');
-  var bottomLine = cm.lineAtHeight(scrollInfo.top + scrollInfo.clientHeight, 'local');
-  var maxLine    = cm.lineCount() - 1;
-  return {
-    top:    topLine,
-    bottom: Math.min(maxLine, bottomLine),
-    cursor: Math.min(maxLine, cm.getCursor().line)
-  }
-}
-
-// line number lookup array
-var lineMap;
-
-// heading location lookup array
-var headingLookup;
-
-// counters for number of triggered scroll actions.  this lets the scrolled
-// window know that its scrolling was triggered by a user scroll in the ohter
-// window.  otherwise there is a circular dependency and the windows fight with
-// each other
-var scrollState = {
-  editorCount : 0,
-  viewerCount : 0
-};
-
-// function to return viewer position associated with editor position
-var editorPosToViewerPos = function(line, marker) {
-  var h = GUI.$previewWindow.height();
-  if (marker == 'bottom') {
-    return lineMap[line-1] - h*1;
-  } else if (marker == 'center') {
-    return lineMap[line-1] - h*0.5;
-  } else {
-    return lineMap[line-1] - h*0;
-  }
-}
-
-// function to return editor position associated with viewer position
-var viewerPosToEditorPos = function(line) {
-
-  // binary search function
-  function binSearch(a, b, val) {
-    if (b - a == 1) {
-      if (lineMap[b] == val) {
-        return b;
-      } else if (lineMap[a] == val) {
-        return a;
-      } else {
-        return a + (val - lineMap[a])/(lineMap[b] - lineMap[a]);
-      }
-    } else {
-      var m = Math.round((a+b)/2);
-      if (val > lineMap[m]) {
-        return binSearch(m, b, val);
-      } else {
-        return binSearch(a, m, val);
-      }
-    }
-  }
-
-  // perform search
-  return Math.max(
-    1,
-    Math.round(
-      binSearch(1, lineMap.length-1, line)
-    )
-  );
-}
-
-// function to return closest header to a position
-var parentHeader = function(pos) {
-
-  // binary search function
-  function binSearch(a, b, val) {
-    if (b - a == 1) {
-      if (headingLookup[b] == val) {
-        return headingLookup[b][1];
-      } else if (lineMap[a] == val) {
-        return headingLookup[a][1];
-      } else {
-        return headingLookup[a][1];
-      }
-    } else {
-      var m = Math.round((a+b)/2);
-      if (val < headingLookup[m][0]) {
-        return binSearch(a, m, val);
-      } else {
-        return binSearch(m, b, val);
-      }
-    }
-  }
-
-  // perform search
-  var last = headingLookup.length-1;
-  if (last == -1) {
-    return;
-  } else if (pos > headingLookup[last][0]) {
-    return headingLookup[last][1];
-  } else {
-    return binSearch(0, headingLookup.length-1, pos);
-  }
-
-}
-
-// scroll preview window to the location matching specified editor line number
-var scrollTo = function(line, marker) {
-
-  // if the update count is nonzero, this was a scroll triggered by a preview
-  // window scroll (and not a user scroll).  decrement the scroll count and
-  // return.
-  if (scrollState.editorCount > 0) {
-    scrollState.editorCount -= 1;
-    return
-  }
-
-  // otherwise this was a user scroll, so trigger a corresponding scroll in the
-  // preview window
-  else {
-    scrollState.viewerCount += 1;
-    GUI.$previewWindow.scrollTop( editorPosToViewerPos(line,marker) );
-    return
-  }
-
-}
-
-// scroll editor to line number matching specified preview scroll location
-var scrollFrom = function(line) {
-  //console.log("Viewer top position "+line+" --> editor line "+viewerPosToEditorPos(line));
-
-  // identify closest header and corresponding TOC entry
-  var matchingToc = parentHeader(line);
-
-  // style closest header
-  if (matchingToc) {
-    GUI.$floatingTOC.find('li').removeClass('active visible');
-    matchingToc.parent('li').addClass('active');
-    matchingToc.parentsUntil(GUI.$floatingTOC, 'li').addClass('visible');
-
-  }
-
-  // if the update count is nonzero, this was a scroll triggered by an editor
-  // window scroll (and not a user scroll).  decrement the scroll count and
-  // return
-  if (scrollState.viewerCount > 0) {
-    scrollState.viewerCount -= 1;
-    return
-  }
-
-  // otherwise this was a user scroll, so trigger a corresponding scroll in the
-  // editor window
-  else {
-    scrollState.editorCount += 1;
-    cm.scrollTo(null, cm.heightAtLine(viewerPosToEditorPos(line)-1, 'local'));
-    return
-  }
-}
-
-// function to render markdown
-var render = function(){
-
-  // save cursor position
-  var currentScroll = GUI.$previewWindow.scrollTop();
-
-  // execute rendering
-  var renderData = renderMarkdown(cm.getValue(),GUI.$previewContents);
-
-  // table of contents without outer UL
-  var toc = $(renderData.toc).html();
-
-  // create nav menu
-  GUI.$navMenu.children('li.divider ~ li').remove();
-  GUI.$navMenu.append(toc);
-
-  // create floating table of contents
-  GUI.$floatingTOC.html(toc);
-
-  // capture line numbers
-  var x = [], y = [];
-  var lineRefs = GUI.$previewWindow.find('[data-source-line]').each( function(){
-    x.push( parseInt($(this).attr('data-source-line'))                          );
-    y.push( $(this).position().top + GUI.$previewWindow.scrollTop()  );
-  })
-
-  // interpolate/extrapolate to create a line number lookup array
-  lineMap = interpolate(x, y, 1, cm.lastLine());
-
-  // capture heading locations
-  headingLookup = [];
-  GUI.$previewWindow.find(':header').each( function(){
-    var matchingToc = GUI.$floatingTOC.find("a[data-href='#" + $(this).attr('id') + "']");
-    if (matchingToc.length > 0) {
-      headingLookup.push([
-        $(this).position().top + GUI.$previewWindow.scrollTop(),
-        matchingToc
-      ])
-    }
-  });
-
-  // confirm that lineMap entries are properly sorted
-  for (var i = 1; i < lineMap.length; i++) {
-    if (lineMap[i] < lineMap[i-1]) {
-      throw new Error("lineMap algorithm failure!");
-    }
-  }
-
-  // confirm that headingLookup entries are properly sorted
-  for (var i = 1; i < headingLookup.length; i++) {
-    if (headingLookup[i][0] < headingLookup[i-1][0]) {
-      throw new Error("headingLookup algorithm failure!");
-    }
-  }
-
-  // scroll to the cursor location
-  GUI.$previewWindow.scrollTop(currentScroll);
-
-}
-
-
-///////////////////
-// LAUNCH EDITOR //
-///////////////////
-
-// function to initialize CodeMirror once startup text is available
-function launchCodeMirror() {
-
-  // add plugin to auto-close brackets
-  registerCloseBrackets();
-
-  // convert textarea to CodeMirror editor
-  window.cm = CodeMirror.fromTextArea($(GUI.$editor)[0], {
-    mode:                     "gfm-expanded", // use newly defined mode
-    autofocus:                true,           // move focus to CodeMirror on init
-    cursorScrollMargin:       3,              // DOES THIS WORK???
-    lineNumbers:              true,           // show line numbers
-    lineWrapping:             true,           // wrap long lines
-    foldGutter:               true,           // enable folds in gutter
-    styleActiveLine:          true,           // add css to curently active line
-    matchBrackets:            true,           // enable bracket matching
-    autoCloseBrackets:        true,           // automatically close brackets
-    showCursorWhenSelecting:  true,           // show cursor when a selection is active
-    keyMap:                   "vim",          // use vim key bindings
-    gutters: [                                // gutters to use:
-      "CodeMirror-linenumbers",               //   line numbers
-      "CodeMirror-foldgutter" ],              //   folding
-    extraKeys: {                              // custom key bindings
-      "Ctrl-Q": function(cm){                 //   Ctrl-Q: toggle fold
-        cm.foldCode(cm.getCursor()); },       //
-      "Enter":                                //   Enter: hook into markdown list continuation plugin
-        "newlineAndIndentContinueMarkdownList"//
-    }
-  });
-
-  // adapted from markdown fold script
-  CodeMirror.registerHelper("fold", "gfm-expanded", function(cm, start) {
-    var maxDepth = 100;
-
-    function isHeader(lineNo) {
-      var tokentype = cm.getTokenTypeAt(CodeMirror.Pos(lineNo, 0));
-      return tokentype && /\bheader\b/.test(tokentype);
-    }
-
-    function headerLevel(lineNo, line, nextLine) {
-      var match = line && line.match(/^#+/);
-      if (match && isHeader(lineNo)) return match[0].length;
-      match = nextLine && nextLine.match(/^[=\-]+\s*$/);
-      if (match && isHeader(lineNo + 1)) return nextLine[0] == "=" ? 1 : 2;
-      return maxDepth;
-    }
-
-    var firstLine = cm.getLine(start.line), nextLine = cm.getLine(start.line + 1);
-    var level = headerLevel(start.line, firstLine, nextLine);
-    if (level === maxDepth) return undefined;
-
-    var lastLineNo = cm.lastLine();
-    var end = start.line, nextNextLine = cm.getLine(end + 2);
-    while (end < lastLineNo) {
-      if (headerLevel(end + 1, nextLine, nextNextLine) <= level) break;
-      ++end;
-      nextLine = nextNextLine;
-      nextNextLine = cm.getLine(end + 2);
-    }
-
+    // return data to caller
     return {
-      from: CodeMirror.Pos(start.line, firstLine.length),
-      to: CodeMirror.Pos(end, cm.getLine(end).length)
+      toc: toc
     };
-  });
 
-  // render starter text and re-render on text change
-  render();
-  cm.on('change', _.debounce(render, 300, {maxWait:1000})); // render when typing stops
+  }
 
-  // flag note as modified when the 'change' event fires
-  cm.on('change', function(){
-    if (gui.state.noteClean == !cm.isClean(gui.state.generation)) {
-      GUI.updateState({
-        noteClean : cm.isClean(gui.state.generation)
+  // function to extract header data and generate a markdown table of contents list
+  extractTOC($el) {
+
+    // identify lowest-level header
+    var minHeader = Math.min.apply(null,
+      $el.find(':header').not('h1').map(function(){
+        return parseInt($(this).prop('tagName').slice(1))
       })
-    }
-  })
+    );
 
-  // copy help text to help window
-  GUI.$helpContents.html( GUI.$previewContents.html() );
+    // generate markdown
+    return $el.find(':header').not('h1').map(function(){
+      var level = parseInt($(this).prop("tagName").slice(1));
+      var spaces = Array(1+2*(level-minHeader)).join(' ');
+      return spaces + "* ["+$(this).html()+"](#"+$(this).attr('id')+")";
+    }).toArray().join('\n')
+  }
 
-  // function to scroll preview window to editor location
-  scrollSync = _.debounce(
-    function(){ scrollTo(visibleLines().top); },
-    100,
-    {maxWait:100}
-  );
-
-  // function to scroll editor window to preview location
-  scrollSyncRev = _.debounce(
-    function(){ scrollFrom($(this).scrollTop()); },
-    100,
-    {maxWait:100}
-  );
-
-  // bind scroll callbacks to scroll events
-  cm.on('scroll', scrollSync);
-  GUI.$previewWindow.on('scroll', scrollSyncRev);
-}
-
-
-/////////////////////////
-// SERVER CONNECTIVITY //
-/////////////////////////
-
-// return an Evernote server connection (creating if required)
-function getEvernoteConnection(callback) {
-
-  // create a connection if one doesn't exist
-  if (!getEvernoteConnection.instance) {
-
-    // prompt user for token if it isn't set in local storage
-    if (localStorage.getItem('token') === null)
-      getEvernoteConnection.updateToken();
-
-    // create connection
-    getEvernoteConnection.instance = new WrappedNoteServer(
-      localStorage.getItem('token'),
-      "@proxy-https/www.evernote.com/shard/s2/notestore",
-      {
-        searchTags    : ['markdown'],
-        saveTags      : ['markdown'],
-        errorLogger   : GUI.persistentWarning,
-        messageLogger : GUI.transientAlert
+  // convert a latex string to HTML code (with caching to speed procesing)
+  latexToHTML(latex, isBlock) {
+    if (this.latexCache[latex]) {
+      return this.latexCache[latex];
+    } else {
+      try {
+        var out = katex.renderToString(latex, {
+          displayMode: isBlock,
+          throwOnError: false
+        });
+        this.latexCache[latex] = out;
+        return out;
+      } catch (err) {
+        return '<span style="color:red">' + err + '</span>'
       }
-    )
-  }
-
-  // fetch metadata if required, and then execute callback
-  if (getEvernoteConnection.instance.conn.noteMap) {
-    callback(getEvernoteConnection.instance)
-  } else {
-    getEvernoteConnection.instance.fetchMetaData().then( () => {
-      callback(getEvernoteConnection.instance)
-    })
-  }
-
-}
-
-// attach a function to update developer token
-getEvernoteConnection.updateToken = function() {
-  GUI.promptForInput(
-    'Please enter your Evernote developer token',
-    localStorage.getItem('token'),
-    function(result) {
-      localStorage.setItem('token', result);
     }
-  );
+  }
 }
 
 
@@ -1374,20 +1230,6 @@ function generateLocalNoteList(){
   });
 }
 
-// load a local file into the editor
-function loadLocalFile(mdFile) {
-  requestFile(mdFile, function(txt){
-    cm.setValue(txt);
-    GUI.updateState({
-      staleHistory: false,
-      noteTitle: mdFile,
-      currentTab: 'viewer',
-      showNoteList: true,
-      floatingTOC: true
-    });
-  })
-}
-
 
 ///////////////////////////////////
 // LOCAL SYNCHRONIZATION SUPPORT //
@@ -1400,7 +1242,7 @@ function viewLocalStorage() {
     var notes = new WrappedNoteROCollection();
     conn.meta.notes.forEach(n => {
       if (n.deleted === null) {
-        notes.add(new StaticWrappedNote(n,conn.meta))
+        notes.add(new StaticWrappedNote(n,conn))
       }
     });
     notes.sortBy('updated', true);
@@ -1453,11 +1295,9 @@ function viewLocalStorage() {
       $('#browser-menu li#browser-menu-tags > ul').append(tagToHtml(t));
     });
 
-    gui.updateState({
-      currentTab  : 'viewer',
-      floatingTOC : false,
-      showHelp    : false
-    });
+    gui.currentTab = gui.tabs.viewer;
+    gui.floatingTOC = false;
+    gui.showHelp = false;
     gui.$previewWindow.hide();
     $('#browser-menu').add('#browser-notes').add('#browser-viewer').show();
 
@@ -1553,68 +1393,269 @@ function syncToLocalStorage() {
 // SET EVERYTHING IN MOTION //
 //////////////////////////////
 
-// function to load one or more javascript files
-function loadJavascriptFile() {
+class Application {
 
-  // variable to contain the callback function
-  var callback;
+  constructor() {
+    this.queryOptions = this.processQueryString(window.location.search);
+    this.initalDocument = 'instructions.md';
+    this.GUI = null;
+    this.WNC = null;
+    this.scrollSync = null;
+    this.renderer = new MarkdownRenderer();
+  }
 
-  // if function was called with 2 arguments and the second argument is a
-  // function, this second argument is the callback
-  if (arguments.length === 2 && typeof(arguments[1]) === 'function') {
-    callback = arguments[1];
+  get mode() {
+    return this.queryOptions.mode;
+  }
 
-  // if function was called with only 1 argument, there is no callback
-  } else if (arguments.length === 1) {
-    callback = function(){ };
+  static documentReady() {
+    return new Promise((resolve,reject) => {$(resolve)})
+  }
 
-  // otherwise callback is a recursive function call with the tail of the
-  // input arguments
-  } else {
-    callback = function(){
-      loadJavascriptFile.apply(null, arguments.slice(1));
+  static loadJavascriptFile(url) {
+    return new Promise((resolve, reject) => {
+      $.ajax({
+        url: url,
+        dataType: 'script',
+        success: resolve,
+        async: true
+      })
+    })
+  }
+
+  run() {
+    Application.documentReady()
+      .then(() => {
+        this.GUI = new GuiControl();  // get gui references without a server connection
+        return ProxyServerIO.load(this.initalDocument,'text')
+      })
+      .then(txt => {
+        this.GUI.$editor.text(txt);
+        this.launchCodeMirror(this.GUI);
+      })
+      .then(() => {
+        if (this.queryOptions.mode == 'evernote') {
+          if (localStorage.getItem('token') === null)
+            getEvernoteConnection.updateToken();
+          return Application.loadJavascriptFile('/lib/evernote-sdk-minified.js')
+        } else {
+          return null
+        }
+      })
+      .then(() => {
+        this.WNC = this.wnc();
+        this.GUI.attachServer(this.WNC);
+        if (!this.WNC) {
+          GUI.persistentWarning('Invalid mode: '+queryOptions.mode);
+          throw new Error("Invalid mode: "+queryOptions.mode);
+        }
+        this.GUI.transientAlert('Running in mode: '+this.queryOptions.mode);
+        if (this.mode == 'evernote') {
+          this.GUI.$updateToken.show().on('click', updateToken);
+        } else if (this.mode == 'file') {
+          this.WNC.connect().then(conn => {
+            conn.getNoteContent(`${this.queryOptions.location}/${this.queryOptions.file}`).then(txt => {
+              this.cm.setValue(txt);
+              this.GUI.staleHistory = false;
+              this.GUI.noteTitle = this.queryOptions.file;
+              this.GUI.currentTab = this.GUI.tabs.viewer;
+              this.GUI.showNoteList = true;
+              this.GUI.floatingTOC = true;
+            })
+          })
+        }
+      });
+    return this
+  }
+
+  // return the appropriate WrappedNoteCollection based on mode
+  wnc() {
+    switch (this.mode) {
+      case 'file':
+        return new WrappedNoteCollectionFiles(this.queryOptions.location);
+      case 'offline':
+        return new WrappedNoteCollectionSyncData(this.queryOptions.location);
+      case 'evernote':
+        return new WrappedNoteCollectionEvernote(
+          localStorage.getItem('token'),
+          "@proxy-https/www.evernote.com/shard/s2/notestore",
+          {
+            searchTags    : ['markdown'],
+            saveTags      : ['markdown'],
+            errorLogger   : msg => {this.GUI.persistentWarning(msg)},
+            messageLogger : msg => {this.GUI.transientAlert(msg)}
+          }
+        );
+      default:
+        return null
     }
   }
 
-  // perform ajax call
-  $.ajax({
-      url: arguments[0],
-      dataType: 'script',
-      success: callback,
-      async: true
-  });
+  // function to initialize CodeMirror once startup text is available
+  launchCodeMirror() {
+    var _this = this;
+
+    // add plugin to auto-close brackets
+    registerCloseBrackets();
+
+    // convert textarea to CodeMirror editor
+    this.cm = CodeMirror.fromTextArea($(this.GUI.$editor)[0], {
+      mode:                     "gfm-expanded", // use newly defined mode
+      autofocus:                true,           // move focus to CodeMirror on init
+      cursorScrollMargin:       3,              // DOES THIS WORK???
+      lineNumbers:              true,           // show line numbers
+      lineWrapping:             true,           // wrap long lines
+      foldGutter:               true,           // enable folds in gutter
+      styleActiveLine:          true,           // add css to curently active line
+      matchBrackets:            true,           // enable bracket matching
+      autoCloseBrackets:        true,           // automatically close brackets
+      showCursorWhenSelecting:  true,           // show cursor when a selection is active
+      keyMap:                   "vim",          // use vim key bindings
+      gutters: [                                // gutters to use:
+        "CodeMirror-linenumbers",               //   line numbers
+        "CodeMirror-foldgutter" ],              //   folding
+      extraKeys: {                              // custom key bindings
+        "Ctrl-Q": function(cm){                 //   Ctrl-Q: toggle fold
+          cm.foldCode(cm.getCursor()); },       //
+        "Enter":                                //   Enter: hook into markdown list continuation plugin
+          "newlineAndIndentContinueMarkdownList"//
+      }
+    });
+
+    // attach Codemirror instance
+    this.GUI.attachCodeMirror(this.cm);
+
+    // adapted from markdown fold script
+    CodeMirror.registerHelper("fold", "gfm-expanded", function(cm, start) {
+      var maxDepth = 100;
+
+      function isHeader(lineNo) {
+        var tokentype = cm.getTokenTypeAt(CodeMirror.Pos(lineNo, 0));
+        return tokentype && /\bheader\b/.test(tokentype);
+      }
+
+      function headerLevel(lineNo, line, nextLine) {
+        var match = line && line.match(/^#+/);
+        if (match && isHeader(lineNo)) return match[0].length;
+        match = nextLine && nextLine.match(/^[=\-]+\s*$/);
+        if (match && isHeader(lineNo + 1)) return nextLine[0] == "=" ? 1 : 2;
+        return maxDepth;
+      }
+
+      var firstLine = cm.getLine(start.line), nextLine = cm.getLine(start.line + 1);
+      var level = headerLevel(start.line, firstLine, nextLine);
+      if (level === maxDepth) return undefined;
+
+      var lastLineNo = cm.lastLine();
+      var end = start.line, nextNextLine = cm.getLine(end + 2);
+      while (end < lastLineNo) {
+        if (headerLevel(end + 1, nextLine, nextNextLine) <= level) break;
+        ++end;
+        nextLine = nextNextLine;
+        nextNextLine = cm.getLine(end + 2);
+      }
+
+      return {
+        from: CodeMirror.Pos(start.line, firstLine.length),
+        to: CodeMirror.Pos(end, cm.getLine(end).length)
+      };
+    });
+
+    // configure scroll sync
+    this.scrollSync = new ScrollSync(this.cm, this.GUI.$previewWindow, this.GUI.$floatingTOC);
+
+    // render starter text
+    this.render(this.GUI);
+
+    // re-render on text change (debounce to render when typing stops)
+    this.cm.on('change',
+      _.debounce(
+        () => {_this.render(_this.GUI)},
+        300,
+        { maxWait:1000 }
+      )
+    );
+
+    // flag note as modified when the 'change' event fires
+    this.cm.on('change', function(){
+      if (_this.GUI.noteClean == !_this.cm.isClean(_this.GUI.generation)) {
+        _this.GUI.noteClean = _this.cm.isClean(_this.GUI.generation);
+      }
+    })
+
+    // copy help text to help window
+    _this.GUI.$helpContents.html( _this.GUI.$previewContents.html() );
+
+  }
+
+  // function to render markdown
+  render() {
+
+    // save cursor position
+    var currentScroll = this.GUI.$previewWindow.scrollTop();
+
+    // execute rendering
+    var renderData = this.renderer.renderMarkdown(this.cm.getValue(), this.GUI.$previewContents);
+
+    // table of contents without outer UL
+    var toc = $(renderData.toc).html();
+
+    // create nav menu
+    this.GUI.$navMenu.children('li.divider ~ li').remove();
+    this.GUI.$navMenu.append(toc);
+
+    // create floating table of contents
+    this.GUI.$floatingTOC.html(toc);
+
+    // refresh scroll sync data
+    this.scrollSync.refresh();
+
+    // scroll to the cursor location
+    this.GUI.$previewWindow.scrollTop(currentScroll);
+
+  }
+
+  // convert html query string to options object
+  processQueryString(querystring) {
+
+    // slice off initial "?" and split components on "&"
+    var queryParams = querystring.slice(1).split('&');
+
+    // empty query string defaults to evernote connection mode
+    if (queryParams.length == 1 && queryParams[0].length == 0) {
+      return {
+        'mode': 'evernote'
+      }
+
+    // single file string defeaults to markdown file viewer mode
+    } else if (queryParams.length == 1 && queryParams[0].endsWith('.md')) {
+      return {
+        mode: 'file',
+        location: '.',
+        file: queryParams[0]
+      }
+
+    // otherwise parse the query string
+    } else {
+      var queryOptions = {};
+      queryParams.forEach(p => {
+        queryOptions[ p.split('=')[0] ] = p.split('=')[1];
+      });
+      return queryOptions
+    }
+  }
+
+  // prompt user for Evernote developer token
+  updateToken() {
+    this.GUI.promptForInput(
+      'Please enter your Evernote developer token',
+      localStorage.getItem('token')
+    ).then(result => {
+      localStorage.setItem('token', result);
+    });
+  }
+
 }
 
 // set everything in motion once document is ready
-$(function(){
-
-  // get gui references
-  window.GUI = guiReferences(getEvernoteConnection);
-
-  // local file to load (if any)
-  var mdFile = document.URL.split('?')[1];
-
-  // load usage instructions into editor
-  requestFile('instructions.md', function(x){
-    GUI.$editor.text(x);
-    launchCodeMirror();
-
-    // if a local file was specified, replace usage instructions with this file
-    if (mdFile && mdFile.length > 0) {
-      generateLocalNoteList();
-      loadLocalFile(mdFile);
-
-    // otherwise set the initial state and load Evernote library
-    } else {
-
-      // enable menu to update token (Evernote-specific)
-      GUI.$updateToken.show().on('click', getEvernoteConnection.updateToken);
-
-      gui.updateState({});
-      loadJavascriptFile('/lib/evernote-sdk-minified.js', function(){
-        gui.updateState({ hasServer : true });
-      });
-    }
-  })
-
-});
+window.app = new Application().run();

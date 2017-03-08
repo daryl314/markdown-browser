@@ -5,8 +5,11 @@
 ## Editor Usage ##
 
 - Start proxy server by running `./proxy.py`
-- Open editor by browsing to <http://localhost:8080/>
-- Open viewer by browsing to <http://localhost:8080/?instructions.md>
+- Open editor with Evernote back-end by browsing to <http://localhost:8080/>.
+- Open editor with local markdown file by browsing to <http://localhost:8080/?instructions.md>.
+  Specify root directory with <http://localhost:8080/?mode=file&file=instructions.md&location=.>
+- Open editor with offline connection with <http://localhost:8080/?mode=offline&location=syncData>
+- Open synchronizer status report with <http://localhost:8080/?mode=syncReport&location=syncData>
 - Open validation report by browsing to <http://localhost:8080/validation/validate.html>
 
 ## Markdown Syntax ##

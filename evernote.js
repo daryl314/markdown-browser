@@ -1,8 +1,67 @@
 // https://dev.evernote.com/doc/reference/
 
-///////////////////////////
-// BASE CONNECTION CLASS //
-///////////////////////////
+
+////////////////////////////////////////////////
+// BASE CLASS FOR ABSTRACT JAVASCRIPT CLASSES //
+////////////////////////////////////////////////
+
+/* This class emulates behavior of abstract classes in other languages.
+ *
+ * To create an abstract class:
+ *
+ *    - Extend Abstract (class NewClass extends Abstract)
+ *    - Call super(NewClass) in the constructor
+ *    - Call checkGetter('propertyName') and checkMethod('methodName') for each
+ *      respective getter and method that must be defined in the concrete
+ *      implementation
+ *    - To enable extension of NewClass to another abstract class, allow the
+ *      child to pass itself to the NewClass constructor:
+ *
+ *        class NewClass extends Abstract {
+ *          constructor(subclass) {
+ *            super(subClass || NewClass)
+ *            ...
+ *
+ * To create a concrete extension of an abstract class:
+ *
+ *    - Extend the abstract class
+ *    - Call super() in the constructor
+ *    - Define required getters and methods
+ */
+
+class Abstract {
+
+  // constructor: ensure that class being constructed is concrete
+  constructor (subClass) {
+   if (subClass === undefined) {
+     throw new TypeError('Subclass required in Abstract constructor');
+   } else if (new.target === subClass) {
+     throw new TypeError(`Cannot construct ${subClass.name} instances directly`);
+   }
+  }
+
+  // throw an error if a required method doesn't exist
+  static checkMethod(t,m) {
+    if (t[m] === undefined) {
+      throw new TypeError("Must override method: "+m);
+    }
+  }
+  checkMethod(m) {
+    Abstract.checkMethod(this,m)
+  }
+
+  // throw an error if a required getter doesn't exist
+  checkGetter(m) {
+   if (this.__lookupGetter__(m) === undefined) {
+     throw new TypeError("Must provide a getter: "+m);
+   }
+  }
+}
+
+
+//////////////////////////////////////
+// BASE EVERNOTE CONNECTIVITY CLASS //
+//////////////////////////////////////
 
 class EvernoteConnectionBase {
 
@@ -113,9 +172,9 @@ class EvernoteConnectionBase {
 }
 
 
-///////////////////////////////
-// EXTENDED CONNECTION CLASS //
-///////////////////////////////
+//////////////////////////////////////////
+// EXTENDED EVERNOTE CONNECTIVITY CLASS //
+//////////////////////////////////////////
 
 class EvernoteConnectionCached extends EvernoteConnectionBase {
 
@@ -279,35 +338,9 @@ class EvernoteConnectionCached extends EvernoteConnectionBase {
 }
 
 
-//////////////////////////
-// NOTE CONTAINER CLASS //
-//////////////////////////
-
-class Abstract {
-
-  // constructor: ensure that class being constructed is concrete
-  constructor (subClass) {
-    if (subClass === undefined) {
-      throw new TypeError('Subclass required in Abstract constructor');
-    } else if (new.target === subClass) {
-      throw new TypeError(`Cannot construct ${subClass.name} instances directly`);
-    }
-  }
-
-  // throw an error if a required method doesn't exist
-  checkMethod(m) {
-    if (this[m] === undefined) {
-      throw new TypeError("Must override method: "+m);
-    }
-  }
-
-  // throw an error if a required getter doesn't exist
-  checkGetter(m) {
-    if (this.__lookupGetter__(m) === undefined) {
-      throw new TypeError("Must provide a getter: "+m);
-    }
-  }
-}
+////////////////////////////
+// BASE CLASSES FOR NOTES //
+////////////////////////////
 
 class WrappedNoteRO extends Abstract {
   constructor(subClass) {
@@ -319,6 +352,9 @@ class WrappedNoteRO extends Abstract {
     this.checkGetter('updated');
     this.checkGetter('tags');
     this.checkGetter('guid');
+
+    // check for required methods
+    this.checkMethod('getContent');
   }
 
   // getter for update time as a string
@@ -349,25 +385,141 @@ class WrappedNoteRO extends Abstract {
 class WrappedNoteRW extends WrappedNoteRO {
   constructor(subClass) {
     super(subClass || WrappedNoteRW);
-    if (new.target === WrappedNoteRW) {
-      throw new TypeError("Cannot construct WrappedNoteRW instances directly");
-    }
+
+    // check for required methods
+    this.checkMethod('setContent');
+
   }
 }
 
-class StaticWrappedNote extends WrappedNoteRO {
-  constructor (note, meta) {
+
+//////////////////////////////////////
+// WRAPPED NOTE BACKED BY SYNC DATA //
+//////////////////////////////////////
+
+class WrappedNoteSyncData extends WrappedNoteRO {
+  constructor (note, conn) {
     super();
     this._note = note;
-    this._tags = (note.tagGuids||[]).map( g => meta.tags.filter( t => t.guid == g )[0].name );
-    this._notebook = meta.notebooks.filter( nb => nb.guid == note.notebookGuid )[0].name;
+    this._conn = conn;
+    this._tags = (note.tagGuids||[]).map( g => conn.meta.tags.filter( t => t.guid == g )[0].name );
+    this._notebook = conn.meta.notebooks.filter( nb => nb.guid == note.notebookGuid )[0].name;
   }
   get title    () { return this._note.title   }
   get notebook () { return this._notebook     }
   get tags     () { return this._tags         }
   get updated  () { return this._note.updated }
   get guid     () { return this._note.guid    }
+  getContent(version) {
+    return this._conn.getNoteContent(this.guid, version)
+  }
 }
+
+
+///////////////////////////////////////////
+// WRAPPED NOTE BACKED BY MARKDOWN FILES //
+///////////////////////////////////////////
+
+class WrappedNoteFiles extends WrappedNoteRO {
+  constructor(conn, f) {
+    super();
+    let m = f.match(/(.*)\/(.*)/);
+    this._conn = conn;
+    this._title = m[2];
+    this._location = m[1];
+    this._url = f;
+  }
+  get title    () { return this._title    }
+  get notebook () { return this._location }
+  get tags     () { return []             }
+  get updated  () { return undefined      }
+  get guid     () { return this._url      }
+  getContent() {
+    return this._conn.getNoteContent(this._url)
+  }
+}
+
+
+////////////////////////////////////////////////
+// WRAPPED NOTE BACKED BY EVERNOTE CONNECTION //
+////////////////////////////////////////////////
+
+class WrappedNoteEvernote extends WrappedNoteRW {
+
+  // given a Note or NoteMetadata object, encapsulate it in a class with server connectivity
+  constructor(conn, note) {
+    super();
+    if (!(conn instanceof EvernoteConnectionBase))
+      EvernoteConnection.errorHandler('EvernoteConnection required as first argument!');
+    if (!(note instanceof Note) && !(note instanceof NoteMetadata))
+      EvernoteConnection.errorHandler('Note or NoteMetadata required as second argument!');
+    if (note instanceof Note) {
+      this._note = new NoteMetadata(note);
+      this._conn = conn;
+    } else {
+      this._note = note;
+      this._conn = conn;
+    }
+  }
+
+  // static method to generate a WrappedNote from note version data
+  static fromVersion(note, version) {
+    if (!(note instanceof WrappedNoteEvernote))
+      EvernoteConnection.errorHandler('WrappedNote required as first argument!');
+    if (!(version instanceof NoteVersionId))
+      EvernoteConnection.errorHandler('NoteVersionId required as second argument!');
+    var newNote = new NoteMetadata(note);
+    newNote.updateSequenceNum = version.updateSequenceNum;
+    newNote.updated = version.updated;
+    newNote.title = version.title;
+    return new WrappedNoteEvernote(note._conn, newNote)
+  }
+
+  // getters for note properties
+  get title      () { return this._note.title                                         }
+  get guid       () { return this._note.guid                                          }
+  get notebook   () { return this._conn.notebookMap.get(this._note.notebookGuid).name }
+  get version    () { return this._note.updateSequenceNum                             }
+  get updated    () { return this._note.updated                                       }
+  get tags       () { return (this._note.tagGuids||[]).map( g => this._conn.tagMap.get(g).name ) }
+
+  // return a copy of the object
+  copy() {
+    var newMeta = new NoteMetadata(this._note);
+    newMeta.tagGuids = this._note.tagGuids.slice(0);
+    return new WrappedNote(this._conn, newMeta)
+  }
+
+  // get note content
+  getContent(version) {
+    if (!(version instanceof Array)) {
+      if (version === null || version === undefined || version == this._note.updateSequenceNum) {
+        return this._conn.getNoteContentCached(this.guid);
+      } else {
+        return this._conn.getNoteVersionCached(this.guid, version).then(v => v.content)
+      }
+    } else {
+      return Promise.all(version.map( v => this.getContent(v) ))
+    }
+  }
+
+  // update note content
+  setContent(content) {
+    return this._conn.updateNote(this.guid, this.title, content)
+  }
+
+  // get a list of versions
+  getVersions() {
+    return this._conn.listNoteVersions(this.guid)
+      .then( versions => versions.map(v => WrappedNoteEvernote.fromVersion(this, v)) )
+  }
+
+}
+
+
+///////////////////////////////////////////////
+// BASE CLASSES FOR WRAPPED NOTE COLLECTIONS //
+///////////////////////////////////////////////
 
 class WrappedNoteROCollection {
 
@@ -377,6 +529,7 @@ class WrappedNoteROCollection {
     this._field = 'updated';
     this._reverse = true;
     this._filter = null;
+    Abstract.checkMethod(this, 'connect');
   }
 
   get notes() {
@@ -441,88 +594,144 @@ class WrappedNoteROCollection {
     return this._filteredNotes;
   }
 
+  getNote(guid) {
+    return this._notes.filter(n => n.guid == guid)[0]
+  }
+
 }
 
-class WrappedNote extends WrappedNoteRW {
 
-  // given a Note or NoteMetadata object, encapsulate it in a class with server connectivity
-  constructor(conn, note) {
+class WrappedNoteRWCollection extends WrappedNoteROCollection {
+
+  constructor() {
     super();
-    if (!(conn instanceof EvernoteConnectionBase))
-      EvernoteConnection.errorHandler('EvernoteConnection required as first argument!');
-    if (!(note instanceof Note) && !(note instanceof NoteMetadata))
-      EvernoteConnection.errorHandler('Note or NoteMetadata required as second argument!');
-    if (note instanceof Note) {
-      this._note = new NoteMetadata(note);
-      this._conn = conn;
+    Abstract.checkMethod(this, 'newNote');
+  }
+
+  add(note) {
+    if (note instanceof WrappedNoteRW) {
+      super.add(note);
     } else {
-      this._note = note;
-      this._conn = conn;
+      throw new TypeError('Must add a WrappedNoteRW');
     }
-  }
-
-  // static method to generate a WrappedNote from note version data
-  static fromVersion(note, version) {
-    if (!(note instanceof WrappedNote))
-      EvernoteConnection.errorHandler('WrappedNote required as first argument!');
-    if (!(version instanceof NoteVersionId))
-      EvernoteConnection.errorHandler('NoteVersionId required as second argument!');
-    var newNote = new NoteMetadata(note);
-    newNote.updateSequenceNum = version.updateSequenceNum;
-    newNote.updated = version.updated;
-    newNote.title = version.title;
-    return new WrappedNote(note._conn, newNote)
-  }
-
-  // getters for note properties
-  get title      () { return this._note.title                                         }
-  get guid       () { return this._note.guid                                          }
-  get notebook   () { return this._conn.notebookMap.get(this._note.notebookGuid).name }
-  get version    () { return this._note.updateSequenceNum                             }
-  get updated    () { return this._note.updated                                       }
-  get tags       () { return (this._note.tagGuids||[]).map( g => this._conn.tagMap.get(g).name ) }
-
-  // return a copy of the object
-  copy() {
-    var newMeta = new NoteMetadata(this._note);
-    newMeta.tagGuids = this._note.tagGuids.slice(0);
-    return new WrappedNote(this._conn, newMeta)
-  }
-
-  // get note content
-  getContent(version) {
-    if (!(version instanceof Array)) {
-      if (version === null || version === undefined || version == this._note.updateSequenceNum) {
-        return this._conn.getNoteContentCached(this.guid);
-      } else {
-        return this._conn.getNoteVersionCached(this.guid, version).then(v => v.content)
-      }
-    } else {
-      return Promise.all(version.map( v => this.getContent(v) ))
-    }
-  }
-
-  // update note content
-  updateContent(content) {
-    return this._conn.updateNote(this.guid, this.title, content)
-  }
-
-  // get a list of versions
-  getVersions() {
-    return this._conn.listNoteVersions(this.guid)
-      .then( versions => versions.map(v => WrappedNote.fromVersion(this, v)) )
   }
 
 }
 
 
-//////////////////////////////////////////////
-// CLASS TO CONNECT WRAPPED NOTES TO SERVER //
-//////////////////////////////////////////////
+/////////////////////////////////////////////////
+// WRAPPED NOTE COLLECTION BACKED BY SYNC DATA //
+/////////////////////////////////////////////////
 
-class WrappedNoteServer {
+class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
+
+  constructor(localFolder, ioHandler=ProxyServerIO) {
+    super();
+    this._location = localFolder;
+    this.ioHandler = ioHandler;
+    this._connected = false;
+  }
+
+  connect() {
+    if (this._connected) {
+      return new Promise((resolve,reject) => {resolve(this)})
+    } else {
+      return this.fetchMetaData().then( () => {this.connected = true; return this} )
+    }
+  }
+
+  fetchMetaData() {
+    return this.ioHandler.load(`${this._location}/metadata.json`, 'json')
+      .then(meta => {
+        this.meta = meta;
+        meta.notes.forEach(note => {
+          this.add(new WrappedNoteSyncData(note, this));
+        })
+        // this.notes     = new Map( meta.notes     .map(n => [n.guid,n]) );
+        // this.notebooks = new Map( meta.notebooks .map(n => [n.guid,n]) );
+        // this.tags      = new Map( meta.tags      .map(t => [t.guid,t]) );
+        // this.resources = new Map( meta.resources .map(r => [r.guid,r]) );
+      })
+      .then(() => this.ioHandler.ls(this._location))
+      .then(files  => {
+        this.fileData = {};
+        files.filter( (f) => f.startsWith(`${this._location}/notes/`) ).forEach( (f) => {
+          var [guid, version] = f.split('/notes/').pop().split('/');
+          this.fileData[guid] = this.fileData[guid] || [];
+          if (version !== 'versions.json' && version.match(/^\d+$/))
+            this.fileData[guid].push( parseInt(version) );
+        })
+        this._connected = true;
+      })
+  }
+
+  getNoteContent(guid, version) {
+    if (version === undefined)
+      version = this.fileData[guid].reduce((a,b) => Math.max(a,b), 0);
+    return this.ioHandler.load(`${this._location}/notes/${guid}/${version}`, 'xml')
+  }
+
+  getNoteResourceMeta(guid) {
+    return Promise.all(
+      this.notes.get(guid).resources.map( r => {
+        return this.ioHandler.load(`${this._location}/resources/${r.guid}/metadata.json`, 'json')
+          .then(res => {
+            res.data.bodyHash = Object.values(res.data.bodyHash).map(
+              x => (x < 16 ? '0' : '') + x.toString(16)
+            ).join('');
+            return res
+          })
+      })
+    )
+  }
+
+}
+
+
+//////////////////////////////////////////////////////
+// WRAPPED NOTE COLLECTION BACKED BY MARKDOWN FILES //
+//////////////////////////////////////////////////////
+
+class WrappedNoteCollectionFiles extends WrappedNoteROCollection {
+
+  constructor(localFolder, ioHandler=ProxyServerIO) {
+    super();
+    this._location = localFolder;
+    this.ioHandler = ioHandler;
+    this._connected = false;
+  }
+
+  connect() {
+    if (this._connected) {
+      return new Promise((resolve,reject) => {resolve(this)})
+    } else {
+      return this.fetchMetaData().then( () => {this._connected = true; return this} )
+    }
+  }
+
+  fetchMetaData() {
+    return this.ioHandler.ls(this._location, '*.md').then( files => {
+      files.forEach(f => {
+        this.add(new WrappedNoteFiles(this, f))
+      })
+    })
+  }
+
+  getNoteContent(url) {
+    return this.ioHandler.load(url, 'text')
+  }
+
+}
+
+
+////////////////////////////////////////////////
+// WRAPPED NOTE COLLECTION BACKED BY EVERNOTE //
+////////////////////////////////////////////////
+
+class WrappedNoteCollectionEvernote extends WrappedNoteRWCollection {
 
   constructor(token, url, opt) {
+    super();
     if (token instanceof EvernoteConnectionCached) {
       this.conn = token;
     } else {
@@ -530,112 +739,25 @@ class WrappedNoteServer {
     }
   }
 
-  checkConnection() {
-    if (this.conn.noteMap instanceof Map && this.conn.noteMap.size > 0) {
-      return this.conn
+  connect() {
+    if (this.conn.noteMap) {
+      return new Promise((resolve,reject) => {resolve(this)})
     } else {
-      throw new Error('Invalid WrappedNoteServer operation without server metadata')
+      return this.fetchMetaData().then( () => this )
     }
   }
 
   fetchMetaData() {
-    return this.conn.fetchMetaData()
-  }
-
-  get notes() {
-    var out = [];
-    this.checkConnection().noteMap.forEach(n => {
-      out.push(new WrappedNote(this.conn,n))
-    });
-    return out;
-  }
-
-  getNote(guid) {
-    return new WrappedNote(this.conn, this.checkConnection().noteMap.get(guid));
+    return this.conn.fetchMetaData().then(() => {
+      this.conn.noteMap.forEach(n => {
+        this.add(new WrappedNoteEvernote(this.conn,n))
+      });
+    })
   }
 
   newNote(title, content) {
     return this.conn.createNote(title, content);
   }
-
-}
-
-
-//////////////////////////////
-// HANDLER FOR OFFLINE DATA //
-//////////////////////////////
-
-class EvernoteOffline {
-
-  constructor(localFolder) {
-    this._location = localFolder;
-  }
-
-  getMetadata() {
-    return EvernoteOffline.ajax({
-      type:     'GET',
-      dataType: 'json',
-      url:      `${this._location}/metadata.json`,
-      data:     {}
-    })
-      .then(meta => {
-        this.meta = meta;
-        this.notes     = new Map( meta.notes     .map(n => [n.guid,n]) );
-        this.notebooks = new Map( meta.notebooks .map(n => [n.guid,n]) );
-        this.tags      = new Map( meta.tags      .map(t => [t.guid,t]) );
-        this.resources = new Map( meta.resources .map(r => [r.guid,r]) );
-      })
-      .then(() => EvernoteOffline.ajax(`/@ls/${this._location}/*`) )
-      .then(f  => { this._processFiles(f) } )
-  }
-
-  getNoteContent(guid) {
-    var lastVersion = this.fileData[guid].reduce((a,b) => Math.max(a,b), 0);
-    return EvernoteOffline.ajax({
-      type: 'GET',
-      dataType: 'xml',
-      url: `${this._location}/notes/${guid}/${lastVersion}`
-    })
-  }
-
-  getNoteResourceMeta(guid) {
-    return Promise.all(
-      this.notes.get(guid).resources.map( r => {
-        return EvernoteOffline.ajax({
-          type: 'GET',
-          dataType: 'json',
-          url: `${this._location}/resources/${r.guid}/metadata.json`
-        }).then(res => {
-          res.data.bodyHash = Object.values(res.data.bodyHash).map(
-            x => (x < 16 ? '0' : '') + x.toString(16)
-          ).join('');
-          return res
-        })
-      })
-    )
-  }
-
-  _processFiles(files) {
-    this.fileData = {};
-    files.filter( (f) => f.startsWith(`${this._location}/notes/`) ).forEach( (f) => {
-      var [guid, version] = f.split('/notes/').pop().split('/');
-      this.fileData[guid] = this.fileData[guid] || [];
-      if (version !== 'versions.json' && version.match(/^\d+$/))
-        this.fileData[guid].push( parseInt(version) );
-    })
-  }
-
-  static connect(location) {
-    EvernoteOffline._instance = new EvernoteOffline(location);
-    var _this = EvernoteOffline._instance;
-    return _this.getMetadata()
-  }
-
-  static ajax(options) {
-    return new Promise((resolve, reject) => {
-      $.ajax(options).done(resolve).fail(reject);
-    });
-  };
 
 }
 
