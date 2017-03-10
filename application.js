@@ -94,6 +94,183 @@ class NotificationHandler {
 
 }
 
+class WrappedNoteBrowser {
+
+  constructor(wnc, $menu, $table, $viewer) {
+
+    // check inputs
+    if (!(wnc instanceof WrappedNoteROCollection)) {
+      throw new Error("A connection of type WrappedNoteROCollection is required!");
+    } else if (!($menu instanceof $)) {
+      throw new Error("Wrapped jQuery object for browser menu is required!")
+    } else if (!($table instanceof $)) {
+      throw new Error("Wrapped jQuery object for browser note table is required!")
+    } else if (!($viewer instanceof $)) {
+      throw new Error("Wrapped jQuery object for browser viewer is required!")
+    }
+
+    // attach note collection and sort by updated date
+    this.wnc = wnc;
+    this.wnc.sortBy('updated', true);
+
+    // attach jQuery objects
+    this.$menu = $menu;
+    this.$table = $table;
+    this.$viewer = $viewer;
+
+    // initialize maps to contain counts for number of notes by tag and notebook
+    this.tagNoteCounts      = new Map();
+    this.notebookNoteCounts = new Map();
+
+    // iterate over notes to count number of notes by tag and notebook
+    this.wnc._notes.forEach(note => {
+
+      // increment corresponding notebook counter
+      let nn  = this.notebookNoteCounts.has(note.notebook)
+              ? this.notebookNoteCounts.get(note.notebook)
+              : 0;
+      this.notebookNoteCounts.set(note.notebook, nn+1);
+
+      // iterate over tags and increment corresponding tag counter
+      note.tags.forEach(tag => {
+        let nt  = this.tagNoteCounts.has(tag)
+                ? this.tagNoteCounts.get(tag)
+                : 0;
+        this.tagNoteCounts.set(tag, nt+1);
+      });
+    });
+
+    // get notebooks grouped by stack if defined in WNC
+    this.notebookStacks = this.wnc.notebookStacks;
+
+    // get tag dependency tree if defined in wnc
+    this.tagTree = this.wnc.tagTree;
+
+    // generate notebook menu items
+    var notebookMenuItems = [];
+    if (this.notebookStacks) {
+      notebookMenuItems = Object.keys(this.notebookStacks).sort().map(k => {
+        let li = this.notebookStacks[k].map( nb =>
+          `<li data-notebook="${nb.name}">${nb.name} [${this.notebookNoteCounts.get(nb.name)}]</li>`
+        );
+        return `<li>${k}<ul>${li.join('\n')}</ul></li>`
+      });
+    } else {
+      var iterator = this.notebookNoteCounts.keys();
+      for (var key = iterator.next(); !key.done; key = iterator.next()) {
+        notebookMenuItems.push(`<li data-notebook="${key.value}">${key.value} [${this.notebookNoteCounts.get(key.value)}]</li>`)
+      }
+    }
+
+    // generate tag menu items
+    var tagMenuItems = [];
+    if (this.tagTree) {
+      tagMenuItems = this.tagTree.map(t => this.tagToHtml(t))
+    } else {
+      var iterator = this.tagNoteCounts.keys();
+      for (var key = iterator.next(); !key.done; key = iterator.next()) {
+        tagMenuItems.push(`<li data-tag="${key.value}">${key.value} [${this.tagNoteCounts.get(key.value)}]</li>`)
+      }
+    }
+
+    // generate the browser menu
+    this.$menu.html(`
+      <ul>
+        <li>Notes</li>
+        <li id="browser-menu-notebooks">Notebooks<ul>
+          ${notebookMenuItems.join('\n')}
+        </ul></li>
+        <li id="browser-menu-tags">Tags<ul>
+          ${tagMenuItems.join('\n')}
+        </ul></li>
+        <li>Atlas</li>
+        <li>Trash</li>
+      </ul>
+    `);
+
+    // render note table
+    this.renderTable();
+
+    var _this = this;
+    $table.off('click').on('click', 'thead th', function(){
+      var field = $(this).data('field');
+      var sort_rev = $(this).hasClass('sort-dsc');
+      wnc.sortBy(field, sort_rev);
+      _this.renderTable();
+      _this.$table.find('thead th')
+        .removeClass('sort-asc sort-dsc')
+        .filter( function(){ return $(this).data('field') == field } )
+        .addClass( sort_rev ? 'sort-asc' : 'sort-dsc' )
+    });
+
+    $table.off('click').on('click', 'tbody tr', function(){
+      var note = _this.wnc.getNote( $(this).data('guid') );
+      note.getContent().then(content => {
+        if (content instanceof $) {
+          _this.$viewer.html( content.html() );
+        } else {
+          _this.$viewer.text(content);
+        }
+      })
+    });
+
+    $menu.off('click');
+
+    $menu.on('click', 'li#browser-menu-notebooks li', function(event){
+      event.stopPropagation();
+      var notebook = $(this).data('notebook');
+      console.log("Filtering for notebook: "+notebook);
+      _this.wnc.filter( n => n.notebook == notebook );
+      _this.renderTable();
+    });
+
+    $menu.on('click', 'li#browser-menu-tags li', function(event){
+      event.stopPropagation();
+      var tag = $(this).data('tag');
+      console.log("Filtering for tag: "+tag)
+      _this.wnc.filter( n => n.tags.includes(tag) );
+      _this.renderTable();
+    });
+  }
+
+  tagToHtml(tag) {
+    let nTagged = this.tagNoteCounts.get(tag.name);
+    if (tag.children.length > 0) {
+      var children = tag.children.map(g => this.tagToHtml(g)).join('');
+      return `<li data-tag="${tag.name}">${tag.name} [${nTagged}]<ul>${children}</ul></li>`
+    } else {
+      return `<li data-tag="${tag.name}">${tag.name} [${nTagged}]</li>`
+    }
+  }
+
+  renderTable() {
+    var tr = this.wnc.notes.map( n => `
+      <tr data-guid="${n.guid}">
+        <td>${n.updatedStr}</td>
+        <td>${n.title}</td>
+        <td>${n.notebook}</td>
+        <td>${n.tags}</td>
+      </tr>
+    ` ).join('\n');
+
+    this.$table.html(`
+      <table id="browser-note-list">
+        <thead>
+          <tr>
+            <th style="width:20%" data-field="updated" class="sort-asc">Updated</th>
+            <th style="width:40%" data-field="title">Title</th>
+            <th style="width:20%" data-field="notebook">Notebook</th>
+            <th style="width:20%" data-field="tags">Tags</th>
+          </tr>
+        </thead><tbody>
+          ${tr}
+        </tbody>
+      </table>
+      `);
+  }
+
+}
+
 class GuiControl {
 
   constructor(cm, wns) {
@@ -130,6 +307,8 @@ class GuiControl {
     this.diffCache     = {};            // cached version diff data
     this.generation    = null;          // generation number for clean note state
     this.staleHistory  = true;          // is note history list out-of-date?
+    this.keepFileMenu  = false;         // keep file menu after clicking on an entry?
+    this.browser       = null;          // object to handle browser operation
 
     // add a global error listener
     window.addEventListener("error", (e) => {
@@ -171,12 +350,18 @@ class GuiControl {
   get isWritable   () { }
 
   // setters for state properties that trigger a refresh
-  set currentNote  (v) { this.state.currentNote  = v; this._debouncedRefresh(); }
-  set currentTab   (v) { this.state.currenTab    = v; this._debouncedRefresh(); }
-  set floatingTOC  (v) { this.state.floatingTOC  = v; this._debouncedRefresh(); }
-  set noteClean    (v) { this.state.noteClean    = v; this._debouncedRefresh(); }
-  set noteTitle    (v) { this.state.noteTitle    = v; this._debouncedRefresh(); }
-  set showNoteList (v) { this.state.showNoteList = v; this._debouncedRefresh(); }
+  set currentNote  (v)  { this.state.currentNote  = v; this._debouncedRefresh(); }
+  set currentTab   (v)  { this.state.currentTab   = v; this._debouncedRefresh(); }
+  set floatingTOC  (v)  { this.state.floatingTOC  = v; this._debouncedRefresh(); }
+  set noteClean    (v)  { this.state.noteClean    = v; this._debouncedRefresh(); }
+  set noteTitle    (v)  { this.state.noteTitle    = v; this._debouncedRefresh(); }
+  set showNoteList (v)  { this.state.showNoteList = v; this._debouncedRefresh();
+                          if (v) {
+                            this.server.connect().then(conn => {
+                              this.populateNoteList(conn.notes);
+                            })
+                          }
+                        }
 
   // throttled call to refresh function
   _debouncedRefresh() {
@@ -227,6 +412,13 @@ class GuiControl {
     // hide all windows
     this.$allWindows.hide();
 
+    // disable editor tab for a read-only collection
+    if (this.hasServer && !(this.server instanceof WrappedNoteRWCollection)) {
+      this.$writableServerItems.addClass('disabled');
+    } else {
+      this.$writableServerItems.removeClass('disabled');
+    }
+
     // disable/enable menu items with server connection
     if (this.hasServer) {
       this.$serverItems.removeClass('disabled');
@@ -270,6 +462,14 @@ class GuiControl {
       case this.tabs.viewer:
         this.$viewViewer.addClass('arrow_box');
         setWidthClass( this.$previewWindow ).show();
+        break;
+
+      case this.tabs.browser:
+        this.$viewBrowser.addClass('arrow_box');
+        this.$previewWindow.hide();
+        this.$browserMenu.show();
+        this.$browserTable.show();
+        this.$browserViewer.show();
         break;
 
       case this.tabs.changes:
@@ -319,6 +519,7 @@ class GuiControl {
     this.$viewEditor      = $('body > header#main-menu a#viewEditor');
     this.$viewHistory     = $('body > header#main-menu a#viewHistory');
     this.$viewViewer      = $('body > header#main-menu a#viewViewer');
+    this.$viewBrowser     = $('body > header#main-menu a#viewBrowser');
     this.$viewChanges     = $('body > header#main-menu a#viewChanges');
     this.$viewHelp        = $('body > header#main-menu a#viewHelp');
 
@@ -338,11 +539,15 @@ class GuiControl {
     this.$helpWindow      = $('#application-window section#help-container');
     this.$helpContents    = $('#application-window section#help-container div#rendered-help');
     this.$tocWindow       = $('#application-window section#floating-toc-container');
+    this.$browserMenu     = $('#application-window section#browser-menu');
+    this.$browserTable    = $('#application-window section#browser-notes');
+    this.$browserViewer   = $('#application-window section#browser-viewer');
 
     // attach a wrapped set of tabs
     this.$allTabs = [
       this.$viewEditor,
       this.$viewViewer,
+      this.$viewBrowser,
       this.$viewHistory,
       this.$viewChanges,
       this.$viewHelp
@@ -356,15 +561,21 @@ class GuiControl {
       this.$previewWindow,
       this.$noteMenu,
       this.$tocWindow,
-      this.$helpWindow
+      this.$helpWindow,
+      this.$browserMenu,
+      this.$browserTable,
+      this.$browserViewer
     ].reduce( (a,b) => a.add($(b)), $() );
 
-    // collection of elements to disable without a writable connection
+    // collection of items to disable without a server connection
     this.$serverItems = this.$loadMenuItem.parent()
-      .add(this.$saveNote.parent())
-      .add(this.$saveNoteAs.parent())
       .add(this.$refresh.parent());
 
+    // collection of elements to disable without a writable connection
+    this.$writableServerItems = this.$viewEditor.parent()
+      .add(this.$newNote.parent())
+      .add(this.$saveNote.parent())
+      .add(this.$saveNoteAs.parent());
   }
 
   // attach to jQuery events
@@ -411,6 +622,19 @@ class GuiControl {
         _this.floatingTOC = false;
         _this.showHelp = false;
       }
+    });
+
+    // bind to clicking on 'Browser' tab
+    this.$viewBrowser.off('click').on('click', function(){
+      _this.server.connect().then(conn => {
+        if (_this.browser == null) {
+          _this.browser = new WrappedNoteBrowser(_this.server, _this.$browserMenu, _this.$browserTable, _this.$browserViewer);
+        }
+        _this.currentTab = _this.tabs.browser;
+        _this.floatingTOC = false;
+        _this.showHelp = false;
+        _this.showNoteList = false;
+      })
     })
 
     // bind to clicking on 'Help' tab
@@ -480,7 +704,9 @@ class GuiControl {
           note.getContent().then(content => {
             _this.populateNote(guid, content);
             _this.generation = _this.cm.changeGeneration();
-            _this.showNoteList = false;
+            if (!_this.keepFileMenu) {
+              _this.showNoteList = false;
+            }
             _this.noteClean = true;
             _this.noteTitle = note.title;
           })
@@ -613,11 +839,17 @@ class GuiControl {
     });
   }
 
-  // populate editor with note content
+  // load note content into GUI
   populateNote(guid, content) {
 
-    // put note content in editor
-    this.cm.setValue(content);
+    // content is XML, so only load into viewer
+    if (content instanceof $) {
+      this.$previewWindow.html( content.html() );
+
+    // content is text, so load into editor
+    } else {
+      this.cm.setValue(content);
+    }
 
     // if note has changed, flag note history list as stale and update its attached note guid
     if (this.currentNote !== guid)
@@ -1165,218 +1397,10 @@ class MarkdownRenderer {
 }
 
 
-////////////////////////
-// LOCAL FILE SUPPORT //
-////////////////////////
-
-// make an ajax request
-function requestFile(fileName, callback) {
-  $.ajax(fileName)
-    .success(callback)
-    .error(function(qXHR, textStatus, errorThrown){
-      throw new Error("AJAX request failure!");
-    });
-}
-
-// generate local note list
-function generateLocalNoteList(){
-
-  // request recursive list of markdown files
-  requestFile('/@ls/*.md', function(files){
-
-    // markdown file data grouped by containing folder
-    var noteData = _.chain(files)
-      .map(function(f){
-        var m = f.match(/(.*)\/(.*)/);
-        return { title:m[2], folder:m[1], link:f }
-      })
-      .sortBy(function(x){
-        return x.title.toLowerCase()
-      })
-      .groupBy('folder')
-      .value();
-
-    // clear note list
-    gui.$noteList.empty();
-
-    // sorted list of folders
-    var folders = _.sortBy(Object.keys(noteData), function(a){ return a.toLowerCase() });
-
-    // iterate over folders
-    _.each(folders, function(folder){
-
-      // create header for current folder
-      gui.$noteList.append(
-        '<li class="list-group-item active">' + folder + '</li>'
-      );
-
-      // iterate over notes in folder and append to list
-      _.each(noteData[folder], function(note) {
-        gui.$noteList.append(
-          '<a href="#" class="list-group-item" data-link="'+note.link+'">' + note.title + '</a>'
-        );
-      });
-    })
-
-    // bind a new click handler for notes
-    gui.$noteList.off('click').on('click', 'a', function(){
-      loadLocalFile($(this).data('link'));
-      window.history.pushState(
-        null,
-        'Markdown Browser',
-        document.URL.split('?')[0] + '?' + $(this).data('link').slice(2)
-      );
-    })
-  });
-}
-
-
 ///////////////////////////////////
 // LOCAL SYNCHRONIZATION SUPPORT //
 ///////////////////////////////////
 
-function viewLocalStorage() {
-
-  EvernoteOffline.connect('syncData').then( () => {
-    var conn = EvernoteOffline._instance;
-    var notes = new WrappedNoteROCollection();
-    conn.meta.notes.forEach(n => {
-      if (n.deleted === null) {
-        notes.add(new StaticWrappedNote(n,conn))
-      }
-    });
-    notes.sortBy('updated', true);
-
-    window.wnc = notes;
-
-    var tagNoteCounts = new Map(conn.meta.tags.map(t => [t.name, 0]));
-    var notebookNoteCounts = new Map(conn.meta.notebooks.map(nb => [nb.name,0]));
-    notes._notes.forEach(n => {
-      notebookNoteCounts.set(n.notebook, notebookNoteCounts.get(n.notebook)+1);
-      n.tags.forEach(t => {
-        tagNoteCounts.set(t, tagNoteCounts.get(t)+1);
-      });
-    });
-
-    var notebooksByStack = {};
-    conn.meta.notebooks.forEach(nb => {
-      let stack = nb.stack || "Default";
-      notebooksByStack[stack] = notebooksByStack[stack] || [];
-      notebooksByStack[stack].push(nb);
-    });
-    Object.keys(notebooksByStack).sort().forEach(k => {
-      let li = notebooksByStack[k].map( nb => `<li data-guid="${nb.guid}">${nb.name} [${notebookNoteCounts.get(nb.name)}]</li>` );
-      $('#browser-menu li#browser-menu-notebooks > ul').append(
-        `<li>${k}<ul>${li.join('\n')}</ul></li>`
-      )
-    });
-
-    var tagMap = new Map(conn.meta.tags.map(t => [t.guid,t]));
-    var tagChildren = new Map(conn.meta.tags.map(t => [t.guid, []]));
-    var rootTags = [];
-    conn.meta.tags.forEach(t => {
-      let parent = t.parentGuid;
-      if (parent) {
-        tagChildren.get(parent).push(t.guid);
-      } else {
-        rootTags.push(t.guid);
-      }
-    });
-    function tagToHtml(guid) {
-      let nTagged = tagNoteCounts.get(tagMap.get(guid).name);
-      if (tagChildren.get(guid).length > 0) {
-        var children = tagChildren.get(guid).map(g => tagToHtml(g)).join('');
-        return `<li data-guid="${guid}">${tagMap.get(guid).name} [${nTagged}]<ul>${children}</ul></li>`
-      } else {
-        return `<li data-guid="${guid}">${tagMap.get(guid).name} [${nTagged}]</li>`
-      }
-    }
-    rootTags.forEach(t => {
-      $('#browser-menu li#browser-menu-tags > ul').append(tagToHtml(t));
-    });
-
-    gui.currentTab = gui.tabs.viewer;
-    gui.floatingTOC = false;
-    gui.showHelp = false;
-    gui.$previewWindow.hide();
-    $('#browser-menu').add('#browser-notes').add('#browser-viewer').show();
-
-    function render() {
-      var tr = notes.map( n => `<tr data-guid="${n.guid}">
-        <td>${n.updatedStr}</td>
-        <td>${n.title}</td>
-        <td>${n.notebook}</td>
-        <td>${n.tags}</td>
-      </tr>` ).join('\n');
-      $('table#browser-note-list').html(
-        `<thead>
-          <tr>
-            <th style="width:20%" data-field="updated" class="sort-asc">Updated</th>
-            <th style="width:40%" data-field="title">Title</th>
-            <th style="width:20%" data-field="notebook">Notebook</th>
-            <th style="width:20%" data-field="tags">Tags</th>
-          </tr>
-        </thead><tbody>
-          ${tr}
-        </tbody>`
-      );
-    }
-
-    render();
-
-    $('#browser-notes').on('click', 'thead th', function(){
-      var field = $(this).data('field');
-      var sort_rev = $(this).hasClass('sort-dsc');
-      notes.sortBy(field, sort_rev);
-      render();
-      $('#browser-notes thead th')
-        .removeClass('sort-asc sort-dsc')
-        .filter( function(){ return $(this).data('field') == field } )
-        .addClass( sort_rev ? 'sort-asc' : 'sort-dsc' )
-    });
-
-    $('#browser-notes').on('click', 'tbody tr', function(){
-      var note = conn.notes.get( $(this).data('guid') );
-      conn.getNoteContent($(this).data('guid')).then(content => {
-          $('#browser-viewer').html( $(content).find('en-note').html() );
-          var hashLookup = new Map(note.resources.map(r => [r.data.bodyHash,r]));
-          $('#browser-viewer en-media').each( function() {
-            var mimeType = $(this).attr('type');
-            var resData = hashLookup.get($(this).attr('hash'));
-            var resLink = `syncData/resources/${resData.guid}/${resData.guid}`;
-            if (mimeType.startsWith('image/')) {
-              $(this).replaceWith(`<img src="${resLink}">`);
-            } else if (mimeType == 'application/pdf') {
-              $(this).replaceWith(`<object data='${resLink}' type='application/pdf' height="800" width="600"><a href='${resLink}'>${resLink}.pdf</a></object>`);
-            } else {
-              throw new Error(`Unrecognized mime type: ${mimeType}`);
-            }
-          });
-        })
-    });
-
-    $('#browser-menu li#browser-menu-notebooks').on('click', 'li', function(event){
-      event.stopPropagation();
-      var notebook = conn.notebooks.get( $(this).data('guid') ).name;
-      console.log("Filtering for notebook: "+notebook);
-      notes.filter( n => n.notebook == notebook );
-      render();
-    });
-
-    $('#browser-menu li#browser-menu-tags').on('click', 'li', function(event){
-      event.stopPropagation();
-      var tag = conn.tags.get( $(this).data('guid') ).name;
-      console.log("Filtering for tag: "+tag)
-      notes.filter( n => n.tags.includes(tag) );
-      render();
-    });
-
-    conn.getNoteContent('4c337201-7320-4bf3-a646-ec096796ed16')
-      .then( (content) => {
-        $('#browser-viewer').html( $(content).find('en-note').html() );
-      });
-  })
-}
 
 function syncToLocalStorage() {
   var sync = new Synchronizer(
@@ -1452,6 +1476,10 @@ class Application {
         this.GUI.transientAlert('Running in mode: '+this.queryOptions.mode);
         if (this.mode == 'evernote') {
           this.GUI.$updateToken.show().on('click', updateToken);
+        } else if (this.mode == 'offline') {
+          this.GUI.currentTab = this.GUI.tabs.viewer;
+          this.GUI.showNoteList = true;
+          this.GUI.keepFileMenu = true;
         } else if (this.mode == 'file') {
           this.WNC.connect().then(conn => {
             conn.getNoteContent(`${this.queryOptions.location}/${this.queryOptions.file}`).then(txt => {
@@ -1460,6 +1488,7 @@ class Application {
               this.GUI.noteTitle = this.queryOptions.file;
               this.GUI.currentTab = this.GUI.tabs.viewer;
               this.GUI.showNoteList = true;
+              this.GUI.keepFileMenu = true;
               this.GUI.floatingTOC = true;
             })
           })

@@ -640,6 +640,44 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
     }
   }
 
+  get notebookStacks() {
+    var notebooksByStack = {};
+    this.meta.notebooks.forEach(nb => {
+      let stack = nb.stack || "Default";
+      notebooksByStack[stack] = notebooksByStack[stack] || [];
+      notebooksByStack[stack].push(nb);
+    });
+    return notebooksByStack
+  }
+
+  get tagTree() {
+    var tagMap      = new Map(this.meta.tags.map(t => [t.guid, t ] ));
+    var tagChildren = new Map(this.meta.tags.map(t => [t.guid, []] ));
+    var rootTags = [];
+
+    // function to recursively assemble a tag object
+    function recursiveTag(tag) {
+      return {
+        name     : tag.name,
+        children : tagChildren.get(tag.guid).map(c =>
+          recursiveTag(tagMap.get(c))
+        )
+      }
+    }
+
+    // iterate over tags to build up map of children and array of root-level tags
+    this.meta.tags.forEach(t => {
+      if (t.parentGuid) {
+        tagChildren.get(t.parentGuid).push(t.guid);
+      } else {
+        rootTags.push(t);
+      }
+    });
+
+    // convert root-level tags to recursive objects
+    return rootTags.map( rt => recursiveTag(rt) );
+  }
+
   fetchMetaData() {
     return this.ioHandler.load(`${this._location}/metadata.json`, 'json')
       .then(meta => {
@@ -647,10 +685,6 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
         meta.notes.forEach(note => {
           this.add(new WrappedNoteSyncData(note, this));
         })
-        // this.notes     = new Map( meta.notes     .map(n => [n.guid,n]) );
-        // this.notebooks = new Map( meta.notebooks .map(n => [n.guid,n]) );
-        // this.tags      = new Map( meta.tags      .map(t => [t.guid,t]) );
-        // this.resources = new Map( meta.resources .map(r => [r.guid,r]) );
       })
       .then(() => this.ioHandler.ls(this._location))
       .then(files  => {
@@ -669,6 +703,24 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
     if (version === undefined)
       version = this.fileData[guid].reduce((a,b) => Math.max(a,b), 0);
     return this.ioHandler.load(`${this._location}/notes/${guid}/${version}`, 'xml')
+      .then(content => {
+        let note = this.getNote(guid);
+        let $note = $(content).find('en-note');
+        let hashLookup = new Map(note._note.resources.map(r => [r.data.bodyHash,r]));
+        $note.find('en-media').each( function() {
+          var mimeType = $(this).attr('type');
+          var resData = hashLookup.get($(this).attr('hash'));
+          var resLink = `syncData/resources/${resData.guid}/${resData.guid}`;
+          if (mimeType.startsWith('image/')) {
+            $(this).replaceWith(`<img src="${resLink}">`);
+          } else if (mimeType == 'application/pdf') {
+            $(this).replaceWith(`<object data='${resLink}' type='application/pdf' height="800" width="600"><a href='${resLink}'>${resLink}.pdf</a></object>`);
+          } else {
+            throw new Error(`Unrecognized mime type: ${mimeType}`);
+          }
+        })
+        return $note
+      })
   }
 
   getNoteResourceMeta(guid) {
