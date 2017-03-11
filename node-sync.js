@@ -9,11 +9,12 @@ if (process.argv.length < 4) {
 }
 
 // require node modules
-var vm = require('vm');
-var fs = require('fs');
+global.vm = require('vm');
+global.fs = require('fs');
+global.path = require('path');
 
 // load dependencies
-var Evernote = require('evernote');
+global.Evernote = require('evernote');
 vm.runInThisContext(fs.readFileSync('evernote.js'));
 vm.runInThisContext(fs.readFileSync('lib/lodash.min.js'));
 
