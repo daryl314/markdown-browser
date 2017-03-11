@@ -274,15 +274,11 @@ class WrappedNoteBrowser {
 class GuiControl {
 
   constructor(cm, wns) {
-
-    // attach server if one was provided
-    this.server = wns ? wns : null;
-
-    // attach CodeMirror instance
-    this.cm = cm ? cm : null;
+    this.cm = cm;
+    this.server = wns;
 
     // attach jQuery references to GUI elements
-    this._attachReferences();
+    Object.assign(this, GuiControl.getReferences());
 
     // enumeration for tabs
     this.tabs = {
@@ -324,17 +320,9 @@ class GuiControl {
     // create a dialog handler
     this.dialogHandler = new NotificationHandler();
 
-  }
-
-  // attach a data connections
-  attachServer(wns) {
-    this.server = wns;
+    // render content
     this._debouncedRefresh();
-  }
 
-  // attach a CodeMirror instance
-  attachCodeMirror(cm) {
-    this.cm = cm;
   }
 
   // getters for properties that trigger a refresh
@@ -495,87 +483,93 @@ class GuiControl {
 
   ///// HELPER FUNCTIONS /////
 
-  // attach jQuery references to object
-  _attachReferences() {
+  // return jQuery reference object
+  static getReferences() {
+
+    // output object
+    var refs = {};
 
     // container for menu bar
-    this.$mainMenu        = $('body > header#main-menu');
+    refs.$mainMenu        = $('body > header#main-menu');
 
     // File menu
-    this.$fileMenu        = $('body > header#main-menu li#fileMenu');
-    this.$loadMenuItem    = $('body > header#main-menu a#showNoteList');
-    this.$newNote         = $('body > header#main-menu a#newNote');
-    this.$saveNote        = $('body > header#main-menu a#saveNote');
-    this.$saveNoteAs      = $('body > header#main-menu a#saveNoteAs');
-    this.$refresh         = $('body > header#main-menu a#refreshConnection');
-    this.$updateToken     = $('body > header#main-menu a#updateToken');
+    refs.$fileMenu        = $('body > header#main-menu li#fileMenu');
+    refs.$loadMenuItem    = $('body > header#main-menu a#showNoteList');
+    refs.$newNote         = $('body > header#main-menu a#newNote');
+    refs.$saveNote        = $('body > header#main-menu a#saveNote');
+    refs.$saveNoteAs      = $('body > header#main-menu a#saveNoteAs');
+    refs.$refresh         = $('body > header#main-menu a#refreshConnection');
+    refs.$updateToken     = $('body > header#main-menu a#updateToken');
 
     // Nav menu
-    this.$navMenu         = $('body > header#main-menu ul#navMenu');
-    this.$noteTitle       = $('body > header#main-menu li#noteTitle');
-    this.$toggleTOC       = $('body > header#main-menu a#toggleFloatingTOC');
+    refs.$navMenu         = $('body > header#main-menu ul#navMenu');
+    refs.$noteTitle       = $('body > header#main-menu li#noteTitle');
+    refs.$toggleTOC       = $('body > header#main-menu a#toggleFloatingTOC');
 
     // Tabs
-    this.$viewEditor      = $('body > header#main-menu a#viewEditor');
-    this.$viewHistory     = $('body > header#main-menu a#viewHistory');
-    this.$viewViewer      = $('body > header#main-menu a#viewViewer');
-    this.$viewBrowser     = $('body > header#main-menu a#viewBrowser');
-    this.$viewChanges     = $('body > header#main-menu a#viewChanges');
-    this.$viewHelp        = $('body > header#main-menu a#viewHelp');
+    refs.$viewEditor      = $('body > header#main-menu a#viewEditor');
+    refs.$viewHistory     = $('body > header#main-menu a#viewHistory');
+    refs.$viewViewer      = $('body > header#main-menu a#viewViewer');
+    refs.$viewBrowser     = $('body > header#main-menu a#viewBrowser');
+    refs.$viewChanges     = $('body > header#main-menu a#viewChanges');
+    refs.$viewHelp        = $('body > header#main-menu a#viewHelp');
 
     // floating table of contents
-    this.$floatingTOC     = $('#application-window ul#floating-toc');
+    refs.$floatingTOC     = $('#application-window ul#floating-toc');
 
     // windows
-    this.$historyMenu     = $('#application-window section#history-list');
-    this.$historyList     = $('#application-window section#history-list ul.list-group');
-    this.$historyWindow   = $('#application-window section#history-container');
-    this.$noteMenu        = $('#application-window section#nav-list');
-    this.$noteList        = $('#application-window section#nav-list ul.list-group');
-    this.$editorWindow    = $('#application-window main#content');
-    this.$editor          = $('#application-window main#content textarea#editor');
-    this.$previewWindow   = $('#application-window section#viewer-container');
-    this.$previewContents = $('#application-window section#viewer-container div#viewer');
-    this.$helpWindow      = $('#application-window section#help-container');
-    this.$helpContents    = $('#application-window section#help-container div#rendered-help');
-    this.$tocWindow       = $('#application-window section#floating-toc-container');
-    this.$browserMenu     = $('#application-window section#browser-menu');
-    this.$browserTable    = $('#application-window section#browser-notes');
-    this.$browserViewer   = $('#application-window section#browser-viewer');
+    refs.$historyMenu     = $('#application-window section#history-list');
+    refs.$historyList     = $('#application-window section#history-list ul.list-group');
+    refs.$historyWindow   = $('#application-window section#history-container');
+    refs.$noteMenu        = $('#application-window section#nav-list');
+    refs.$noteList        = $('#application-window section#nav-list ul.list-group');
+    refs.$editorWindow    = $('#application-window main#content');
+    refs.$editor          = $('#application-window main#content textarea#editor');
+    refs.$previewWindow   = $('#application-window section#viewer-container');
+    refs.$previewContents = $('#application-window section#viewer-container div#viewer');
+    refs.$helpWindow      = $('#application-window section#help-container');
+    refs.$helpContents    = $('#application-window section#help-container div#rendered-help');
+    refs.$tocWindow       = $('#application-window section#floating-toc-container');
+    refs.$browserMenu     = $('#application-window section#browser-menu');
+    refs.$browserTable    = $('#application-window section#browser-notes');
+    refs.$browserViewer   = $('#application-window section#browser-viewer');
 
     // attach a wrapped set of tabs
-    this.$allTabs = [
-      this.$viewEditor,
-      this.$viewViewer,
-      this.$viewBrowser,
-      this.$viewHistory,
-      this.$viewChanges,
-      this.$viewHelp
+    refs.$allTabs = [
+      refs.$viewEditor,
+      refs.$viewViewer,
+      refs.$viewBrowser,
+      refs.$viewHistory,
+      refs.$viewChanges,
+      refs.$viewHelp
     ].reduce( (a,b) => a.add($(b)), $() );
 
     // attach a wrapped set of windows
-    this.$allWindows = [
-      this.$historyMenu,
-      this.$historyWindow,
-      this.$editorWindow,
-      this.$previewWindow,
-      this.$noteMenu,
-      this.$tocWindow,
-      this.$helpWindow,
-      this.$browserMenu,
-      this.$browserTable,
-      this.$browserViewer
+    refs.$allWindows = [
+      refs.$historyMenu,
+      refs.$historyWindow,
+      refs.$editorWindow,
+      refs.$previewWindow,
+      refs.$noteMenu,
+      refs.$tocWindow,
+      refs.$helpWindow,
+      refs.$browserMenu,
+      refs.$browserTable,
+      refs.$browserViewer
     ].reduce( (a,b) => a.add($(b)), $() );
 
     // collection of items to disable without a server connection
-    this.$serverItems = this.$loadMenuItem.parent()
-      .add(this.$refresh.parent());
+    refs.$serverItems = refs.$loadMenuItem.parent()
+      .add(refs.$refresh.parent());
 
     // collection of elements to disable without a writable connection
-    this.$writableServerItems = this.$viewEditor.parent()
-      .add(this.$newNote.parent())
-      .add(this.$saveNote.parent())
-      .add(this.$saveNoteAs.parent());
+    refs.$writableServerItems = refs.$viewEditor.parent()
+      .add(refs.$newNote.parent())
+      .add(refs.$saveNote.parent())
+      .add(refs.$saveNoteAs.parent());
+
+    // return the references
+    return refs
   }
 
   // attach to jQuery events
@@ -1401,15 +1395,65 @@ class MarkdownRenderer {
 // LOCAL SYNCHRONIZATION SUPPORT //
 ///////////////////////////////////
 
+class SyncHandler {
+  constructor(location) {
+    let _this = this;
+    this.sync = new Synchronizer(
+      localStorage.token,
+      "@proxy-https/www.evernote.com/shard/s2/notestore",
+      location,
+      1e7,
+      {
+        messageLogger: (msg) => { _this.$el.find('div#log').prepend(msg+'<br/>') }
+      }
+    );
+    this.$el = $('body');
+  }
 
-function syncToLocalStorage() {
-  var sync = new Synchronizer(
-    localStorage.token,
-    "@proxy-https/www.evernote.com/shard/s2/notestore",
-    'syncData',
-    1e7
-  );
-  sync.synchronize().then(() => console.log('Sync complete!'));
+  synchronize() {
+    sync.synchronize().then(() => console.log('Sync complete!'));
+  }
+
+  render() {
+    this.sync._loadMetadata().then(m => {
+      this.$el.html(`
+        <div class="container-fluid">
+          <h1>Synchronizer Status</h1>
+          <ul>
+            <li>Last updated: ${WrappedNoteRO.dateString(m.lastSyncTime)}</li>
+            <li>Sync counter: ${m.lastSyncCount}</li>
+          </ul>
+          <button type="button" class="btn btn-primary">Synchronize</button>
+          <div id="log" style="border:1px solid black;padding:10px;margin-top:20px;"></div>
+        </div>
+      `);
+      console.log(m);
+    })
+    .then(() => this.sync._ioHandler.ls(this.sync._location))
+    .then(files  => {
+      let notes = [];
+      let versions = [];
+      files.forEach(f => {
+        let fileData = f.split('/');
+        if (fileData[3]) {
+          if (fileData[3] === 'versions.json') {
+            notes.push(fileData[2]);
+          } else {
+            versions.push(fileData[3]);
+          }
+        }
+      });
+      this.$el.find('ul').append(`
+        <li>${notes.length} notes</li>
+        <li>${versions.length} versions</li>
+      `);
+      let _this = this;
+      this.$el.find('button').on('click', function(){
+        $(this).hide();
+        _this.sync.synchronize();
+      })
+    })
+  }
 }
 
 
@@ -1426,6 +1470,7 @@ class Application {
     this.WNC = null;
     this.scrollSync = null;
     this.renderer = new MarkdownRenderer();
+    this.$el = GuiControl.getReferences();
   }
 
   get mode() {
@@ -1448,17 +1493,25 @@ class Application {
   }
 
   run() {
+
+    // wait until document is ready for manipulation...
     Application.documentReady()
+
+      // load contents of initial document
       .then(() => {
-        this.GUI = new GuiControl();  // get gui references without a server connection
         return ProxyServerIO.load(this.initalDocument,'text')
       })
+
+      // populate editor window and start CodeMirror
       .then(txt => {
-        this.GUI.$editor.text(txt);
-        this.launchCodeMirror(this.GUI);
+        this.$el.$helpContents.html( this.$el.$previewContents.html() );
+        this.$el.$editor.text(txt);
+        this.launchCodeMirror();
       })
+
+      // load evernote application resources required for WNC call
       .then(() => {
-        if (this.queryOptions.mode == 'evernote') {
+        if (this.queryOptions.mode == 'evernote' || this.queryOptions.mode == 'syncReport') {
           if (localStorage.getItem('token') === null)
             getEvernoteConnection.updateToken();
           return Application.loadJavascriptFile('/lib/evernote-sdk-minified.js')
@@ -1466,20 +1519,28 @@ class Application {
           return null
         }
       })
+
+      // create GUI class
       .then(() => {
         this.WNC = this.wnc();
-        this.GUI.attachServer(this.WNC);
+        this.GUI = new GuiControl(this.cm, this.WNC);
         if (!this.WNC) {
-          GUI.persistentWarning('Invalid mode: '+queryOptions.mode);
-          throw new Error("Invalid mode: "+queryOptions.mode);
+          this.GUI.persistentWarning('Invalid mode: '+this.queryOptions.mode);
+          throw new Error("Invalid mode: "+this.queryOptions.mode);
         }
         this.GUI.transientAlert('Running in mode: '+this.queryOptions.mode);
+      })
+
+      // launch appropriate mode
+      .then(() => {
         if (this.mode == 'evernote') {
           this.GUI.$updateToken.show().on('click', updateToken);
         } else if (this.mode == 'offline') {
           this.GUI.currentTab = this.GUI.tabs.viewer;
           this.GUI.showNoteList = true;
           this.GUI.keepFileMenu = true;
+        } else if (this.mode == 'syncReport') {
+          this.WNC.render();
         } else if (this.mode == 'file') {
           this.WNC.connect().then(conn => {
             conn.getNoteContent(`${this.queryOptions.location}/${this.queryOptions.file}`).then(txt => {
@@ -1504,6 +1565,8 @@ class Application {
         return new WrappedNoteCollectionFiles(this.queryOptions.location);
       case 'offline':
         return new WrappedNoteCollectionSyncData(this.queryOptions.location);
+      case 'syncReport':
+        return new SyncHandler(this.queryOptions.location);
       case 'evernote':
         return new WrappedNoteCollectionEvernote(
           localStorage.getItem('token'),
@@ -1528,7 +1591,7 @@ class Application {
     registerCloseBrackets();
 
     // convert textarea to CodeMirror editor
-    this.cm = CodeMirror.fromTextArea($(this.GUI.$editor)[0], {
+    this.cm = CodeMirror.fromTextArea(this.$el.$editor[0], {
       mode:                     "gfm-expanded", // use newly defined mode
       autofocus:                true,           // move focus to CodeMirror on init
       cursorScrollMargin:       3,              // DOES THIS WORK???
@@ -1550,9 +1613,6 @@ class Application {
           "newlineAndIndentContinueMarkdownList"//
       }
     });
-
-    // attach Codemirror instance
-    this.GUI.attachCodeMirror(this.cm);
 
     // adapted from markdown fold script
     CodeMirror.registerHelper("fold", "gfm-expanded", function(cm, start) {
@@ -1591,15 +1651,15 @@ class Application {
     });
 
     // configure scroll sync
-    this.scrollSync = new ScrollSync(this.cm, this.GUI.$previewWindow, this.GUI.$floatingTOC);
+    this.scrollSync = new ScrollSync(this.cm, this.$el.$previewWindow, this.$el.$floatingTOC);
 
     // render starter text
-    this.render(this.GUI);
+    this.render();
 
     // re-render on text change (debounce to render when typing stops)
     this.cm.on('change',
       _.debounce(
-        () => {_this.render(_this.GUI)},
+        () => {_this.render()},
         300,
         { maxWait:1000 }
       )
@@ -1611,36 +1671,32 @@ class Application {
         _this.GUI.noteClean = _this.cm.isClean(_this.GUI.generation);
       }
     })
-
-    // copy help text to help window
-    _this.GUI.$helpContents.html( _this.GUI.$previewContents.html() );
-
   }
 
   // function to render markdown
   render() {
 
     // save cursor position
-    var currentScroll = this.GUI.$previewWindow.scrollTop();
+    var currentScroll = this.$el.$previewWindow.scrollTop();
 
     // execute rendering
-    var renderData = this.renderer.renderMarkdown(this.cm.getValue(), this.GUI.$previewContents);
+    var renderData = this.renderer.renderMarkdown(this.cm.getValue(), this.$el.$previewContents);
 
     // table of contents without outer UL
     var toc = $(renderData.toc).html();
 
     // create nav menu
-    this.GUI.$navMenu.children('li.divider ~ li').remove();
-    this.GUI.$navMenu.append(toc);
+    this.$el.$navMenu.children('li.divider ~ li').remove();
+    this.$el.$navMenu.append(toc);
 
     // create floating table of contents
-    this.GUI.$floatingTOC.html(toc);
+    this.$el.$floatingTOC.html(toc);
 
     // refresh scroll sync data
     this.scrollSync.refresh();
 
     // scroll to the cursor location
-    this.GUI.$previewWindow.scrollTop(currentScroll);
+    this.$el.$previewWindow.scrollTop(currentScroll);
 
   }
 
