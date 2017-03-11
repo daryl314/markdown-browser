@@ -1,5 +1,10 @@
 // https://dev.evernote.com/doc/reference/
 
+// return true if running Node.js
+function isNodeJs() {
+  return (typeof window === 'undefined')
+}
+
 
 ////////////////////////////////////////////////
 // BASE CLASS FOR ABSTRACT JAVASCRIPT CLASSES //
@@ -72,9 +77,14 @@ class EvernoteConnectionBase {
       throw new Error('Note Store URL required!');
     } else {
       this.token = token;
-      var noteStoreTransport = new Thrift.BinaryHttpTransport(url);
-      var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
-      this._noteStore = new NoteStoreClient(noteStoreProtocol);
+      if (isNodeJs()) { // running in node.js
+        var client = new Evernote.Client({token: token, sandbox:false});
+        this._noteStore = client.getNoteStore();
+      } else { // running in browser
+        var noteStoreTransport = new Thrift.BinaryHttpTransport(url);
+        var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
+        this._noteStore = new NoteStoreClient(noteStoreProtocol);
+      }
     }
   }
 
@@ -128,9 +138,13 @@ class EvernoteConnectionBase {
   }
 
   _noteStorePromise(fn, ...args) {
-    return new Promise((resolve,reject) => {
-      this._noteStore[fn].call(this._noteStore, this.token, ...args, resolve, reject)
-    })
+    if (isNodeJs()) {
+      return this._noteStore[fn].call(this._noteStore, ...args)
+    } else {
+      return new Promise((resolve,reject) => {
+        this._noteStore[fn].call(this._noteStore, this.token, ...args, resolve, reject)
+      })
+    }
   }
 
   getNoteContent   (guid) { return this._noteStorePromise('getNoteContent'  , guid) }
@@ -836,6 +850,11 @@ class ProxyServerIO {
     })
   }
 
+  // return true for a file not found error
+  static loadFileNotFound(e) {
+    return e.status == 404
+  }
+
   // save a file to proxy server
   static save(url, data) {
     var options = {
@@ -857,12 +876,83 @@ class ProxyServerIO {
     return ProxyServerIO.ajax(options)
   }
 
+  // return a recursive file listing
   static ls(loc, search="*") {
     return ProxyServerIO.ajax(`/@ls/${loc}/${search}`);
   }
 
 }
 
+
+// define class for Node.js IO
+class NodeIO {
+
+  static load(url, dataType) {
+    return new Promise((resolve,reject) => {
+      fs.readFile(url, (err,data) => {
+        if (err) reject(err);
+        resolve(data);
+      })
+    }).then(data => {
+      if (dataType === 'json') {
+        data = JSON.parse(data);
+      }
+      return data
+    })
+  }
+
+  // return true for a file not found error
+  static loadFileNotFound(e) {
+    return e.code == 'ENOENT' && e.errno == -2
+  }
+
+  static mkdir(url) {
+    var bits = url.split(path.sep);
+    for (var i = 1; i <= bits.length; i++) {
+      if (!fs.existsSync(bits.slice(0,i).join(path.sep))) {
+        fs.mkdirSync(bits.slice(0,i).join(path.sep));
+      }
+    }
+  }
+
+  static save(url, data) {
+    if (data instanceof Uint8Array) {
+      // do nothing
+    } else if (data instanceof Object) {
+      data = JSON.stringify(data);
+    } else if (typeof(data) === 'string') {
+      // do nothing
+    } else {
+      throw new Error('Invalid data type');
+    }
+    NodeIO.mkdir(path.dirname(url));
+    return new Promise((resolve,reject) => {
+      fs.writeFile(url, data, (err) => {
+        if (err) reject(err);
+        resolve();
+      })
+    })
+  }
+
+  static walkSync(dir, filelist = []) {
+      fs.readdirSync(dir).forEach(file => {
+            filelist = fs.statSync(path.join(dir, file)).isDirectory()
+              ? NodeIO.walkSync(path.join(dir, file), filelist)
+              : filelist.concat(path.join(dir, file));
+          });
+    return filelist
+  }
+
+  static ls(loc, search='*') {
+    let files = NodeIO.walkSync(loc);
+    if (search !== '*') {
+      let extension = search.slice(1);
+      files = files.filter(f => f.endsWith(extension));
+    }
+    return new Promise((resolve,reject) => resolve(files))
+  }
+
+}
 
 /////////////////////
 // SYNCHRONIZATION //
@@ -878,7 +968,16 @@ class Synchronizer {
     this._maxResourceSize = maxResourceSize;
     this._ioHandler = ioHandler;
     this.meta = null;
-    this._syncFilter = new SyncChunkFilter({
+    if (isNodeJs()) { // running in node.js
+      this._syncFilter = new Evernote.NoteStore.SyncChunkFilter(this._syncOptions());
+    } else { // running in browser
+      this._syncFilter = new SyncChunkFilter(this._syncOptions());
+    }
+  }
+
+  // sync chunk filter options
+  _syncOptions() {
+    return {
 
       // basic primitives
       includeNotes                              : true,
@@ -903,7 +1002,7 @@ class Synchronizer {
       // resource properties
       includeResourceApplicationDataFullMap     : false,
       includeNoteResourceApplicationDataFullMap : false
-    });
+    }
   }
 
   // return the metadata json file
@@ -914,7 +1013,7 @@ class Synchronizer {
   // sleep for the specified number of seconds
   static sleep(s) {
     return new Promise(function(resolve, reject) {
-      window.setTimeout(resolve, 1000*s)
+      setTimeout(resolve, 1000*s)
     })
   }
 
@@ -988,7 +1087,7 @@ class Synchronizer {
   synchronize() {
     return this._loadMetadata()
       .catch(e => {
-        if (e.status == 404) {
+        if (this._ioHandler.loadFileNotFound(e)) {
           this._conn.messageLogger("Metadata file not found: starting fresh synchronization");
           return { // metadata defaults
             lastSyncCount : 0,    // no sync performed
@@ -1209,10 +1308,13 @@ class Synchronizer {
 
     // add error handler to recurse if rate limit was reached
     p = p.catch(err => {
-      if (err instanceof EDAMSystemException && err.errorCode == 19) {
+      var errorClass = isNodeJs()
+        ? Evernote.Errors.EDAMSystemException
+        : EDAMSystemException;
+      if (err instanceof errorClass && err.errorCode == 19) {
         console.log(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
         Synchronizer.sleep(err.rateLimitDuration+5)
-          .then(() => this._processSyncChunks(callback));
+          .then(() => this._processSyncChunks());
       } else {
         console.error(err)
       }
