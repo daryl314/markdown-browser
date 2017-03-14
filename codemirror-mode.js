@@ -1040,11 +1040,11 @@ function registerCloseBrackets(){
       // special case for converting bold text at start of line to a list item
       if (createListItem) {
         cm.execCommand('killLine');
-        execBoth(' ', '');
+        execBoth(cm, ' ', '');
 
       // otherwise put a space on both sides of cursor
       } else {
-        execBoth(' ', ' ');
+        execBoth(cm, ' ', ' ');
       }
     });
   }
@@ -1421,10 +1421,10 @@ function registerCloseBrackets(){
 
     // execute appropriate CodeMirror command
     cm.operation(function(){
-      if      (type[0] == "skip"     ) execSkip(type[1]);
-      else if (type[0] == "surround" ) execSurround(left, right);
-      else if (type[0] == "both"     ) execBoth(type[1], type[2]);
-      else if (type[0] == "escape"   ) execEscape();
+      if      (type[0] == "skip"     ) execSkip(cm, type[1]);
+      else if (type[0] == "surround" ) execSurround(cm, left, right);
+      else if (type[0] == "both"     ) execBoth(cm, type[1], type[2]);
+      else if (type[0] == "escape"   ) execEscape(cm);
       else throw new Error("Invalid action: "+type[0]);
     });
   }
@@ -1448,7 +1448,7 @@ function registerCloseBrackets(){
   }
 
   // skip specified number of characters (positive for right, negative for left)
-  function execSkip(n){
+  function execSkip(cm, n){
     if (n > 0) {
       for (var i = 0; i < n; i++) {
         cm.execCommand("goCharRight");
@@ -1461,7 +1461,7 @@ function registerCloseBrackets(){
   }
 
   // add bracket characters around each selection.
-  function execSurround(left, right){
+  function execSurround(cm, left, right){
 
     // surround selected text with bracket characters
     var sels = cm.getSelections();
@@ -1479,14 +1479,14 @@ function registerCloseBrackets(){
   }
 
   // replace selection with bracket characters
-  function execBoth(left, right){
+  function execBoth(cm, left, right){
     cm.replaceSelection(left + right, null); // replace selection with opening and closing brackets
     cm.triggerElectric(left + right); // trigger automatic indentation
-    execSkip(-right.length); // move character(s) to left
+    execSkip(cm, -right.length); // move character(s) to left
   }
 
   // escape the bracket characters surrounding each selection
-  function execEscape() {
+  function execEscape(cm) {
 
     // extend selection to include left bracket character
     sels = cm.listSelections().slice();
@@ -1495,7 +1495,7 @@ function registerCloseBrackets(){
     cm.setSelections(sels);
 
     // escape bracket characters
-    execSurround('\\\\', '\\\\');
+    execSurround(cm, '\\\\', '\\\\');
   }
 
 
