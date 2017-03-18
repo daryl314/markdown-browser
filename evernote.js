@@ -1361,24 +1361,27 @@ class Synchronizer {
   _processSyncChunks() {
 
     // report on skipped notes and resources
-    this.fileData.oldNotes.forEach(n => {
-      this.logMessageSync(`Skipping note: ${n.title} [${n.guid}]`);
-    });
-    this.fileData.oldResources.forEach(r => {
-      this.logMessageSync(`Skipping existing resource: [${r.guid}] ${r.parent.title}`);
-    });
-    this.fileData.bigResources.forEach(r => {
-      this.logMessageSync(`Skipping large resource (${r.hSize}): [${r.guid}] ${r.parent.title}`);
-    });
+    if (this.fileData.noteCounter == 0) {
+      this.fileData.oldNotes.forEach(n => {
+        this.logMessageSync(`Skipping note: ${n.title} [${n.guid}]`);
+      });
+      this.fileData.oldResources.forEach(r => {
+        this.logMessageSync(`Skipping existing resource: [${r.guid}] ${r.parent.title}`);
+      });
+      this.fileData.bigResources.forEach(r => {
+        this.logMessageSync(`Skipping large resource (${r.hSize}): [${r.guid}] ${r.parent.title}`);
+      });
+    }
 
     // initialize an empty promise with continuation status
     let p = new Promise((resolve,reject) => resolve(true));
 
     // extend promise to process notes
-    this.fileData.newNotes.forEach(n => {
+    for (let i = this.fileData.noteCounter; i < this.fileData.newNotes.length; i++) {
+      let n = this.fileData.newNotes[i];
       p = p.then(stateOK => {
         if (stateOK) {
-          this.logMessageSync(`Processing note (${++this.fileData.noteCounter}/${this.fileData.newNotes.length}): ${n.title} [${n.guid}]`);
+          this.logMessageSync(`Processing note (${this.fileData.noteCounter+1}/${this.fileData.newNotes.length}): ${n.title} [${n.guid}]`);
 
           // get list of versions for current note
           return this._conn.listNoteVersions(n.guid)
@@ -1397,6 +1400,9 @@ class Synchronizer {
                 .then(() => this.logMessageSync(`Finished processing note: ${n.title} [${n.guid}]`))
             })
 
+            // increment note counter
+            .then( () => this.fileData.noteCounter++ )
+
             // execute callback to determine if chain should continue
             .then( () => this._statusCallback(this.fileData) ) // refresh
             .then( () => Synchronizer.sleep(10)              ) // sleep
@@ -1404,13 +1410,14 @@ class Synchronizer {
 
         }
       })
-    });
+    }
 
     // extend promise to process resources
-    this.fileData.newResources.forEach(r => {
+    for (let i = this.fileData.resourceCounter; i < this.fileData.newResources.length; i++) {
+      let r = this.fileData.newResources[i];
       p = p.then(stateOK => {
         if (stateOK) {
-          this.logMessageSync(`Processing resource (${++this.fileData.resourceCounter}/${this.fileData.newResources.length}): [${r.guid}] ${r.parent.title}`);
+          this.logMessageSync(`Processing resource (${this.fileData.resourceCounter+1}/${this.fileData.newResources.length}): [${r.guid}] ${r.parent.title}`);
 
           // fetch the resource
           return this._conn.getResource(r.guid)
@@ -1419,13 +1426,16 @@ class Synchronizer {
             .then( (res) => this._saveResourceMetaData(res) )
             .then( (res) => this._saveResource(res) )
 
+            // increment resource counter
+            .then( () => this.fileData.resourceCounter++ )
+
             // execute callback to determine if chain should continue
             .then( () => this._statusCallback(this.fileData) ) // refresh
             .then( () => Synchronizer.sleep(10)              ) // sleep
             .then( () => this._statusCallback(this.fileData) ) // check
         }
       })
-    })
+    }
 
     // add error handler to recurse if rate limit was reached
     p = p.catch(err => {
@@ -1439,7 +1449,6 @@ class Synchronizer {
       if (err instanceof errorClass && err.errorCode == 19) {
         this.logMessageSync(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
         Synchronizer.sleep(err.rateLimitDuration+5)
-          .then(() => this._refreshSyncState()  )
           .then(() => this._processSyncChunks() );
 
       // otherwise throw the error
