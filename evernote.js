@@ -962,12 +962,15 @@ class NodeIO {
 
 class Synchronizer {
 
-  constructor(token, url, localFolder, maxResourceSize=Infinity, opt={}, ioHandler=ProxyServerIO) {
-    this._conn = new EvernoteConnectionCached(token, url, opt);
+  constructor(token, url, localFolder, opt) {
+    this._conn = new EvernoteConnectionCached(token, url, opt.connectionOptions||{});
     this._location = localFolder;
-    this._maxResourceSize = maxResourceSize;
-    this._ioHandler = ioHandler;
+    this._maxResourceSize = opt.maxResourceSize || Infinity;
+    this._ioHandler = opt.ioHandler || ProxyServerIO;
+    this._statusCallback = opt.statusCallback || function(){ return true };
+
     this.meta = null;
+    this.fileData = null;
     if (isNodeJs()) { // running in node.js
       this._syncFilter = new Evernote.NoteStore.SyncChunkFilter(this._syncOptions());
     } else { // running in browser
@@ -1023,6 +1026,11 @@ class Synchronizer {
       this._conn.messageLogger(msg);
       return x
     })
+  }
+
+  // log a message synchronously
+  logMessageSync(msg) {
+    this._conn.messageLogger(msg);
   }
 
   ///// FILE IO UTILITIES /////
@@ -1083,12 +1091,18 @@ class Synchronizer {
 
   ///// SYNCHRONIZATION AND DEPENDENCIES /////
 
-  // top-level function to perform Synchronization
-  synchronize() {
-    return this._loadMetadata()
+  // top-level function to initialize synchronization
+  syncInit() {
+
+    // create a promise to load metadata
+    let p = this._loadMetadata()
+
+      // if no file exists yet, initialize a new synchronization
       .catch(e => {
+
+        // init with a recoverable error
         if (this._ioHandler.loadFileNotFound(e)) {
-          this._conn.messageLogger("Metadata file not found: starting fresh synchronization");
+          this.logMessageSync("Metadata file not found: starting fresh synchronization");
           return { // metadata defaults
             lastSyncCount : 0,    // no sync performed
             lastSyncTime  : 0,    // no sync performed
@@ -1098,15 +1112,107 @@ class Synchronizer {
             resources     : [],   // empty list to contain resource data
             tags          : []    // empty list to contain tag data
           }
+
+        // bubble up a non-recoverable error
         } else {
           throw new Error(`Server error -- ${e.statusText}`);
         }
       })
+
+      // synchronize metadata
       .then(m => {
         this.meta = m;
-        let p = this._syncMetadata();
-        return p.then(() => this._processSyncChunks())
+        return this._syncMetadata();
       })
+
+      // initialize data structures
+      .then(() => {
+
+        // generate maps
+        this.notes     = new Map( this.meta.notes     .map(n => [n.guid,n]) );
+        this.notebooks = new Map( this.meta.notebooks .map(n => [n.guid,n]) );
+        this.tags      = new Map( this.meta.tags      .map(t => [t.guid,t]) );
+        this.resources = new Map( this.meta.resources .map(r => [r.guid,r]) );
+
+        // augment resource data
+        this.notes.forEach(n => {
+          n.resources.forEach(r => {
+
+            // attach a human readable size
+            let size = r.data.size;
+            if (size > 1024*1024*1024) {
+              size = (Math.round(size/1024/1024/1024 * 100)/100) + 'Gb';
+            } else if (size > 1024*1024) {
+              size = (Math.round(size/1024/1024 * 100)/100) + 'Mb';
+            } else {
+              size = (Math.round(size/1024 * 100)/100) + 'Kb';
+            }
+            this.resources.get(r.guid).hSize = size;
+
+            // attach resource parent
+            this.resources.get(r.guid).parent = n;
+          })
+        });
+
+        // return a promise containing a state object
+        return this._refreshSyncState()
+      });
+
+    // return the promise
+    return p
+  }
+
+  // top-level function to perform synchronization
+  synchronize(useInit=true) {
+    if (useInit && this.fileData !== null) {
+      return this._processSyncChunks();
+    } else {
+      return this._syncMetadata().then(() => this._processSyncChunks())
+    }
+  }
+
+  // refresh synchronization state based on local files
+  _refreshSyncState() {
+
+    // return a promise containing a state object
+    return this._listResources().then(files => {
+
+      // initialize state object
+      this.fileData = {
+        sync            : this,
+        allFiles        : files,
+        newNotes        : [],
+        oldNotes        : [],
+        noteCounter     : 0,
+        newResources    : [],
+        bigResources    : [],
+        oldResources    : [],
+        resourceCounter : 0
+      };
+
+      // organize note files
+      this.notes.forEach((n) => {
+        if (files.includes(`${this._location}/notes/${n.guid}/${n.updateSequenceNum}`)) {
+          this.fileData.oldNotes.push(n);
+        } else {
+          this.fileData.newNotes.push(n);
+        }
+      });
+
+      // organize resource files
+      this.resources.forEach((r) => {
+        if (files.includes(`${this._location}/resources/${r.guid}/${r.guid}`)) {
+          this.fileData.oldResources.push(r);
+        } else if (r.data.size > this._maxResourceSize) {
+          this.fileData.bigResources.push(r);
+        } else {
+          this.fileData.newResources.push(r);
+        }
+      });
+
+      // state object is promise return value
+      return this.fileData
+    })
   }
 
   // check metadata
@@ -1254,69 +1360,91 @@ class Synchronizer {
   // function to process chunk data
   _processSyncChunks() {
 
-    // generate maps
-    this.notes     = new Map( this.meta.notes     .map(n => [n.guid,n]) );
-    this.notebooks = new Map( this.meta.notebooks .map(n => [n.guid,n]) );
-    this.tags      = new Map( this.meta.tags      .map(t => [t.guid,t]) );
-    this.resources = new Map( this.meta.resources .map(r => [r.guid,r]) );
+    // report on skipped notes and resources
+    this.fileData.oldNotes.forEach(n => {
+      this.logMessageSync(`Skipping note: ${n.title} [${n.guid}]`);
+    });
+    this.fileData.oldResources.forEach(r => {
+      this.logMessageSync(`Skipping existing resource: [${r.guid}] ${r.parent.title}`);
+    });
+    this.fileData.bigResources.forEach(r => {
+      this.logMessageSync(`Skipping large resource (${r.hSize}): [${r.guid}] ${r.parent.title}`);
+    });
 
-    // start promise chain by getting a list files in sync location
-    var p = this._listResources();
+    // initialize an empty promise with continuation status
+    let p = new Promise((resolve,reject) => resolve(true));
 
-    // extend chain to process each note
-    this.notes.forEach((n) => {
-      p = p.then(files => {
-        if (files.includes(`${this._location}/notes/${n.guid}/${n.updateSequenceNum}`)) {
-          console.log(`Skipping note: ${n.title} [${n.guid}]`);
-          return files;
-        } else {
-          console.log(`Processing note: ${n.title} [${n.guid}]`);
+    // extend promise to process notes
+    this.fileData.newNotes.forEach(n => {
+      p = p.then(stateOK => {
+        if (stateOK) {
+          this.logMessageSync(`Processing note (${++this.fileData.noteCounter}/${this.fileData.newNotes.length}): ${n.title} [${n.guid}]`);
+
+          // get list of versions for current note
           return this._conn.listNoteVersions(n.guid)
+
+            // save version data
             .then( v => this._saveVersionData(n.guid,v) )
+
+            // filter to list of version numbers that do not exist locally
             .then( v => v.map( vv => vv.updateSequenceNum ) )
-            .then( v => v.filter( vv => !files.includes(`${this._location}/notes/${n.guid}/${vv}`) ) )
+            .then( v => v.filter( vv => !this.fileData.allFiles.includes(`${this._location}/notes/${n.guid}/${vv}`) ) )
+
+            // save new note versions
             .then( v => {
               return Promise.all( v.map( vv => this._getAndSaveNote(n.guid,vv) ) )
                 .then(() => this._getAndSaveNote(n.guid,n.updateSequenceNum) )
-                .then(() => console.log(`Finished processing note: ${n.title} [${n.guid}]`))
-                .then(() => Synchronizer.sleep(10))
+                .then(() => this.logMessageSync(`Finished processing note: ${n.title} [${n.guid}]`))
             })
-            .then( () => files )
+
+            // execute callback to determine if chain should continue
+            .then( () => this._statusCallback(this.fileData) ) // refresh
+            .then( () => Synchronizer.sleep(10)              ) // sleep
+            .then( () => this._statusCallback(this.fileData) ) // check
+
         }
       })
-    })
+    });
 
-    // extend chain to process each resource
-    this.resources.forEach((r) => {
-      p = p.then(files => {
-        if (files.includes(`${this._location}/resources/${r.guid}/${r.guid}`)) {
-          console.log(`Skipping existing resource: [${r.guid}]`);
-          return files;
-        } else if (r.data.size > this._maxResourceSize) {
-          console.log(`Skipping large resource (${r.data.size}): [${r.guid}]`);
-          return files;
-        } else {
-          console.log(`Processing resource: [${r.guid}]`);
+    // extend promise to process resources
+    this.fileData.newResources.forEach(r => {
+      p = p.then(stateOK => {
+        if (stateOK) {
+          this.logMessageSync(`Processing resource (${++this.fileData.resourceCounter}/${this.fileData.newResources.length}): [${r.guid}] ${r.parent.title}`);
+
+          // fetch the resource
           return this._conn.getResource(r.guid)
+
+            // save resource and metadata
             .then( (res) => this._saveResourceMetaData(res) )
             .then( (res) => this._saveResource(res) )
-            .then( () => Synchronizer.sleep(10) )
-            .then( () => files )
+
+            // execute callback to determine if chain should continue
+            .then( () => this._statusCallback(this.fileData) ) // refresh
+            .then( () => Synchronizer.sleep(10)              ) // sleep
+            .then( () => this._statusCallback(this.fileData) ) // check
         }
       })
     })
 
     // add error handler to recurse if rate limit was reached
     p = p.catch(err => {
+
+      // EDAMSystemException class
       var errorClass = isNodeJs()
         ? Evernote.Errors.EDAMSystemException
         : EDAMSystemException;
+
+      // recurse if error was a rate limit
       if (err instanceof errorClass && err.errorCode == 19) {
-        console.log(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
+        this.logMessageSync(`Rate limit reached.  Cooldown time = ${err.rateLimitDuration} seconds`);
         Synchronizer.sleep(err.rateLimitDuration+5)
-          .then(() => this._processSyncChunks());
+          .then(() => this._refreshSyncState()  )
+          .then(() => this._processSyncChunks() );
+
+      // otherwise throw the error
       } else {
-        console.error(err)
+        throw err;
       }
     });
 

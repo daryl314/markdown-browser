@@ -1402,9 +1402,12 @@ class SyncHandler {
       localStorage.token,
       "@proxy-https/www.evernote.com/shard/s2/notestore",
       location,
-      1e7,
       {
-        messageLogger: (msg) => { _this.$el.find('div#log').prepend(msg+'<br/>') }
+        maxResourceSize : 1e7,
+        statusCallback : (status) => this.processStatus(status),
+        connectionOptions : {
+          messageLogger: (msg) => { _this.$el.find('div#log').prepend(msg+'<br/>') }
+        }
       }
     );
     this.$el = $('body');
@@ -1414,17 +1417,79 @@ class SyncHandler {
     sync.synchronize().then(() => console.log('Sync complete!'));
   }
 
+  processStatus(status) {
+
+    // component status
+    let nNotes = status.oldNotes.length + status.newNotes.length;
+    let nResources = status.oldResources.length + status.newResources.length + status.bigResources.length;
+    let noteCounter = status.noteCounter + status.oldNotes.length;
+    let resourceCounter = status.resourceCounter + status.oldResources.length + status.bigResources.length;
+
+    // table of big resources
+    let bigs = status.bigResources.map(r => {
+      return `<tr><td>${r.parent.title}</td><td>${r.mime}</td><td>${r.hSize}</td></tr>`
+    });
+
+    // update progress bars
+    this.$el.find('div#noteProgress').html(`
+      ${this.progressBar("Overall note progress", noteCounter, nNotes)}
+      ${this.progressBar("Current sync note progress", status.noteCounter, status.newNotes.length)}
+      ${this.progressBar("Overall resource progress", resourceCounter, nResources)}
+      ${this.progressBar("Current sync resource progress", status.resourceCounter, status.newResources.length)}
+      <h3>Large resources to skip</h3>
+      <table border=1>
+        ${bigs.join('\n')}
+      </table>
+    `);
+
+    // return value: should synchronization proceed?
+    let shouldPause = this.$el.find('button#pauseSync').data('pause');
+    if (shouldPause) {
+      this.sync.logMessageSync('Synchronization paused!');
+    }
+    return !shouldPause
+  }
+
+  progressBar(msg, cur, max) {
+    return `
+      <h3>${msg}: ${cur}/${max}</h3>
+      <div>
+      <div style="width:${90*cur/max}%;
+                  background-color:powderblue;
+                  height:20px;
+                  display:inline-block;
+                  margin-right: -3px;
+      ">
+      </div>
+      <div style="width:${90*(1-cur/max)}%;
+                  background-color:gray;
+                  height:20px;
+                  display:inline-block;
+      "></div>
+      </div>
+    `
+  }
+
   render() {
     this.sync._loadMetadata().then(m => {
       this.$el.html(`
         <div class="container-fluid">
-          <h1>Synchronizer Status</h1>
-          <ul>
-            <li>Last updated: ${WrappedNoteRO.dateString(m.lastSyncTime)}</li>
-            <li>Sync counter: ${m.lastSyncCount}</li>
-          </ul>
-          <button type="button" class="btn btn-primary">Synchronize</button>
-          <div id="log" style="border:1px solid black;padding:10px;margin-top:20px;"></div>
+          <h1>Synchronizer Status: Updated ${WrappedNoteRO.dateString(m.lastSyncTime)}</h1>
+          <table width="100%"><tr>
+            <td width="50%" style="vertical-align: top">
+              <div id="noteProgress" style="border-right:1px solid black;padding:10px;margin:10px;">
+              </div>
+              <ul>
+                <li>Sync counter: ${m.lastSyncCount}</li>
+              </ul>
+              <button type="button" id="startSync" class="btn btn-primary">Synchronize</button>
+              <button type="button" id="pauseSync" class="btn btn-primary">Pause</button>
+            </td>
+            <td width="50%" style="vertical-align: top">
+              <h2>Sync log</h2>
+              <div id="log" style="border:1px solid black;padding:10px;margin-top:20px;"></div>
+            </td>
+          </tr></table>
         </div>
       `);
       console.log(m);
@@ -1448,10 +1513,16 @@ class SyncHandler {
         <li>${versions.length} versions</li>
       `);
       let _this = this;
-      this.$el.find('button').on('click', function(){
+      this.$el.find('button#startSync').on('click', function(){
         $(this).hide();
+        _this.$el.find('button#pauseSync').data('pause', false).show();
         _this.sync.synchronize();
+      });
+      this.$el.find('button#pauseSync').data('pause', false).hide().on('click', function(){
+        $(this).data('pause', true);
+        _this.$el.find('button#startSync').show();
       })
+      this.sync.syncInit().then(status => this.processStatus(status));
     })
   }
 }

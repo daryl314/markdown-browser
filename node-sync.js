@@ -20,12 +20,12 @@ vm.runInThisContext(fs.readFileSync('lib/lodash.min.js'));
 
 // instantiate synchronizer
 var sync = new Synchronizer(
-  process.argv[2],
-  "ignored",
-  process.argv[3],
-  Infinity,
-  {},
-  NodeIO
+  process.argv[2],  // token
+  "ignored",        // url
+  process.argv[3],  // local folder
+  {
+    ioHandler: NodeIO
+  }
 );
 
 // give info on promise rejections
