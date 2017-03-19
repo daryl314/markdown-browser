@@ -1167,7 +1167,7 @@ class Synchronizer {
     if (useInit && this.fileData !== null) {
       return this._processSyncChunks();
     } else {
-      return this._syncMetadata().then(() => this._processSyncChunks())
+      return this.syncInit().then(() => this._processSyncChunks())
     }
   }
 
