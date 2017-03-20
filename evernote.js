@@ -726,7 +726,7 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
           var resData = hashLookup.get($(this).attr('hash'));
           var resLink = `syncData/resources/${resData.guid}/${resData.guid}`;
           if (mimeType.startsWith('image/')) {
-            $(this).replaceWith(`<img src="${resLink}">`);
+            $(this).replaceWith(`<img src="${resLink}"/>`);
           } else if (mimeType == 'application/pdf') {
             $(this).replaceWith(`<object data='${resLink}' type='application/pdf' height="800" width="600"><a href='${resLink}'>${resLink}.pdf</a></object>`);
           } else {
