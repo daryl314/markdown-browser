@@ -8,6 +8,9 @@ if (process.argv.length < 4) {
   process.exit(1);
 }
 
+// try a few hacks to standardize the path input
+var syncFolder = process.argv[3].replace(/^\.\/+/, '').replace(/\/*$/, '');
+
 // require node modules
 global.vm = require('vm');
 global.fs = require('fs');
@@ -22,7 +25,7 @@ vm.runInThisContext(fs.readFileSync('lib/lodash.min.js'));
 var sync = new Synchronizer(
   process.argv[2],  // token
   "ignored",        // url
-  process.argv[3],  // local folder
+  syncFolder,       // local folder
   {
     ioHandler: NodeIO
   }
@@ -33,4 +36,4 @@ process.on('unhandledRejection', r => console.log(r));
 
 // execute synchronization
 console.log("Starting synchronization: "+process.argv[3]);
-sync.synchronize().then( () => { console.log('done!') });
+sync.synchronize().then( () => { console.log('Synchronization complete!') });
