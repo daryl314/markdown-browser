@@ -122,8 +122,11 @@ class WrappedNoteBrowser {
     this.tagNoteCounts      = new Map();
     this.notebookNoteCounts = new Map();
 
+    // only look at non-deleted notes
+    this.wnc.filter( n => !n.deleted );
+
     // iterate over notes to count number of notes by tag and notebook
-    this.wnc._notes.forEach(note => {
+    this.wnc.notes.filter(note => !note.deleted).forEach(note => {
 
       // increment corresponding notebook counter
       let nn  = this.notebookNoteCounts.has(note.notebook)
@@ -176,22 +179,25 @@ class WrappedNoteBrowser {
     // generate the browser menu
     this.$menu.html(`
       <ul>
-        <li>Notes</li>
+        <li id="browser-menu-all" class="selected">All Notes</li>
         <li id="browser-menu-notebooks">Notebooks<ul>
           ${notebookMenuItems.join('\n')}
         </ul></li>
         <li id="browser-menu-tags">Tags<ul>
           ${tagMenuItems.join('\n')}
         </ul></li>
-        <li>Atlas</li>
-        <li>Trash</li>
+        <li id="browser-menu-atlas">Atlas</li>
+        <li id="browser-menu-trash">Trash</li>
       </ul>
     `);
 
     // render note table
     this.renderTable();
 
+    // reference to this for jQuery callbacks
     var _this = this;
+
+    // callback to sort notes on a column header click
     $table.off('click').on('click', 'thead th', function(){
       var field = $(this).data('field');
       var sort_rev = $(this).hasClass('sort-dsc');
@@ -203,6 +209,7 @@ class WrappedNoteBrowser {
         .addClass( sort_rev ? 'sort-asc' : 'sort-dsc' )
     });
 
+    // callback to load a note on a cell click
     $table.off('click').on('click', 'tbody tr', function(){
       var note = _this.wnc.getNote( $(this).data('guid') );
       note.getContent().then(content => {
@@ -214,23 +221,56 @@ class WrappedNoteBrowser {
       })
     });
 
+    // prevent double registration
     $menu.off('click');
 
-    $menu.on('click', 'li#browser-menu-notebooks li', function(event){
+    // load all notes
+    $menu.on('click', 'li#browser-menu-all', function(event) {
       event.stopPropagation();
-      var notebook = $(this).data('notebook');
-      console.log("Filtering for notebook: "+notebook);
-      _this.wnc.filter( n => n.notebook == notebook );
+      $menu.find('li').removeClass('selected');
+      $(this).addClass('selected');
+      console.log("Filtering for all notes");
+      _this.wnc.filter( n => !n.deleted );
       _this.renderTable();
     });
 
-    $menu.on('click', 'li#browser-menu-tags li', function(event){
+    // load notes in selected notebook
+    $menu.on('click', 'li#browser-menu-notebooks li', function(event){
       event.stopPropagation();
-      var tag = $(this).data('tag');
-      console.log("Filtering for tag: "+tag)
-      _this.wnc.filter( n => n.tags.includes(tag) );
+      $menu.find('li').removeClass('selected');
+      $(this).addClass('selected');
+      var notebook = $(this).data('notebook');
+      console.log("Filtering for notebook: "+notebook);
+      _this.wnc.filter( n => n.notebook == notebook && !n.deleted );
       _this.renderTable();
     });
+
+    // load notes in selected tag
+    $menu.on('click', 'li#browser-menu-tags li', function(event){
+      event.stopPropagation();
+      $menu.find('li').removeClass('selected');
+      $(this).addClass('selected');
+      var tag = $(this).data('tag');
+      console.log("Filtering for tag: "+tag)
+      _this.wnc.filter( n => n.tags.includes(tag) && !n.deleted );
+      _this.renderTable();
+    });
+
+    // load deleted notes
+    $menu.on('click', 'li#browser-menu-trash', function(event) {
+      event.stopPropagation();
+      $menu.find('li').removeClass('selected');
+      $(this).addClass('selected');
+      console.log("Filtering for deleted notes");
+      _this.wnc.filter( n => n.deleted );
+      _this.renderTable();
+    });
+
+    // load Atlas
+    $menu.on('click', 'li#browser-menu-atlas', function(event) {
+      event.stopPropagation();
+    });
+
   }
 
   tagToHtml(tag) {
@@ -1570,14 +1610,20 @@ class Application {
 
       // load contents of initial document
       .then(() => {
-        return ProxyServerIO.load(this.initalDocument,'text')
+        if (this.mode !== 'offline') {
+          return ProxyServerIO.load(this.initalDocument,'text')
+        } else {
+          return null;
+        }
       })
 
       // populate editor window and start CodeMirror
       .then(txt => {
-        this.$el.$helpContents.html( this.$el.$previewContents.html() );
-        this.$el.$editor.text(txt);
-        this.launchCodeMirror();
+        if (this.mode !== 'offline') {
+          this.$el.$helpContents.html( this.$el.$previewContents.html() );
+          this.$el.$editor.text(txt);
+          this.launchCodeMirror();
+        }
       })
 
       // load evernote application resources required for WNC call
@@ -1607,9 +1653,7 @@ class Application {
         if (this.mode == 'evernote') {
           this.GUI.$updateToken.show().on('click', updateToken);
         } else if (this.mode == 'offline') {
-          this.GUI.currentTab = this.GUI.tabs.viewer;
-          this.GUI.showNoteList = true;
-          this.GUI.keepFileMenu = true;
+          this.GUI.$viewBrowser.trigger('click'); // need to set up browser object
         } else if (this.mode == 'syncReport') {
           this.WNC.render();
         } else if (this.mode == 'file') {

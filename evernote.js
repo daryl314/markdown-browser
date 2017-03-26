@@ -366,6 +366,7 @@ class WrappedNoteRO extends Abstract {
     this.checkGetter('updated');
     this.checkGetter('tags');
     this.checkGetter('guid');
+    this.checkGetter('deleted');
 
     // check for required methods
     this.checkMethod('getContent');
@@ -424,6 +425,7 @@ class WrappedNoteSyncData extends WrappedNoteRO {
   get tags     () { return this._tags         }
   get updated  () { return this._note.updated }
   get guid     () { return this._note.guid    }
+  get deleted  () { return this._note.deleted }
   getContent(version) {
     return this._conn.getNoteContent(this.guid, version)
   }
@@ -448,6 +450,7 @@ class WrappedNoteFiles extends WrappedNoteRO {
   get tags     () { return []             }
   get updated  () { return undefined      }
   get guid     () { return this._url      }
+  get deleted  () { return false          }
   getContent() {
     return this._conn.getNoteContent(this._url)
   }
@@ -495,6 +498,7 @@ class WrappedNoteEvernote extends WrappedNoteRW {
   get notebook   () { return this._conn.notebookMap.get(this._note.notebookGuid).name }
   get version    () { return this._note.updateSequenceNum                             }
   get updated    () { return this._note.updated                                       }
+  get deleted    () { return this._note.deleted                                       }
   get tags       () { return (this._note.tagGuids||[]).map( g => this._conn.tagMap.get(g).name ) }
 
   // return a copy of the object
@@ -539,6 +543,7 @@ class WrappedNoteROCollection {
 
   constructor() {
     this._notes = [];
+    this._noteMap = new Map();
     this._filteredNotes = null;
     this._field = 'updated';
     this._reverse = true;
@@ -547,16 +552,19 @@ class WrappedNoteROCollection {
   }
 
   get notes() {
-    if (this._filteredNotes !== null) {
-      return this._filteredNotes;
-    } else {
-      return this._notes;
-    }
+    let noteArr = (this._filteredNotes !== null) ? this._filteredNotes : this._notes;
+    return noteArr.map(x => x[x.length-1])
   }
 
   add(note) {
     if (note instanceof WrappedNoteRO) {
-      this._notes.push(note);
+      if (!this._noteMap.has(note.guid)) {
+        let arr = [ note ];
+        this._noteMap.set(note.guid, arr);
+        this._notes.push(arr);
+      } else {
+        this._noteMap.get(note.guid).push(note);
+      }
     } else {
       throw new TypeError('Must add a WrappedNoteRO');
     }
@@ -571,17 +579,17 @@ class WrappedNoteROCollection {
     // sort numeric fields
     if (field == 'updated') {
       if (reverse) {
-        this._notes.sort( (a,b) => b[field] - a[field] );
+        this._notes.sort( (a,b) => b[b.length-1][field] - a[a.length-1][field] );
       } else {
-        this._notes.sort( (a,b) => a[field] - b[field] );
+        this._notes.sort( (a,b) => a[a.length-1][field] - b[b.length-1][field] );
       }
 
     // sort string fields
     } else {
       if (reverse) {
-        this._notes.sort( (a,b) => b[field].toLowerCase() > a[field].toLowerCase() ? 1 : -1 );
+        this._notes.sort( (a,b) => b[b.length-1][field].toLowerCase() > a[a.length-1][field].toLowerCase() ? 1 : -1 );
       } else {
-        this._notes.sort( (a,b) => b[field].toLowerCase() > a[field].toLowerCase() ? -1 : 1 );
+        this._notes.sort( (a,b) => b[b.length-1][field].toLowerCase() > a[a.length-1][field].toLowerCase() ? -1 : 1 );
       }
     }
 
@@ -599,17 +607,20 @@ class WrappedNoteROCollection {
   }
 
   map(fn) {
-    return this.notes.map(fn);
+    return this.notes.map(x => fn(x[x.length-1]));
   }
 
   filter(fn) {
-    this._filteredNotes = this._notes.filter(fn);
+    this._filteredNotes = this._notes.filter(x => fn(x[x.length-1]));
     this._filter = fn;
     return this._filteredNotes;
   }
 
   getNote(guid) {
-    return this._notes.filter(n => n.guid == guid)[0]
+    let arr = this._noteMap.get(guid);
+    return arr[arr.length-1]
+  }
+
   }
 
 }
