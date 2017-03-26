@@ -1021,7 +1021,7 @@ class Synchronizer {
   }
 
   // log a message in a promise chain
-  _logMessage(msg, p) {
+  logMessageAsync(msg, p) {
     return p.then( x => {
       this._conn.messageLogger(msg);
       return x
@@ -1037,19 +1037,19 @@ class Synchronizer {
 
   // load the metadata json file
   _loadMetadata() {
-    return this._logMessage(`Loaded metadata file: ${this.metadataFile}`,
+    return this.logMessageAsync(`Loaded metadata file: ${this.metadataFile}`,
       this._ioHandler.load(this.metadataFile, 'json'))
   }
 
   // save the metadata json file
   _saveMetadata() {
-    return this._logMessage(`Posted updated metadata to file: ${this.metadataFile}`,
+    return this.logMessageAsync(`Posted updated metadata to file: ${this.metadataFile}`,
       this._ioHandler.save(this.metadataFile, this.meta))
   }
 
   // get a list of resources
   _listResources() {
-    return this._logMessage(`Listed resources at ${this._location}`,
+    return this.logMessageAsync(`Listed resources at ${this._location}`,
       this._ioHandler.ls(this._location))
   }
 
@@ -1057,12 +1057,12 @@ class Synchronizer {
   _getAndSaveNote(guid, version) {
     if (this.notes.get(guid).updateSequenceNum == version) {
       return this._conn.getNoteContent(guid).then(content => {
-        return this._logMessage(`Saved file: notes/${guid}/${version}`,
+        return this.logMessageAsync(`Saved file: notes/${guid}/${version}`,
           this._ioHandler.save(`${this._location}/notes/${guid}/${version}`, content))
       })
     } else {
       return this._conn.getNoteVersion(guid,version).then(data => {
-        return this._logMessage(`Saved file: notes/${guid}/${version}`,
+        return this.logMessageAsync(`Saved file: notes/${guid}/${version}`,
           this._ioHandler.save(`${this._location}/notes/${guid}/${version}`, data.content))
       })
     }
@@ -1070,13 +1070,13 @@ class Synchronizer {
 
   // save note version data
   _saveVersionData(guid, v) {
-    return this._logMessage(`Saved note version data for ${guid}`,
+    return this.logMessageAsync(`Saved note version data for ${guid}`,
       this._ioHandler.save(`${this._location}/notes/${guid}/versions.json`, v).then( () => v ))
   }
 
   // save resource contents
   _saveResource(res) {
-    return this._logMessage(`Saved resource ${res.attributes.fileName} [${res.guid}]`,
+    return this.logMessageAsync(`Saved resource ${res.attributes.fileName} [${res.guid}]`,
       this._ioHandler.save(`${this._location}/resources/${res.guid}/${res.guid}`, res.data.body).then( () => res ))
   }
 
@@ -1085,7 +1085,7 @@ class Synchronizer {
     var newRes = Object.assign({}, res);
     newRes.data = Object.assign({}, res.data);
     delete newRes.data.body;
-    return this._logMessage(`Saved resource metadata for ${res.attributes.fileName} [${res.guid}]`,
+    return this.logMessageAsync(`Saved resource metadata for ${res.attributes.fileName} [${res.guid}]`,
       this._ioHandler.save(`${this._location}/resources/${res.guid}/metadata.json`, newRes).then( () => res ))
   }
 
@@ -1318,7 +1318,7 @@ class Synchronizer {
       if (state.updateCount !== this.meta.lastSyncCount) {
         return this._fetchNextChunk();
       } else {
-        this._conn.messageLogger("No new synchronization data!");
+        this.logMessageSync("No new synchronization data!");
         return new Promise((resolve,reject) => resolve()); // no-op promise
       }
     })
@@ -1326,7 +1326,7 @@ class Synchronizer {
 
   // fetch next sync chunk
   _fetchNextChunk() {
-    this._conn.messageLogger("Fetching data starting from afterUSN="+this.meta.lastSyncCount);
+    this.logMessageSync("Fetching data starting from afterUSN="+this.meta.lastSyncCount);
     return this._conn.getFilteredSyncChunk(
       this.meta.lastSyncCount,         // starting point for update
       this.meta.blockSize,             // number of chunks to fetch
