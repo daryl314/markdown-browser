@@ -191,14 +191,34 @@ class WrappedNoteBrowser {
       </ul>
     `);
 
+    // generate the viewer area
+    this.$viewer.html(`
+      <button type="button" id="browser-version-toggle" class="btn btn-primary" style="margin-right:10px;">Versions</button>
+      <button type="button" id="browser-attribute-toggle" class="btn btn-primary">Attributes</button>
+      <div>
+        <div id="browser-versions" style="display:inline-block;vertical-align:top;padding:5px;"></div>
+        <div id="browser-attributes" style="display:inline-block;vertical-align:top;padding:5px;"></div>
+      </div>
+      <div id="browser-content"></div>
+    `);
+
+    // start with version and attribute blocks hidden
+    this.$viewer.find('#browser-versions').hide();
+    this.$viewer.find('#browser-attributes').hide();
+
     // render note table
     this.renderTable();
 
     // reference to this for jQuery callbacks
     var _this = this;
 
+    // prevent double registration
+    $table.off('click');
+    this.$viewer.off('click');
+    $menu.off('click');
+
     // callback to sort notes on a column header click
-    $table.off('click').on('click', 'thead th', function(){
+    $table.on('click', 'thead th', function(){
       var field = $(this).data('field');
       var sort_rev = $(this).hasClass('sort-dsc');
       wnc.sortBy(field, sort_rev);
@@ -210,31 +230,49 @@ class WrappedNoteBrowser {
     });
 
     // callback to load a note on a cell click
-    $table.off('click').on('click', 'tbody tr', function(){
+    $table.on('click', 'tbody tr', function(){
       var note = _this.wnc.getNote( $(this).data('guid') );
       note.getContent().then(content => {
         if (content instanceof $) {
-          _this.$viewer.html( content.html() );
+          _this.$viewer.find('#browser-content').html( content.html() );
         } else {
-          _this.$viewer.text(content);
+          _this.$viewer.find('#browser-content').text(content);
         }
         return note.getVersions()
       }).then(versions => {
-        _this.$viewer.prepend(
-          '<table border=1>' + versions.map(v => `<tr><td>${v.version}</td><td>${v.updatedStr}</td></tr>`).join('') + '</table>'
+        _this.$viewer.find('#browser-versions').html(
+          `<table border=1 data-guid="${note.guid}">` + versions.map(v => `<tr><td>${v.version}</td><td>${v.updatedStr}</td></tr>`).join('') + '</table>'
         );
         return note.getMeta()
       }).then(meta => {
         let attrib = Object.entries(meta.attributes).filter(entry => entry[1] !== null);
         if (attrib.length > 0) {
           let tr = attrib.map(entry => `<tr><td>${entry[0]}</td><td>${entry[1]}</td></tr>`);
-          _this.$viewer.prepend(`<table border=1>${tr.join('')}</table>`)
+          _this.$viewer.find('#browser-attributes').html(`<table border=1>${tr.join('')}</table>`)
         }
       })
     });
 
-    // prevent double registration
-    $menu.off('click');
+    // toggle version and attribute display
+    _this.$viewer
+      .on('click', '#browser-version-toggle',   () => _this.$viewer.find('#browser-versions'  ).toggle() )
+      .on('click', '#browser-attribute-toggle', () => _this.$viewer.find('#browser-attributes').toggle() );
+
+    // callback to load a note version
+    this.$viewer.on('click', '#browser-versions tr', function(){
+      let $parent = $(this).parents('table').first();
+      let note = _this.wnc.getNote( $parent.data('guid') );
+      let version = parseInt($(this).children().first().text());
+      $parent.find('tr').css('background-color', 'white');
+      $(this).css('background-color', 'aliceblue');
+      note.getContent(version).then(content => {
+        if (content instanceof $) {
+          _this.$viewer.find('#browser-content').html( content.html() );
+        } else {
+          _this.$viewer.find('#browser-content').text(content);
+        }
+      })
+    })
 
     // load all notes
     $menu.on('click', 'li#browser-menu-all', function(event) {
