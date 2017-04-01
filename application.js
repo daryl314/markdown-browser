@@ -218,6 +218,18 @@ class WrappedNoteBrowser {
         } else {
           _this.$viewer.text(content);
         }
+        return note.getVersions()
+      }).then(versions => {
+        _this.$viewer.prepend(
+          '<table border=1>' + versions.map(v => `<tr><td>${v.version}</td><td>${v.updatedStr}</td></tr>`).join('') + '</table>'
+        );
+        return note.getMeta()
+      }).then(meta => {
+        let attrib = Object.entries(meta.attributes).filter(entry => entry[1] !== null);
+        if (attrib.length > 0) {
+          let tr = attrib.map(entry => `<tr><td>${entry[0]}</td><td>${entry[1]}</td></tr>`);
+          _this.$viewer.prepend(`<table border=1>${tr.join('')}</table>`)
+        }
       })
     });
 

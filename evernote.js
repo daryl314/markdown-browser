@@ -88,6 +88,19 @@ class EvernoteConnectionBase {
     }
   }
 
+  static defaultNoteResultSpec() {
+    return new NoteResultSpec({
+      includeContent	              : true,  // include note content
+      includeResourcesData	        : false, // exnclude resource binary data
+      includeResourcesRecognition	  : false, // exclude resource recognition data
+      includeResourcesAlternateData	: false, // exclude resource alternate data
+      includeSharedNotes	          : false, // exclude note shares
+      includeNoteAppDataValues	    : false, // exclude note user data
+      includeResourceAppDataValues	: false, // exclude resource user data
+      includeAccountLimits	        : false  // exclude user account limit data
+    })
+  }
+
   static defaultNotesMetadataResultSpec() {
     return new NotesMetadataResultSpec({
       includeTitle: true,             // include the note title
@@ -153,6 +166,10 @@ class EvernoteConnectionBase {
   listTags         ()     { return this._noteStorePromise('listTags'              ) }
   getSyncState     ()     { return this._noteStorePromise('getSyncState'          ) }
 
+  getNote(guid, withContent=true, withResourcesData=false, withResourcesRecognition=false, withResourcesAlternateData=false) {
+    return this._noteStorePromise('getNote', guid, withContent, withResourcesData, withResourcesRecognition, withResourcesAlternateData) }
+  getNoteWithResultSpec(guid, resultSpec=EvernoteConnectionBase.defaultNoteResultSpec()) {
+    return this._noteStorePromise('getNoteWithResultSpec', guid, resultSpec) }
   getNoteVersion(guid, version, withResourcesData=false, withResourcesRecognition=false, withResourcesAlternateData=false) {
     return this._noteStorePromise('getNoteVersion', guid, version, withResourcesData, withResourcesRecognition, withResourcesAlternateData) }
   getResource(guid, withData=true, withRecognition=true, withAttributes=true, withAlternateData=false) {
@@ -367,9 +384,12 @@ class WrappedNoteRO extends Abstract {
     this.checkGetter('tags');
     this.checkGetter('guid');
     this.checkGetter('deleted');
+    this.checkGetter('version');
+    this.checkGetter('attributes');
 
     // check for required methods
     this.checkMethod('getContent');
+    this.checkMethod('getVersions');
   }
 
   // getter for update time as a string
@@ -420,14 +440,24 @@ class WrappedNoteSyncData extends WrappedNoteRO {
     this._tags = (note.tagGuids||[]).map( g => conn.meta.tags.filter( t => t.guid == g )[0].name );
     this._notebook = conn.meta.notebooks.filter( nb => nb.guid == note.notebookGuid )[0].name;
   }
-  get title    () { return this._note.title   }
-  get notebook () { return this._notebook     }
-  get tags     () { return this._tags         }
-  get updated  () { return this._note.updated }
-  get guid     () { return this._note.guid    }
-  get deleted  () { return this._note.deleted }
+  get title      () { return this._note.title             }
+  get notebook   () { return this._notebook               }
+  get tags       () { return this._tags                   }
+  get updated    () { return this._note.updated           }
+  get guid       () { return this._note.guid              }
+  get deleted    () { return this._note.deleted           }
+  get version    () { return this._note.updateSequenceNum }
+  get attributes () { return null                         }
   getContent(version) {
     return this._conn.getNoteContent(this.guid, version)
+  }
+  getMeta(version) {
+    return this._conn.getNoteMeta(this.guid, version)
+  }
+  getVersions() {
+    return Promise.all(
+      this._conn.versionData[this.guid].map(v => this._conn.getNoteMeta(this.guid, v))
+    ).then(v => v.map(vv => new WrappedNoteSyncData(vv,this._conn)))
   }
 }
 
@@ -445,12 +475,14 @@ class WrappedNoteFiles extends WrappedNoteRO {
     this._location = m[1];
     this._url = f;
   }
-  get title    () { return this._title    }
-  get notebook () { return this._location }
-  get tags     () { return []             }
-  get updated  () { return undefined      }
-  get guid     () { return this._url      }
-  get deleted  () { return false          }
+  get title      () { return this._title    }
+  get notebook   () { return this._location }
+  get tags       () { return []             }
+  get updated    () { return undefined      }
+  get version    () { return undefined      }
+  get guid       () { return this._url      }
+  get deleted    () { return false          }
+  get attributes () { return null           }
   getContent() {
     return this._conn.getNoteContent(this._url)
   }
@@ -499,6 +531,7 @@ class WrappedNoteEvernote extends WrappedNoteRW {
   get version    () { return this._note.updateSequenceNum                             }
   get updated    () { return this._note.updated                                       }
   get deleted    () { return this._note.deleted                                       }
+  get attributes () { return this._note.attributes                                    }
   get tags       () { return (this._note.tagGuids||[]).map( g => this._conn.tagMap.get(g).name ) }
 
   // return a copy of the object
@@ -621,8 +654,6 @@ class WrappedNoteROCollection {
     return arr[arr.length-1]
   }
 
-  }
-
 }
 
 
@@ -707,18 +738,29 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
     return this.ioHandler.load(`${this._location}/metadata.json`, 'json')
       .then(meta => {
         this.meta = meta;
+        // only add the most recent version of each note
+        let noteMap = new Map();
         meta.notes.forEach(note => {
+          noteMap.set(note.guid, note)
+        });
+        for (var note of noteMap.values()) {
           this.add(new WrappedNoteSyncData(note, this));
-        })
+        }
       })
       .then(() => this.ioHandler.ls(this._location))
       .then(files  => {
-        this.fileData = {};
-        files.filter( (f) => f.startsWith(`${this._location}/notes/`) ).forEach( (f) => {
+        this.versionData = {};
+        files.filter(f =>
+          f.startsWith(`${this._location}/notes/`)
+            && f.endsWith('.json')
+            && !f.endsWith('versions.json')
+        ).forEach(f => {
           var [guid, version] = f.split('/notes/').pop().split('/');
-          this.fileData[guid] = this.fileData[guid] || [];
+          this.versionData[guid] = this.versionData[guid] || [];
+          this.versionData[guid].push( parseInt(version.replace('.json', '')) );
+
           if (version !== 'versions.json' && version.match(/^\d+$/))
-            this.fileData[guid].push( parseInt(version) );
+            this.versionData[guid].push( parseInt(version) );
         })
         this._connected = true;
       })
@@ -726,8 +768,8 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
 
   getNoteContent(guid, version) {
     if (version === undefined)
-      version = this.fileData[guid].reduce((a,b) => Math.max(a,b), 0);
-    return this.ioHandler.load(`${this._location}/notes/${guid}/${version}`, 'xml')
+      version = this.versionData[guid].reduce((a,b) => Math.max(a,b), 0);
+    return this.ioHandler.load(`${this._location}/notes/${guid}/${version}.xml`, 'xml')
       .then(content => {
         let note = this.getNote(guid);
         let $note = $(content).find('en-note');
@@ -746,6 +788,12 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
         })
         return $note
       })
+  }
+
+  getNoteMeta(guid, version) {
+    if (version === undefined)
+      version = this.versionData[guid].reduce((a,b) => Math.max(a,b), 0);
+    return this.ioHandler.load(`${this._location}/notes/${guid}/${version}.json`, 'json')
   }
 
   getNoteResourceMeta(guid) {
@@ -1065,18 +1113,21 @@ class Synchronizer {
   }
 
   // fetch a note from server and save to local storage
+  // NOTE: getNote is deprecated but new method isn't in current sdk version
+  // should use this._conn.getNoteWithResultSpec(guid) for newer sdk's
   _getAndSaveNote(guid, version) {
-    if (this.notes.get(guid).updateSequenceNum == version) {
-      return this._conn.getNoteContent(guid).then(content => {
-        return this.logMessageAsync(`Saved file: notes/${guid}/${version}`,
-          this._ioHandler.save(`${this._location}/notes/${guid}/${version}`, content))
-      })
-    } else {
-      return this._conn.getNoteVersion(guid,version).then(data => {
-        return this.logMessageAsync(`Saved file: notes/${guid}/${version}`,
-          this._ioHandler.save(`${this._location}/notes/${guid}/${version}`, data.content))
-      })
-    }
+    let rootFile = `${this._location}/notes/${guid}/${version}`;
+    let p = this.notes.get(guid).updateSequenceNum == version
+      ? this._conn.getNote(guid)
+      : this._conn.getNoteVersion(guid, version);
+    return p.then(data => {
+      return this.logMessageAsync(`Saved file: ${rootFile}`,
+        this._ioHandler.save(`${rootFile}.xml`, data.content))
+          .then(() => {
+            data.content = null;
+            return this._ioHandler.save(`${rootFile}.json`, data)
+          })
+    })
   }
 
   // save note version data
@@ -1203,7 +1254,8 @@ class Synchronizer {
 
       // organize note files
       this.notes.forEach((n) => {
-        if (files.includes(`${this._location}/notes/${n.guid}/${n.updateSequenceNum}`)) {
+        let baseFile = `${this._location}/notes/${n.guid}/${n.updateSequenceNum}`
+        if (files.includes(baseFile+'.json') && files.includes(baseFile+'.xml')) {
           this.fileData.oldNotes.push(n);
         } else {
           this.fileData.newNotes.push(n);
@@ -1402,7 +1454,8 @@ class Synchronizer {
 
             // filter to list of version numbers that do not exist locally
             .then( v => v.map( vv => vv.updateSequenceNum ) )
-            .then( v => v.filter( vv => !this.fileData.allFiles.includes(`${this._location}/notes/${n.guid}/${vv}`) ) )
+            .then( v => v.filter( vv => !this.fileData.allFiles.includes(`${this._location}/notes/${n.guid}/${vv}.json`)
+                                     || !this.fileData.allFiles.includes(`${this._location}/notes/${n.guid}/${vv}.xml` ) ) )
 
             // save new note versions
             .then( v => {
