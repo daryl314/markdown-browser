@@ -200,6 +200,123 @@ class EvernoteConnectionBase {
       tagNames  : tagNames
     }))
   }
+
+  // encryption/decryption support
+  // note that this requires the JSCL library sjcl-1.0.6.min.js
+  // the included library was compiled with:
+  //   > git clone https://github.com/bitwiseshiftleft/sjcl.git
+  //   > cd sjcl/
+  //   > git checkout 1.0.6
+  //   > ./configure --without-all --with-cbc --with-codecBase64 --with-codecString --with-pbkdf2 --with-random
+  //   > make
+  //   > cp sjcl.js ../sjcl-1.0.6.min.js
+
+  // decryption for <en-crypt> elements
+  static decrypt(password, data) {
+    const BYTE_LEN      = 8;              // 8 bits in a byte
+    const WORD_LEN      = 32;             // 32 bits in a word
+    const EN_ITERATIONS = 50000;          // number of iterations for HMAC/SHA-256 hash function
+    const EN_KEYSIZE    = 128;            // 128 bit key
+    const EN_HMACSIZE   = 32 * BYTE_LEN;  // size of hashed message authentication code (HMAC)
+    const EN_IDENT      = 'ENC0';         // header text for evernote encrypted string
+
+    // enable CBC mode
+    sjcl.beware["CBC mode is dangerous because it doesn't protect message integrity."]();
+
+    // convert string to bytes
+    data = (typeof data === 'string') ? sjcl.codec.base64.toBits(data) : data;
+
+    // confirm that encrypted string starts with 'ENC0'
+    if (EN_IDENT !== sjcl.codec.utf8String.fromBits([data[0]])) {
+        throw new Error('Evernote encrypted string does not start with ENC0');
+    }
+
+    // pointer into bytes after 'ENC0' header
+    var cursor = BYTE_LEN * EN_IDENT.length;
+
+    // extract random salt
+    var salt = sjcl.bitArray.bitSlice(data, cursor, cursor + EN_KEYSIZE);
+    cursor += EN_KEYSIZE;
+
+    // extract salt HMAC (random salt for digest)
+    var saltHMAC = sjcl.bitArray.bitSlice(data, cursor, cursor + EN_KEYSIZE);
+    cursor += EN_KEYSIZE;
+
+    // extract initialization vector
+    var iv = sjcl.bitArray.bitSlice(data, cursor, cursor + EN_KEYSIZE);
+    cursor += EN_KEYSIZE;
+
+    // extract ciphertext
+    var dataLen = sjcl.bitArray.bitLength(data);
+    var ct = sjcl.bitArray.bitSlice(data, cursor, dataLen - EN_HMACSIZE);
+    cursor += dataLen - EN_HMACSIZE - cursor;
+
+    // extract HMAC digest
+    var hmacExpected = sjcl.bitArray.bitSlice(data, cursor, cursor + EN_HMACSIZE);
+
+    // check MAC validity
+    var keyHMAC = sjcl.misc.pbkdf2(password, saltHMAC, EN_ITERATIONS, EN_KEYSIZE);
+    var hmac = new sjcl.misc.hmac(keyHMAC).encrypt(sjcl.bitArray.bitSlice(data, 0, dataLen - EN_HMACSIZE));
+    if (!sjcl.bitArray.equal(hmac, hmacExpected)) {
+      console.error('Invalid checksum:', hmac, hmacExpected);
+      throw new Error('Evernote encrypted string has invalid checksum')
+    }
+
+    // decrypt
+    var key = sjcl.misc.pbkdf2(password, salt, EN_ITERATIONS, EN_KEYSIZE);
+    var prp = new sjcl.cipher.aes(key);
+    var result = sjcl.mode.cbc.decrypt(prp, ct, iv);
+
+    // decode result
+    return sjcl.codec.utf8String.fromBits(result);
+  }
+
+  // encryption for <en-crypt> elements
+  static encrypt(password, plaintext) {
+    const BYTE_LEN      = 8;              // 8 bits in a byte
+    const WORD_LEN      = 32;             // 32 bits in a word
+    const EN_ITERATIONS = 50000;          // number of iterations for HMAC/SHA-256 hash function
+    const EN_KEYSIZE    = 128;            // 128 bit key
+    const EN_HMACSIZE   = 32 * BYTE_LEN;  // size of hashed message authentication code (HMAC)
+    const EN_IDENT      = 'ENC0';         // header text for evernote encrypted string
+
+    // enable CBC mode
+    sjcl.beware["CBC mode is dangerous because it doesn't protect message integrity."]();
+
+    // convert string to bytes
+    plaintext = (typeof plaintext === 'string') ? sjcl.codec.utf8String.toBits(plaintext) : plaintext;
+
+    // generate salts for keys
+    var salt = sjcl.random.randomWords(EN_KEYSIZE / WORD_LEN, 0);
+    var saltHMAC = sjcl.random.randomWords(EN_KEYSIZE / WORD_LEN, 0);
+
+    // generate keys using Password-Based Key Derivation Function 2 (pbkdf2)
+    var key = sjcl.misc.pbkdf2(password, salt, EN_ITERATIONS, EN_KEYSIZE);
+    var keyHMAC = sjcl.misc.pbkdf2(password, saltHMAC, EN_ITERATIONS, EN_KEYSIZE);
+
+    // generate initialization vector
+    var iv = sjcl.random.randomWords(EN_KEYSIZE / WORD_LEN, 0);
+
+    // encrypt
+    var prp = new sjcl.cipher.aes(key);
+    var ct = sjcl.mode.cbc.encrypt(prp, plaintext, iv);
+
+    // assemble message
+    var result = [].concat(
+      sjcl.codec.utf8String.toBits(EN_IDENT),   // "ENC0" header
+      salt,                                     // random salt for encryption
+      saltHMAC,                                 // random salt for HMAC verification
+      iv,                                       // initialization vector
+      ct                                        // cypher text
+    );
+
+    // calculate hashed message authentication code for message integrity and append to result
+    var hmac = new sjcl.misc.hmac(keyHMAC).encrypt(result);
+    result = result.concat(hmac);
+
+    // encode result in base 64
+    return sjcl.codec.base64.fromBits(result);
+  }
 }
 
 
@@ -766,6 +883,8 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
       })
   }
 
+
+
   getNoteContent(guid, version) {
     if (version === undefined)
       version = this.versionData[guid].reduce((a,b) => Math.max(a,b), 0);
@@ -774,6 +893,24 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
         let note = this.getNote(guid);
         let $note = $(content).find('en-note');
         let hashLookup = new Map(note._note.resources.map(r => [r.data.bodyHash,r]));
+
+        $note.find('en-todo').each( function() {
+          let $el = $(this);
+          if ($el.attr('checked') == 'true') {
+            $el.replaceWith('&#x2611;');
+          } else {
+            $el.replaceWith('&#x2610;');
+          }
+        });
+
+        $note.find('en-crypt').each( function() {
+          let data = $(this).text(); 
+          $(this).html(`
+              <span style="display:none">${data}</span>
+              ${"&#9679;".repeat(7)}
+          `);
+        });
+
         $note.find('en-media').each( function() {
           var mimeType = $(this).attr('type');
           var resData = hashLookup.get($(this).attr('hash'));
@@ -785,7 +922,8 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
           } else {
             throw new Error(`Unrecognized mime type: ${mimeType}`);
           }
-        })
+        });
+
         return $note
       })
   }

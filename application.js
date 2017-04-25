@@ -69,12 +69,22 @@ class NotificationHandler {
   // prompt user for input
   promptForInput(message, default_entry) {
     return new Promise((resolve,reject) => {
+      let _this = this;
       this.$dialogElements.show();
       this.$promptBody.text(message);
       this.$promptInput.val(default_entry);
+      this.$promptInput.focus();
+      this.$promptInput.off('keyup').on('keyup', function(e){
+        if (e.key === 'Enter') {
+          _this.$dialogElements.hide();
+          resolve( _this.$promptInput.val() );
+        } else if (e.key === 'Escape') {
+          _this.$dialogElements.hide();
+        }
+      })
       this.$promptOK.off('click').one('click', function(){
-        $dialogElements.hide();
-        resolve( this.$promptInput.val() );
+        _this.$dialogElements.hide();
+        resolve( _this.$promptInput.val() );
       });
     })
   }
@@ -82,11 +92,12 @@ class NotificationHandler {
   // prompt user for confirmation
   promptForConfirmation(message) {
     return new Promise((resolve,reject) => {
+      let _this = this;
       this.$dialogElements.show();
       this.$promptBody.text(message);
       this.$promptInput.parent().hide();
       this.$promptOK.off('click').one('click', function(){
-        $dialogElements.hide();
+        _this.$dialogElements.hide();
         resolve();
       });
     })
@@ -271,6 +282,18 @@ class WrappedNoteBrowser {
         } else {
           _this.$viewer.find('#browser-content').text(content);
         }
+      })
+    });
+
+    // callback to decrypt encrypted content
+    this.$viewer.on('click', 'en-crypt', function(){
+      let $en_crypt = $(this);
+      let data = $en_crypt.find('span').html(); 
+      (new NotificationHandler()).promptForInput('Encryption password: '+$(this).attr('hint')).then(password => {
+        let out = EvernoteConnectionBase.decrypt(password, data);
+        $en_crypt.parent().text(out);
+      }).catch((err) => {
+        (new NotificationHandler()).persistentWarning(err.message)
       })
     })
 
