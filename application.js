@@ -302,7 +302,7 @@ class WrappedNoteBrowser {
       event.stopPropagation();
       $menu.find('li').removeClass('selected');
       $(this).addClass('selected');
-      console.log("Filtering for all notes");
+      (new NotificationHandler()).transientAlert("Filtering for all notes");
       _this.wnc.filter( n => !n.deleted );
       _this.renderTable();
     });
@@ -313,7 +313,7 @@ class WrappedNoteBrowser {
       $menu.find('li').removeClass('selected');
       $(this).addClass('selected');
       var notebook = $(this).data('notebook');
-      console.log("Filtering for notebook: "+notebook);
+      (new NotificationHandler()).transientAlert("Filtering for notebook: "+notebook);
       _this.wnc.filter( n => n.notebook == notebook && !n.deleted );
       _this.renderTable();
     });
@@ -324,7 +324,7 @@ class WrappedNoteBrowser {
       $menu.find('li').removeClass('selected');
       $(this).addClass('selected');
       var tag = $(this).data('tag');
-      console.log("Filtering for tag: "+tag)
+      (new NotificationHandler()).transientAlert("Filtering for tag: "+tag)
       _this.wnc.filter( n => n.tags.includes(tag) && !n.deleted );
       _this.renderTable();
     });
@@ -334,7 +334,7 @@ class WrappedNoteBrowser {
       event.stopPropagation();
       $menu.find('li').removeClass('selected');
       $(this).addClass('selected');
-      console.log("Filtering for deleted notes");
+      (new NotificationHandler()).transientAlert("Filtering for deleted notes");
       _this.wnc.filter( n => n.deleted );
       _this.renderTable();
     });
@@ -425,6 +425,13 @@ class GuiControl {
       console.error(e.error.message);
       console.log(e);
       return false;
+    });
+
+    // add a handler for navigating away from page
+    $(window).bind('beforeunload', () => {
+      if (!this.state.noteClean) {
+        return 'Editor has unsaved changes'
+      }
     });
 
     // attach event handlers
@@ -1154,13 +1161,18 @@ class ScrollSync {
   // refresh scroll sync information
   refresh() {
     var _this = this;
+    var scrollTop = this.$el.scrollTop();
+
+    // need to show preview window to get line positions
+    var isHidden = !this.$el.is(':visible');
+    if (isHidden) {
+      this.$el.show();
+    }
 
     // capture line numbers
-    var x = [], y = [];
-    var lineRefs = this.$el.find('[data-source-line]').each( function(){
-      x.push( parseInt($(this).attr('data-source-line'))                          );
-      y.push( $(this).position().top + _this.$el.scrollTop()  );
-    })
+    var lineRefs = this.$el.find('[data-source-line]:visible');
+    var x = lineRefs.map(function(){ return parseInt($(this).attr('data-source-line')) }).toArray();
+    var y = lineRefs.map(function(){ return $(this).position().top + scrollTop         }).toArray();
 
     // interpolate/extrapolate to create a line number lookup array
     this.lineMap = this.interpolate(x, y, 1, this.cm.lastLine());
@@ -1176,6 +1188,20 @@ class ScrollSync {
         ])
       }
     });
+
+    // hide preview window if it was previously hidden
+    if (isHidden) {
+      this.$el.hide();
+    }
+
+    // confirm that line numbers are properly sorted
+    for (var i = 1; i < x.length; i++) {
+      if (x[i] < x[i-1]) {
+        throw new Error(`line number vector failure: x[${i}] < x[${i-1}] --> ${x[i]} < ${x[i-1]}`)
+      } else if (y[i] < y[i-1]) {
+        throw new Error(`line number vector failure: y[${i}] < y[${i-1}] --> ${y[i]} < ${y[i-1]}`)
+      }
+    }
 
     // confirm that lineMap entries are properly sorted
     for (var i = 1; i < this.lineMap.length; i++) {
@@ -1314,8 +1340,8 @@ class ScrollSync {
   }
 
   // interpolate data to a linear range
-  interpolate(x_vec, y_vec, xi, xf) {
-    var out = [], x1, x2, y1, y2, m;
+  interpolate(x_in, y_in, xi, xf) {
+    var out = [], x_vec = x_in.slice(), y_vec = y_in.slice(), x1, x2, y1, y2, m;
     if (this.debug) this.dumpPoints(x_vec, y_vec, 'initial');
 
     this.collapseRepeated(x_vec, y_vec);
@@ -1677,6 +1703,7 @@ class Application {
   }
 
   run() {
+    let _this = this;
 
     // wait until document is ready for manipulation...
     Application.documentReady()
@@ -1693,7 +1720,7 @@ class Application {
       // populate editor window and start CodeMirror
       .then(txt => {
         if (this.mode !== 'offline') {
-          this.$el.$helpContents.html( this.$el.$previewContents.html() );
+          this.renderer.renderMarkdown(txt, this.$el.$helpContents);
           this.$el.$editor.text(txt);
           this.launchCodeMirror();
         }
@@ -1703,7 +1730,7 @@ class Application {
       .then(() => {
         if (this.queryOptions.mode == 'evernote' || this.queryOptions.mode == 'syncReport') {
           if (localStorage.getItem('token') === null)
-            getEvernoteConnection.updateToken();
+            this.updateToken();
           return Application.loadJavascriptFile('/lib/evernote-sdk-minified.js')
         } else {
           return null
@@ -1724,7 +1751,7 @@ class Application {
       // launch appropriate mode
       .then(() => {
         if (this.mode == 'evernote') {
-          this.GUI.$updateToken.show().on('click', updateToken);
+          this.GUI.$updateToken.show().on('click', function(){ _this.updateToken() });
         } else if (this.mode == 'offline') {
           this.GUI.$viewBrowser.trigger('click'); // need to set up browser object
         } else if (this.mode == 'syncReport') {
@@ -1799,7 +1826,18 @@ class Application {
           cm.foldCode(cm.getCursor()); },       //
         "Enter":                                //   Enter: hook into markdown list continuation plugin
           "newlineAndIndentContinueMarkdownList"//
-      }
+      },                                        //
+      rulers: [                                 // vertical rulers...
+        {                                       //   ruler for terminal width
+          column: 80,                           //
+          color: 'rgb(101,123,131)',            //
+          lineStyle: 'dashed'                   //
+        }, {                                    //
+          column: 110,                          //   ruler for print width
+          color: 'red',                         //
+          lineStyle: 'dashed'                   //
+        }                                       //
+      ]
     });
 
     // adapted from markdown fold script

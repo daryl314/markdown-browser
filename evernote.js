@@ -917,6 +917,20 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
           var resLink = `syncData/resources/${resData.guid}/${resData.guid}`;
           if (mimeType.startsWith('image/')) {
             $(this).replaceWith(`<img src="${resLink}"/>`);
+          } else if (mimeType.startsWith('audio/')) {
+            $(this).replaceWith(`
+              <audio controls="controls">
+                <source src="${resLink}" type="${mimeType}"/>
+                Your browser does not support the audio element.
+              </audio>
+            `);
+          } else if (mimeType.startsWith('video/')) {
+            $(this).replaceWith(`
+              <video controls="controls">
+                <source src="${resLink}" type="${mimeType}"/>
+                Your browser does not support the video element.
+              </video>
+            `);
           } else if (mimeType == 'application/pdf') {
             $(this).replaceWith(`<object data='${resLink}' type='application/pdf' height="800" width="600"><a href='${resLink}'>${resLink}.pdf</a></object>`);
           } else {
