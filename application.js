@@ -1958,7 +1958,8 @@ class Application {
 
   // prompt user for Evernote developer token
   updateToken() {
-    this.GUI.promptForInput(
+    let obj = this.GUI ? this.GUI : new NotificationHandler();
+    obj.promptForInput(
       'Please enter your Evernote developer token',
       localStorage.getItem('token')
     ).then(result => {
