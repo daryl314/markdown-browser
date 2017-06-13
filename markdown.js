@@ -1,5 +1,9 @@
 // placeholder for data
-window.markdown = {};
+if (typeof window !== 'undefined') {
+  window.markdown = {};
+} else {
+  global.markdown = {};
+}
 
 //////////////////////////////
 //////////////////////////////
