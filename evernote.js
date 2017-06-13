@@ -800,7 +800,9 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
 
   constructor(localFolder, ioHandler=ProxyServerIO) {
     super();
-    this._location = localFolder;
+    this._location = localFolder  // standardize path...
+      .replace(/^\.\/+/ , '')     // strip initial ./
+      .replace(/\/*$/   , '');    // remove trailing /
     this.ioHandler = ioHandler;
     this._connected = false;
   }
@@ -883,15 +885,13 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
       })
   }
 
-
-
   getNoteContent(guid, version) {
     if (version === undefined)
       version = this.versionData[guid].reduce((a,b) => Math.max(a,b), 0);
     return this.ioHandler.load(`${this._location}/notes/${guid}/${version}.xml`, 'xml')
       .then(content => {
         let note = this.getNote(guid);
-        let $note = $(content).find('en-note');
+        let $note = isNodeJs() ? cheerio.load(content)('en-note') : $(content).find('en-note');
         let hashLookup = new Map(note._note.resources.map(r => [r.data.bodyHash,r]));
 
         $note.find('en-todo').each( function() {
@@ -1175,7 +1175,9 @@ class Synchronizer {
 
   constructor(token, url, localFolder, opt) {
     this._conn = new EvernoteConnectionCached(token, url, opt.connectionOptions||{});
-    this._location = localFolder;
+    this._location = localFolder  // standardize path...
+      .replace(/^\.\/+/ , '')     // strip initial ./
+      .replace(/\/*$/   , '');    // remove trailing /
     this._maxResourceSize = opt.maxResourceSize || Infinity;
     this._ioHandler = opt.ioHandler || ProxyServerIO;
     this._statusCallback = opt.statusCallback || function(){ return true };
