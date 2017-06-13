@@ -82,7 +82,17 @@ function syncToHtml(syncLoc) {
     var conn = new WrappedNoteCollectionSyncData(syncLoc, ioHandler=NodeIO);
     conn.connect().then(() => {
         var mdTagGuid = conn.meta.tags.find(x => x.name == 'markdown').guid;
-        var mdNotes = conn.meta.notes.filter(x => x.deleted === null && x.tagGuids && x.tagGuids.includes(mdTagGuid));
+        conn.meta.notes.forEach(x => {
+            if (!(conn.versionData[x.guid])) {
+                console.log(`Skipping non-existent note "${x.title}" [${x.guid}]`);
+            }
+        })
+        var mdNotes = conn.meta.notes.filter(x => 
+            x.deleted === null 
+                && x.tagGuids 
+                && x.tagGuids.includes(mdTagGuid)
+                && conn.versionData[x.guid]
+        );
         Promise.all(
             mdNotes.map(n => 
                 conn.getNoteContent(n.guid)

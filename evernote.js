@@ -866,20 +866,18 @@ class WrappedNoteCollectionSyncData extends WrappedNoteROCollection {
           this.add(new WrappedNoteSyncData(note, this));
         }
       })
-      .then(() => this.ioHandler.ls(this._location))
+      .then(() => this.ioHandler.ls(`${this._location}/notes/`))
       .then(files  => {
         this.versionData = {};
-        files.filter(f =>
-          f.startsWith(`${this._location}/notes/`)
-            && f.endsWith('.json')
-            && !f.endsWith('versions.json')
-        ).forEach(f => {
-          var [guid, version] = f.split('/notes/').pop().split('/');
-          this.versionData[guid] = this.versionData[guid] || [];
-          this.versionData[guid].push( parseInt(version.replace('.json', '')) );
+        files.forEach(f => {
+          if (f.endsWith('.json') && !f.endsWith('versions.json')) {
+            var [guid, version] = f.split('/notes/').pop().split('/');
+            this.versionData[guid] = this.versionData[guid] || [];
+            this.versionData[guid].push( parseInt(version.replace('.json', '')) );
 
-          if (version !== 'versions.json' && version.match(/^\d+$/))
-            this.versionData[guid].push( parseInt(version) );
+            if (version !== 'versions.json' && version.match(/^\d+$/))
+              this.versionData[guid].push( parseInt(version) );
+            }
         })
         this._connected = true;
       })
@@ -1146,11 +1144,11 @@ class NodeIO {
   }
 
   static walkSync(dir, filelist = []) {
-      fs.readdirSync(dir).forEach(file => {
-            filelist = fs.statSync(path.join(dir, file)).isDirectory()
-              ? NodeIO.walkSync(path.join(dir, file), filelist)
-              : filelist.concat(path.join(dir, file));
-          });
+    fs.readdirSync(dir).map(file => path.join(dir,file)).forEach(file => {
+      filelist = fs.statSync(file).isDirectory()
+        ? NodeIO.walkSync(file, filelist)
+        : filelist.concat(file);
+    });
     return filelist
   }
 
