@@ -60,8 +60,8 @@ function render(data) {
     // fill TOC elements
     $('toc').html(toc.replace(/ul>/g, 'ol>'));
 
-    // return html with CSS
-    return `
+    // add CSS
+    $('head').append(`
         <style type='text/css'>
             a       {color:aqua;    font-weight:bold; }
             h1      {color:red;     font-weight:bold; }
@@ -73,35 +73,50 @@ function render(data) {
             th      {color:white;   font-weight:bold; }
             em      {text-decoration:underline;       }
         </style>
-        ${$.html()}
-        `
+    `)
+
+    // return html
+    return $.html()
 }
 
 // function to process synchronization data and generate html
 function syncToHtml(syncLoc) {
+
+    // create output folder if it doesn't exist
+    if (!(fs.existsSync(`${syncLoc}/html`))) {
+        fs.mkdirSync(`${syncLoc}/html`)
+    }
+
+    // create connection to sync data
     var conn = new WrappedNoteCollectionSyncData(syncLoc, ioHandler=NodeIO);
     conn.connect().then(() => {
-        var mdTagGuid = conn.meta.tags.find(x => x.name == 'markdown').guid;
-        conn.meta.notes.forEach(x => {
+
+        // notify user of notes that were skipped
+        conn.notes.forEach(x => {
             if (!(conn.versionData[x.guid])) {
                 console.log(`Skipping non-existent note "${x.title}" [${x.guid}]`);
             }
-        })
-        var mdNotes = conn.meta.notes.filter(x => 
+        });
+
+        // filter notes to those that exist, have 'markdown' tag, and have not been deleted
+        var mdNotes = conn.notes.filter(x => 
             x.deleted === null 
-                && x.tagGuids 
-                && x.tagGuids.includes(mdTagGuid)
+                && x.tags.includes('markdown')
                 && conn.versionData[x.guid]
         );
-        Promise.all(
-            mdNotes.map(n => 
-                conn.getNoteContent(n.guid)
-                    .then(c => {
-                        var html = render(EvernoteConnectionBase.stripFormatting(c.html()));
-                        fs.writeFileSync(`${syncLoc}/html/${n.title}.html`, html);
-                    })
-            )
-        );
+
+        // generate a promise to generate a web page for each filtered note
+        var p = mdNotes.map(n => n.getContent().then(c => {
+            var html = render(EvernoteConnectionBase.stripFormatting(c.html()));
+            var loc = `${syncLoc}/html/${n.notebook}`;
+            if (!fs.existsSync(loc)) {
+                fs.mkdirSync(loc);
+            }
+            fs.writeFileSync(`${loc}/${n.title}.html`, html);
+        }));
+
+        // execute promises
+        Promise.all(p);
     });
 }
 
