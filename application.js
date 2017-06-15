@@ -869,14 +869,16 @@ class GuiControl {
         _this.promptForInput('New note name', 'Untitled').then(noteTitle => {
           if (noteTitle !== null) {
             _this.server.connect()
-              .then(conn => conn.newNote(noteTitle, _this.cm.getValue()))
-              .then(note => {
-                _this.generation = _this.cm.changeGeneration();
-                _this.staleHistory = true;
-                _this.currentNote = note.guid;
-                _this.noteTitle = noteTitle;
-                _this.noteClean = true;
-                _this.populateNoteList(conn.notes);
+              .then(conn => {
+              conn.newNote(noteTitle, _this.cm.getValue())
+                .then(note => {
+                  _this.generation = _this.cm.changeGeneration();
+                  _this.staleHistory = true;
+                  _this.currentNote = note.guid;
+                  _this.noteTitle = noteTitle;
+                  _this.noteClean = true;
+                  _this.populateNoteList(conn.notes);
+                })
               })
           }
         })
