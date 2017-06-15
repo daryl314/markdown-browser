@@ -79,6 +79,20 @@ function render(data) {
     return $.html()
 }
 
+// help text on using elinks
+const elinks = `## Using elinks ##
+
+* \`j\` - scroll down
+* \`k\` - scroll up
+* \`Ctrl-F\` - scroll forward one screen
+* \`Ctrl-B\` - scroll backward one screen
+* \`Ctrl-D\` - scroll down a half screen
+* \`Ctrl-U\` - scroll up a half screen
+* \`Left\` - go to previous page
+* \`Down\` - go to next link
+* \`Enter\` or \`Right\` - follow link
+`;
+
 // function to process synchronization data and generate html
 function syncToHtml(syncLoc) {
 
@@ -105,6 +119,13 @@ function syncToHtml(syncLoc) {
                 && conn.versionData[x.guid]
         );
 
+        // notes grouped by notebook
+        var notesByNotebook = {};
+        mdNotes.forEach(n => {
+            notesByNotebook[n.notebook] = notesByNotebook[n.notebook] || [];
+            notesByNotebook[n.notebook].push(n)
+        });
+
         // generate a promise to generate a web page for each filtered note
         var p = mdNotes.map(n => n.getContent().then(c => {
             var html = render(EvernoteConnectionBase.stripFormatting(c.html()));
@@ -116,7 +137,24 @@ function syncToHtml(syncLoc) {
         }));
 
         // execute promises
-        Promise.all(p);
+        p = Promise.all(p);
+
+        // generate an index page for each notebook
+        p.then(() => {
+            Object.keys(notesByNotebook).forEach(nb => {
+                var li = notesByNotebook[nb].map(n => `* [${n.title}](${n.title}.html)`);
+                li = li.sort((a,b) => a.toLowerCase() > b.toLowerCase());
+                var md = elinks+'\n## Page Index ##\n\n'+li.join('\n');
+                fs.writeFileSync(`${syncLoc}/html/${nb}/index.html`, render(md));
+            });
+        });
+
+        // generate a cross-notebook index
+        var li = Object.keys(notesByNotebook).map(nb => `* [${nb}](${nb}/index.html)`)
+        li = li.sort((a,b) => a.toLowerCase() > b.toLowerCase());
+        var md = elinks+'\n## Page Index ##\n\n'+li.join('\n');
+        fs.writeFileSync(`${syncLoc}/html/index.html`, render(md));
+
     });
 }
 
