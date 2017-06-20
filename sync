@@ -1,0 +1,28 @@
+#!/bin/bash
+
+if [[ $EVERNOTE_TOKEN = "" ]]; then
+  echo "Script requires EVERNOTE_TOKEN environment variable to be set!"
+  exit 1
+fi
+
+if [[ $EVERNOTE_SYNC_LOCATION = "" ]]; then
+  echo "Script requires EVERNOTE_SYNC_LOCATION environment variable to be set!"
+  exit 1
+fi
+
+if [[ $EVERNOTE_HTML_LOCATION = "" ]]; then
+  echo "Script requires EVERNOTE_HTML_LOCATION environment variable to be set!"
+  exit 1
+fi
+
+# run synchronization script
+./node-sync.js $EVERNOTE_TOKEN $EVERNOTE_SYNC_LOCATION
+
+# generate html
+./node-render.js $EVERNOTE_SYNC_LOCATION
+
+# send html to target location
+rsync --verbose --recursive --checksum --delete-during \
+  $EVERNOTE_SYNC_LOCATION/html/* \
+  $EVERNOTE_HTML_LOCATION
+

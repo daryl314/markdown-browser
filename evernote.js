@@ -1117,9 +1117,14 @@ class NodeIO {
 
   static mkdir(url) {
     var bits = url.split(path.sep);
+    if (url[0] === '/') {
+      bits = bits.slice(1);    // trim off empty first entry
+      bits[0] = '/' + bits[0]; // re-add leading slash
+    }
     for (var i = 1; i <= bits.length; i++) {
-      if (!fs.existsSync(bits.slice(0,i).join(path.sep))) {
-        fs.mkdirSync(bits.slice(0,i).join(path.sep));
+      var tgt = bits.slice(0,i).join(path.sep);
+      if (!fs.existsSync(tgt)) {
+        fs.mkdirSync(tgt);
       }
     }
   }
