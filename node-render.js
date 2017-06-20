@@ -55,7 +55,11 @@ function render(data) {
     }).toArray().join('\n');
 
     // create an html table of contents
-    var toc = markdown.toHTML(mdTOC);
+    var toc = `
+        <p><strong>Contents</strong></p>
+        ${markdown.toHTML(mdTOC)}
+        <hr/>
+    `;
 
     // fill TOC elements
     $('toc').html(toc.replace(/ul>/g, 'ol>'));
@@ -96,6 +100,16 @@ const elinks = `## Using elinks ##
 // function to process synchronization data and generate html
 function syncToHtml(syncLoc) {
 
+    // subfunction to sanitize file names
+    function sanitizeFileName(x) {
+        return x.replace(/\//g, '%2f')
+    }
+
+    // subfunction to sanitize URL's
+    function sanitizeFileURL(x) {
+        return encodeURIComponent(sanitizeFileName(x)).replace(/\(/g, '%28').replace(/\)/g, '%29');
+    }
+
     // create output folder if it doesn't exist
     if (!(fs.existsSync(`${syncLoc}/html`))) {
         fs.mkdirSync(`${syncLoc}/html`)
@@ -129,11 +143,11 @@ function syncToHtml(syncLoc) {
         // generate a promise to generate a web page for each filtered note
         var p = mdNotes.map(n => n.getContent().then(c => {
             var html = render(EvernoteConnectionBase.stripFormatting(c.html()));
-            var loc = `${syncLoc}/html/${n.notebook}`;
+            var loc = `${syncLoc}/html/${sanitizeFileName(n.notebook)}`;
             if (!fs.existsSync(loc)) {
                 fs.mkdirSync(loc);
             }
-            fs.writeFileSync(`${loc}/${n.title}.html`, html);
+            fs.writeFileSync(`${loc}/${sanitizeFileName(n.title)}.html`, html);
         }));
 
         // execute promises
@@ -142,15 +156,15 @@ function syncToHtml(syncLoc) {
         // generate an index page for each notebook
         p.then(() => {
             Object.keys(notesByNotebook).forEach(nb => {
-                var li = notesByNotebook[nb].map(n => `* [${n.title}](${n.title}.html)`);
+                var li = notesByNotebook[nb].map(n => `* [${n.title}](${sanitizeFileURL(n.title, true)}.html)`);
                 li = li.sort((a,b) => a.toLowerCase() > b.toLowerCase());
                 var md = elinks+'\n## Page Index ##\n\n'+li.join('\n');
-                fs.writeFileSync(`${syncLoc}/html/${nb}/index.html`, render(md));
+                fs.writeFileSync(`${syncLoc}/html/${sanitizeFileName(nb)}/index.html`, render(md));
             });
         });
 
         // generate a cross-notebook index
-        var li = Object.keys(notesByNotebook).map(nb => `* [${nb}](${nb}/index.html)`)
+        var li = Object.keys(notesByNotebook).map(nb => `* [${nb}](${sanitizeFileURL(nb, true)}/index.html)`)
         li = li.sort((a,b) => a.toLowerCase() > b.toLowerCase());
         var md = elinks+'\n## Page Index ##\n\n'+li.join('\n');
         fs.writeFileSync(`${syncLoc}/html/index.html`, render(md));

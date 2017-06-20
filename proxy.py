@@ -164,7 +164,7 @@ class S(BaseHTTPRequestHandler):
 ##############################
 
 def run(server_class=HTTPServer, handler_class=S, port=8080):
-    server_address = ('', port)
+    server_address = ('127.0.0.1', port)
     httpd = server_class(server_address, handler_class)
     print('Starting httpd on port '+str(port)+'...')
     httpd.serve_forever()
