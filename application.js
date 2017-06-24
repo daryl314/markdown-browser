@@ -1197,10 +1197,15 @@ class ScrollSync {
     }
 
     // confirm that line numbers are properly sorted
+    // note that elements from the same source line can have top positions that are out of order
+    // due to span elements from the same source line that are different heights
     for (var i = 1; i < x.length; i++) {
-      if (x[i] < x[i-1]) {
+      if (x[i] < x[i-1]) { // line numbers are out of order
         throw new Error(`line number vector failure: x[${i}] < x[${i-1}] --> ${x[i]} < ${x[i-1]}`)
-      } else if (y[i] < y[i-1]) {
+      } else if (
+          y[i] < y[i-1]     // top position of elements are out of order
+          && x[i] != x[i-1] // elements are from different source lines
+      ) {
         throw new Error(`line number vector failure: y[${i}] < y[${i-1}] --> ${y[i]} < ${y[i-1]}`)
       }
     }
