@@ -13,6 +13,7 @@ if (process.argv.length < 3) {
 // require node modules
 global.vm = require('vm');
 global.fs = require('fs');
+global.fse = require('fs-extra');
 global.path = require('path');
 global.cheerio = require('cheerio');
 
@@ -24,13 +25,14 @@ vm.runInThisContext(fs.readFileSync('evernote.js'));
 process.on('unhandledRejection', r => console.log(r));
 
 // function to convert a markdown string to html
-function render(data) {
+function render(data, depth=1) {
     
     // convert markdown to html
     var h = markdown.toHTML(
         data.toString().replace(/\[TOC\]/gi, '<toc></toc>') // TOC jQuery can find
         ,{
-            includeLines:false
+            includeLines:false,
+            wrapInHtml:true
         }
     );
 
@@ -66,17 +68,59 @@ function render(data) {
 
     // add CSS
     $('head').append(`
+        <link rel="stylesheet" href="${'../'.repeat(depth)}lib/bootswatch-cosmo.min.css" />
         <style type='text/css'>
-            a       {color:aqua;    font-weight:bold; }
-            h1      {color:red;     font-weight:bold; }
-            h2      {color:yellow;  font-weight:bold; }
-            h3      {color:yellow;                    }
-            strong  {color:white;   font-weight:bold; }
-            code    {color:lime;    font-weight:bold; }
-            pre     {color:lime;    font-weight:bold; }
-            th      {color:white;   font-weight:bold; }
-            em      {text-decoration:underline;       }
+            @media tty { /* CSS for terminal web browsers */
+                h1      {color:red;     font-weight:bold; text-align:left; }
+                h2      {color:yellow;  font-weight:bold; text-align:left; }
+                h3      {color:yellow;                    text-align:left; }
+                a       {color:aqua;    font-weight:bold; }
+                strong  {color:white;   font-weight:bold; }
+                code    {color:lime;    font-weight:bold; }
+                pre     {color:lime;    font-weight:bold; }
+                th      {color:white;   font-weight:bold; }
+                em      {text-decoration:underline;       }
+            }
+            body {
+                padding: 5px 20px;
+            }
         </style>
+    `);
+
+    // add core post-processing libraries
+    $('body').append(`
+        <!-- JAVASCRIPT LIBRARIES -->
+        <script type="text/javascript" src="${'../'.repeat(depth)}lib/jquery.min.js"></script>
+        <script type="text/javascript" src="${'../'.repeat(depth)}markdown.js"></script>
+    `);
+
+    // add syntax highlighting libraries if applicable
+    if ($('pre code').length > 0) {
+        $('body').append(`
+            <!-- SYNTAX HIGHLIGHTING -->
+            <link rel="stylesheet" href="${'../'.repeat(depth)}lib/highlight-atelier-forest-light.min.css" />
+            <script type="text/javascript" src="${'../'.repeat(depth)}lib/highlight-9.8.0.min.js"></script>
+        `)
+    }
+
+    // add latex rendering libraries if applicable
+    if ($('latex').length > 0) {
+        $('body').append(`
+            <!-- LATEX RENDERING -->
+            <script src="${'../'.repeat(depth)}katex-0.5.1/katex.min.js"></script>
+            <link rel="stylesheet" href="${'../'.repeat(depth)}katex-0.5.1/katex.min.css">
+        `)
+    }
+
+    // perform post-processing
+    $('body').append(`
+        <!-- PROCESS RENDERED MARKDOWN -->
+        <script type="text/javascript">
+            jQuery(function(){ // wait for document to be ready
+                renderer = new MarkdownRenderer();
+                renderer.processRenderedMarkdown($('body'));
+            })
+        </script>
     `)
 
     // return html
@@ -94,7 +138,8 @@ const elinks = `## Using elinks ##
 * \`Ctrl-U\` - scroll up a half screen
 * \`Left\` - go to previous page
 * \`Down\` - go to next link
-* \`Enter\` or \`Right\` - follow link
+* \`Enter\`, \`Right\`, or click - follow link
+* \`Escape\` - show menu
 `;
 
 // function to process synchronization data and generate html
@@ -114,6 +159,22 @@ function syncToHtml(syncLoc) {
     if (!(fs.existsSync(`${syncLoc}/html`))) {
         fs.mkdirSync(`${syncLoc}/html`)
     }
+
+    // create resource folder if it doesn't exist
+    if (!(fs.existsSync(`${syncLoc}/html/lib`))) {
+        fs.mkdirSync(`${syncLoc}/html/lib`)
+    }
+
+    // copy resources
+    function copyResource(name) {
+        fse.copySync(`${__dirname}/${name}`, `${syncLoc}/html/${name}`);
+    }
+    copyResource('lib/bootswatch-cosmo.min.css');
+    copyResource('lib/jquery.min.js');
+    copyResource('lib/highlight-atelier-forest-light.min.css');
+    copyResource('lib/highlight-9.8.0.min.js');
+    copyResource('markdown.js');
+    copyResource('katex-0.5.1');
 
     // create connection to sync data
     var conn = new WrappedNoteCollectionSyncData(syncLoc, ioHandler=NodeIO);
