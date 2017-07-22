@@ -88,9 +88,81 @@ function render(data, depth=1) {
                 overflow-y: scroll;
                 height: 100vh;
             }
-            #markdown-toc li.active > a {
+
+            /* Inline table of contents */
+
+            toc {
+                display: inline-block;
+                margin-top:10px;
+            }
+            toc ol ol {
+                padding-left: 20px;
+            }
+            toc > ol {
+                border: 1px solid grey;
+                padding: 10px;
+                background-color: #eeeeee;
+            }
+            toc a {
+                padding-left: 5px;
+                color: black;
+            }
+            toc ol {
+                counter-reset: item;
+            }
+            toc li {
+                display: block;
+                /*border-top: 1px dashed gray;*/
+            }
+            toc li:before {
+                content: counters(item, ".") " ";
+                counter-increment: item
+            }
+
+            /* Floating/Navigation table of contents */
+
+            .toc-menu, .toc-menu ul {
+                list-style-type:none;
+            }
+            .toc-menu a {
+                color: black;
+                display: block;
+                text-decoration: none;
+            }
+            .toc-menu a:hover,
+            .toc-menu li.active > a
+            {
                 color: white;
                 background-color: #2780e3;
+            }
+            .toc-menu li ul {
+                display:none;
+            }
+            .toc-menu li:hover ul,
+            .toc-menu li.visible ul
+            {
+                display:block;
+            }
+            .toc-menu, .toc-menu ul, .toc-menu li {
+                padding: 0px;
+            }
+            .toc-menu > li > a {
+                padding-left:20px;
+            }
+            .toc-menu > li > ul > li > a {
+                padding-left:40px;
+            }
+            .toc-menu > li > ul > li > ul > li > a {
+                padding-left:60px;
+            }
+            .toc-menu a {
+                border-top: 1px solid #eeeeee;
+            }
+            .toc-menu {
+                margin-top:20px;
+                border-left: 1px solid #eeeeee;
+                border-right: 1px solid #eeeeee;
+                border-bottom: 1px solid #eeeeee;
             }
         </style>
     `);
@@ -126,30 +198,24 @@ function render(data, depth=1) {
         <!-- PROCESS RENDERED MARKDOWN -->
         <script type="text/javascript">
             jQuery(function(){ // wait for document to be ready
+
+                // perform rendered markdown post-processing
                 var renderer = new MarkdownRenderer();
                 var data = renderer.processRenderedMarkdown($('body'));
+
+                // add bootstrap compontents
                 $('#markdown-container').addClass("col-md-10").wrap('<div id="container" class="container-fluid"></div>');
                 $('#container').append('<div id="markdown-toc" class="col-md-2 hidden-print">');
+
+                // configure tables of contents
                 $('#markdown-toc').html(data.toc);
-                $('#markdown-toc > ul').addClass('col-md-2 affix');
+                $('#markdown-toc > ul').addClass('col-md-2 affix toc-menu');
                 $('#markdown-toc a').add('toc a').each(function(){ 
                     $(this).attr('href', $(this).data('href')) 
                 });
 
+                // set up scroll synchronization between rendering and table of contents
                 var scrollSync = new ScrollSync(null, $('#markdown-container'), $('#markdown-toc'));
-
-                /*
-                var headingLookup = [];
-                $(':header').each( function(){
-                    var matchingToc = $('#markdown-toc').find("a[data-href='#" + $(this).attr('id') + "']");
-                    if (matchingToc.length > 0) {
-                        headingLookup.push([
-                        $(this).position().top + $('#markdown-container').scrollTop(),
-                        matchingToc
-                        ])
-                    }
-                });
-                */
             })
         </script>
     `)
