@@ -84,6 +84,14 @@ function render(data, depth=1) {
             body {
                 padding: 5px 20px;
             }
+            #markdown-container {
+                overflow-y: scroll;
+                height: 100vh;
+            }
+            #markdown-toc li.active > a {
+                color: white;
+                background-color: #2780e3;
+            }
         </style>
     `);
 
@@ -91,6 +99,7 @@ function render(data, depth=1) {
     $('body').append(`
         <!-- JAVASCRIPT LIBRARIES -->
         <script type="text/javascript" src="${'../'.repeat(depth)}lib/jquery.min.js"></script>
+        <script type="text/javascript" src="${'../'.repeat(depth)}lib/lodash.min.js"></script>
         <script type="text/javascript" src="${'../'.repeat(depth)}markdown.js"></script>
     `);
 
@@ -117,8 +126,30 @@ function render(data, depth=1) {
         <!-- PROCESS RENDERED MARKDOWN -->
         <script type="text/javascript">
             jQuery(function(){ // wait for document to be ready
-                renderer = new MarkdownRenderer();
-                renderer.processRenderedMarkdown($('body'));
+                var renderer = new MarkdownRenderer();
+                var data = renderer.processRenderedMarkdown($('body'));
+                $('#markdown-container').addClass("col-md-10").wrap('<div id="container" class="container-fluid"></div>');
+                $('#container').append('<div id="markdown-toc" class="col-md-2 hidden-print">');
+                $('#markdown-toc').html(data.toc);
+                $('#markdown-toc > ul').addClass('col-md-2 affix');
+                $('#markdown-toc a').add('toc a').each(function(){ 
+                    $(this).attr('href', $(this).data('href')) 
+                });
+
+                var scrollSync = new ScrollSync(null, $('#markdown-container'), $('#markdown-toc'));
+
+                /*
+                var headingLookup = [];
+                $(':header').each( function(){
+                    var matchingToc = $('#markdown-toc').find("a[data-href='#" + $(this).attr('id') + "']");
+                    if (matchingToc.length > 0) {
+                        headingLookup.push([
+                        $(this).position().top + $('#markdown-container').scrollTop(),
+                        matchingToc
+                        ])
+                    }
+                });
+                */
             })
         </script>
     `)
@@ -171,6 +202,7 @@ function syncToHtml(syncLoc) {
     }
     copyResource('lib/bootswatch-cosmo.min.css');
     copyResource('lib/jquery.min.js');
+    copyResource('lib/lodash.min.js');
     copyResource('lib/highlight-atelier-forest-light.min.css');
     copyResource('lib/highlight-9.8.0.min.js');
     copyResource('markdown.js');
