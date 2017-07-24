@@ -1179,6 +1179,7 @@ class Synchronizer {
   constructor(token, url, localFolder, opt) {
     this._conn = new EvernoteConnectionCached(token, url, opt.connectionOptions||{});
     this._location = localFolder  // standardize path...
+      .replace(/\/\//g,  '/')     // remove double slashes
       .replace(/^\.\/+/ , '')     // strip initial ./
       .replace(/\/*$/   , '');    // remove trailing /
     this._maxResourceSize = opt.maxResourceSize || Infinity;
@@ -1411,7 +1412,7 @@ class Synchronizer {
 
       // organize note files
       this.notes.forEach((n) => {
-        let baseFile = `${this._location}/notes/${n.guid}/${n.updateSequenceNum}`
+        let baseFile = `${this._location}/notes/${n.guid}/${n.updateSequenceNum}`;
         if (files.includes(baseFile+'.json') && files.includes(baseFile+'.xml')) {
           this.fileData.oldNotes.push(n);
         } else {
