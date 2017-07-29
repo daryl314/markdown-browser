@@ -1,4 +1,6 @@
 import struct
+import sys
+import math
 
 cssnames = {
     "black":0x000000,
@@ -155,18 +157,54 @@ cssnames = {
 
 class BaseColor(object):
     def __init__(self, color):
+        self.r,self.g,self.b = BaseColor.toRGB(color)
+    
+    def resolveIndices(self, boundaries):
+        return [self.resolveIndex(c,boundaries) for c in self.r,self.g,self.b]
+
+    def resolveIndex(self, color, boundaries):
+        if isinstance(color,list) or isinstance(color,tuple):
+            return [self.resolveIndex(c,boundaries) for c in color]
+        if color == 0:
+            return 0
+        else:
+            for i in range(1,len(boundaries)):
+                if color == boundaries[i]:
+                    return i
+                elif color < boundaries[i]:
+                    if boundaries[i] - color < color - boundaries[i-1]:
+                        return i
+                    else:
+                        return i - 1
+            return len(boundaries)-1
+
+    def distance(self, r, g, b):
+        return math.sqrt((r-self.r)**2 + (g-self.g)**2 + (b-self.b)**2)
+
+    def render(self, txt):
+        print self.escapeFG() + txt + self.escapeClear(),
+
+    @staticmethod
+    def toRGB(color):
         if isinstance(color,str) and color in cssnames:
             color = cssnames[color]
         if isinstance(color, int):
             color = '%06x' % color
         if isinstance(color, str):
-            self.r,self.g,self.b = [
-                    int(c,base=16) 
-                    for c in [color[-6:-4], color[-4:-2], color[-2:]]
+            return [
+                int(c,base=16) 
+                for c in [color[-6:-4], color[-4:-2], color[-2:]]
             ]
+        else:
+            raise RuntimeError('Invalid input!')
+
     @staticmethod
     def escapeClear():
         return "\033[0m"
+
+    @staticmethod
+    def underline():
+        return "\033[4m"
 
 class Color16(BaseColor):
     colorTable = {
@@ -179,6 +217,62 @@ class Color16(BaseColor):
         'cyan'    : 6,
         'white'   : 7
     }
+
+    loLookup = {
+        (0,0,0) : 0,
+        (1,0,0) : 1,
+        (0,1,0) : 2,
+        (1,1,0) : 3,
+        (0,0,1) : 4,
+        (1,0,1) : 5,
+        (0,1,1) : 6,
+        (1,1,1) : 8
+    }
+
+    hiLookup = {
+        (0,0,0) : 0,
+        (1,0,0) : 9,
+        (0,1,0) : 10,
+        (1,1,0) : 11,
+        (0,0,1) : 12,
+        (1,0,1) : 13,
+        (0,1,1) : 14,
+        (1,1,1) : 15
+    }
+
+    loBoundaries = [0,128]
+    hiBoundaries = [0,255]
+
+    def __init__(self, color):
+        super(Color16,self).__init__(color)
+        lo = self.resolveIndices(Color16.loBoundaries)
+        hi = self.resolveIndices(Color16.hiBoundaries)
+        lob = [Color16.loBoundaries[x] for x in lo]
+        hib = [Color16.hiBoundaries[x] for x in hi]
+        dlo = self.distance(*lo)
+        dhi = self.distance(*hi)
+        dsi = self.distance(192,192,192) # color 7 is silver
+        if dlo <= dhi and dlo <= dsi:
+            self.index = Color16.loLookup[tuple(lo)]
+            self.renderRGB = lob
+        elif dhi <= dlo and dhi <= dsi:
+            self.index = Color16.hiLookup[tuple(lo)]
+            self.renderRGB = hib
+        else:
+            self.index = 7
+            self.renderRGB = (192,192,192)
+
+    def escapeFG(self):
+        if self.index >= 8:
+            return "\033[%dm" % (self.index-8+90)
+        else:
+            return "\033[%dm" % (self.index+30)
+
+    def escapeBG(self):
+        if self.index >= 8:
+            return "\033[%dm" % (self.index-8+100)
+        else:
+            return "\033[%dm" % (self.index+40)
 
     @staticmethod
     def setFG(name, bold=False):
@@ -197,27 +291,32 @@ class Color16(BaseColor):
             return "\033[%dm" % (c+40)
 
 class ColorGray(BaseColor):
-    pass
+    boundaries = range(8,248,10) + [255] # 232 --> 255, 231
+
+    def __init__(self,color):
+        super(ColorGray,self).__init__(color)
+        idx = self.resolveIndex((self.r + self.b + self.g)/3, ColorGray.boundaries)
+        if idx == len(ColorGray.boundaries) - 1:
+            self.index = 231
+            self.renderRGB = (255,255,255)
+        else:
+            self.index = idx + 232
+            self.renderRGB = (ColorGray.boundaries[idx],)*3
+
+    def escapeFG(self):
+        return "\033[38;5;%dm" % self.index
+
+    def escapeBG(self):
+        return "\033[48;5;%dm" % self.index
 
 class ColorCube(BaseColor):
+    boundaries = [0, 95, 135, 175, 215, 255]
     def __init__(self, color):
         super(ColorCube,self).__init__(color)
-        self.r_ = self.resolveIndex(self.r)
-        self.g_ = self.resolveIndex(self.g)
-        self.b_ = self.resolveIndex(self.b)
-    def resolveIndex(self, color):
-        boundaries = [0, 95, 135, 175, 215, 255]
-        if color == 0:
-            return 0
-        else:
-            for i in range(1,6):
-                if color == boundaries[i]:
-                    return i
-                elif color < boundaries[i]:
-                    if boundaries[i] - color < color - boundaries[i-1]:
-                        return i
-                    else:
-                        return i - 1
+        self.r_ = self.resolveIndex(self.r, ColorCube.boundaries)
+        self.g_ = self.resolveIndex(self.g, ColorCube.boundaries)
+        self.b_ = self.resolveIndex(self.b, ColorCube.boundaries)
+        self.renderRGB = [ColorCube.boundaries[i] for i in (self.r_,self.g_,self.b_)]
     def getIndex(self):
         return 16 + self.r_*6*6 + self.g_*6 + self.b_
     def escapeFG(self):
@@ -227,21 +326,67 @@ class ColorCube(BaseColor):
     def display(self):
         i = self.getIndex()
         print "\033[48;5;%dm\033[38;5;15m %03d \033[33;5;0m\033[38;5;%dm %03d "%(i,i,i,i),
-    def render(self, txt):
-        print self.escapeFG() + txt + self.escapeClear(),
 
 class Color256(BaseColor):
-    pass
+
+    def __init__(self,color):
+        super(Color256,self).__init__(color)
+        color16 = Color16(color)
+        colorCube = ColorCube(color)
+        colorGray = ColorGray(color)
+        d16 = self.distance(*color16.renderRGB)
+        dCube = self.distance(*colorCube.renderRGB)
+        dGray = self.distance(*colorGray.renderRGB)
+        if d16 <= dCube and d16 <= dGray:
+            self.index = color16.index
+        elif dCube <= d16 and dCube <= dGray:
+            self.index = colorCube.getIndex()
+        else:
+            self.index = colorGray.index
+    
+    def escapeFG(self):
+        return "\033[38;5;%dm" % self.index
+
+    def escapeBG(self):
+        return "\033[48;5;%dm" % self.index
+
+    @staticmethod
+    def setBG(index):
+        return "\033[48;5;%dm" % index
+
+    @staticmethod
+    def setFG(index):
+        return "\033[38;5;%dm" % index
 
 class Color24Bit(BaseColor):
     def render(self, txt):
         print "\033[38;2;%d;%d;%dm%s\033[0m" % (self.r,self.g,self.b,txt),
 
+def getHue(r,g,b):
+    if isinstance(r, int):
+        r,g,b = r/255.0,g/255.0,b/255.0
+    M = max(r,g,b)
+    m = min(r,g,b)
+    C = M - m
+    if C == 0:
+        return 0
+    elif M == r:
+        return 60*((g-b)/C % 6)
+    elif M == g:
+        return 60*((b-r)/C + 2)
+    else:
+        return 60*((r-g)/C + 4)
+
 ################################################################################
 
 def printChart():
     for i in range(256):
-        print "\033[48;5;%dm\033[38;5;15m %03d \033[33;5;0m\033[38;5;%dm %03d "%(i,i,i,i),
+        sys.stdout.write(Color256.setFG(15))
+        sys.stdout.write(Color256.setBG(i))
+        sys.stdout.write(" %03d " % i)
+        sys.stdout.write(Color256.setBG(0))
+        sys.stdout.write(Color256.setFG(i))
+        print " %03d "%(i),
         if i < 16 and i % 8 == 7:
             print "\033[0m"
         elif i > 16 and (i-16) % 6 == 5:
@@ -253,8 +398,19 @@ def printChart():
 
 printChart()
 print
-for k in cssnames.keys():
-    ColorCube(k).render(k)
-    Color24Bit(k).render(k)
+
+def cssHue(name):
+    return getHue(*BaseColor.toRGB(name))
+names = cssnames.keys()
+names.sort(key=cssHue)
+fmt = '%-{}s'.format(max(map(len, names)))
+
+for k in names:
+    #print BaseColor.underline(),
+    Color24Bit(k).render(fmt % k)
+    Color256(k)  .render(fmt % k)
+    ColorCube(k) .render(fmt % k)
+    Color16(k)   .render(fmt % k)
+    ColorGray(k) .render(fmt % k)
     print
 
