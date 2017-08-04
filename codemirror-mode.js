@@ -833,6 +833,68 @@ CodeMirror.defineMode('gfm-expanded', function(){
         return 'error solar-bg-base03';
       }
 
+    },
+
+    ///// CONTENT MANIPULATION FUNCTIONS /////
+
+    reformatTable: function(cm, shrink=true) {
+
+      // identify first line of table
+      let startLine = cm.getCursor().line;
+      while (startLine > 0 && cm.getLine(startLine).match(/^ *\|.*/)) {
+        startLine -= 1;
+      }
+      startLine += 1;
+
+      // identify last line of table
+      let endLine = cm.getCursor().line;
+      while (endLine < cm.lineCount() && cm.getLine(endLine).match(/^ *\|.*/)) {
+        endLine += 1;
+      }
+      endLine -= 1;
+
+      // extract line data
+      let lines = [];
+      cm.eachLine(startLine, endLine+1, (x) => { lines.push(x.text.trimRight()) });
+
+      // split lines into cells (slicing off content outside of table)
+      let cells = lines.map(x => x.split('|').slice(1,-1));
+
+      // shrink cell data if applicable
+      if (shrink) {
+        cells = [
+          cells[0].map(x => x.replace(/^ ( )*/, ' ').replace(/ ( )*$/, ' '))
+        ].concat([ 
+          cells[1].map(x => x[0]+x.slice(-1)) 
+        ]).concat(
+          cells.slice(2).map(row => row.map(x => x.replace(/^ ( )*/, ' ').replace(/ ( )*$/, ' ')))
+        )
+      }
+
+      // number of columns (max number of cells in any row)
+      let nCols = Math.max.apply(null, cells.map(c => c.length));
+      
+      // fill any rows that are missing cells
+      cells = cells.map(c => c.concat(Array.from(' '.repeat(nCols - c.length))));
+      
+      // expand columns to match widest column
+      for (let i = 0; i < nCols; i++) {
+        let maxWidth = Math.max.apply(null, cells.map(c => c[i].length));
+        cells.forEach(c => { c[i] = c[i] + ' '.repeat(maxWidth - c[i].length) });
+      }
+      
+      // expand divider row (keeping potential : to right of dashes)
+      cells[1] = cells[1].map(c => c = c.replace(/ /g,'-').replace(/([-:]):(-+)/, '$1$2:'));
+      
+      // convert cells back into line data
+      let newLines = cells.map(c => '|' + c.join('|') + '|');
+      
+      // populate editor with updated table
+      cm.replaceRange(
+        newLines.join('\n'),
+        {line:startLine, ch:0}, 
+        {line:endLine,   ch:lines[lines.length-1].length}
+      );
     }
   }
 })
