@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Equation Editor</title>
+  <script type="text/javascript" src="lib/jquery.min.js"></script>
+  <script type="text/javascript" src="lib/lodash.min.js"></script>
+  <script src="katex-0.8.2/katex.min.js"></script>
+  <link rel="stylesheet" href="katex-0.8.2/katex.min.css">
+
+  <style>
+    .overlay:hover {
+      background-color:purple;
+    }
+    .overlay {
+      background-color: red;
+      opacity: 0.3;
+      cursor: pointer;
+      z-index: 100;
+    }
+    #equation {
+      padding   : 20px;
+      font-size : 5em;
+    }
+  </style>
+
+  <script type="text/javascript">
+
+    // example equation editor: https://github.com/camdenre/equation-editor
+    // rebuild katex fonts: https://github.com/Khan/KaTeX/wiki/Font-Options
+    // katex supported functions: https://khan.github.io/KaTeX/function-support.html
+    
+    class KatexEquation {
+
+      constructor (template, $el, ids, lookup) {
+
+        // copy template and element from input
+        this.template = template;
+        this.$el = $el;
+        
+        // initialize a queue of available id numbers (4096 slots) if not provided
+        this.idQueue = ids ? ids : KatexEquation.range(1,4097);
+
+        // lookup table: child index -> parent object
+        this.lookup = lookup ? lookup : new Map();
+        
+        // create children slots for each @ symbol in template
+        this.ids = [];
+        template.match(/@/g).forEach(() => {
+          let idx = this.idQueue.shift();
+          this.ids.push(idx);
+          this.lookup.set(idx, this);
+        });
+
+        // array to hold childen entries
+        this.children = new Array(this.ids.length);
+      }
+
+      // return an array initialized to a range of values
+      static range(a,b) {
+        let i = b ? a : 0;
+        let n = b ? b - a : a;
+        return (new Array(n)).fill(0).map(() => i++) 
+      }
+
+      // convert an index into a base 16 rgb value
+      static toRGB(i) {
+        let hex = i.toString(16);
+        hex = '0'.repeat(3-hex.length) + hex;
+        return `#0${hex[0]}0${hex[1]}0${hex[2]}`
+      }
+
+      // convert a base 16 rgb into an index
+      static fromRGB(rgb) {
+        return rgb[2] + 16*rgb[1] + 16*16*rgb[0];
+      }
+
+      // return the slot number associated with an index
+      _slotIndex(idx) {
+        let parent = this.lookup.get(idx);
+        let childIdx = parent.ids.indexOf(idx);
+        if (childIdx >= 0) {
+          return [parent, childIdx]
+        } else {
+          Error('Index not found!')
+        }
+      }
+
+      // return true if there is a child in the specified slot
+      hasChild(idx) {
+        let [parent,i] = this._slotIndex(idx);
+        return parent.children[i] && parent.children[i] instanceof KatexEquation
+      }
+
+      // add a child equation in the specified slot
+      addChild(template, idx) {
+        this.removeChild(idx);
+        let [parent,i] = this._slotIndex(idx);
+        parent.children[i] = new KatexEquation(template, this.$el, this.idQueue, this.lookup);
+      }
+
+      // recursively remove child equation in the specified slot
+      removeChild(idx) {
+        if (this.hasChild(idx)) {
+          let [parent,i] = this._slotIndex(idx);
+          let child = parent.children[i];
+          child.ids.forEach(id => {
+            child.removeChild(id);
+            child.idQueue.unshift(child.ids.shift());
+          });
+          parent.children[i] = undefined;
+        }
+      }
+
+      toLatex() {
+        let renderedChildren = KatexEquation.range(this.children.length).map(i => {
+          let child = this.children[i] ? this.children[i].toLatex() : '\\blacksquare';
+          let key = this.ids[i];
+          return `\\textcolor{${KatexEquation.toRGB(key)}}{${child}}`
+        })
+        return this.template.replace(/@/g, ()=>renderedChildren.shift())
+      }
+
+      render() {
+        let _this = this;
+        console.log('Rendering latex...',this.toLatex());
+
+        _this.$el.on('DOMNodeInserted', function(e) {
+          _this.$el.off('DOMNodeInserted');
+          _this._addBoxes();
+        })
+
+        katex.render(this.toLatex(), this.$el[0]);
+      }
+
+      _addBoxes() {
+        let _this = this;
+        this.$el.find('span.mord')
+            .filter(function(){ 
+              return $(this).css('color') != 'rgb(0, 0, 0)'
+            })
+            .each(function(){
+              let $el = $(this);
+              let $o = $('<div class="overlay"></div>');
+              let rgb = $(this).css('color').split('(')[1].split(')')[0].split(/,\s*/).map(x => parseInt(x));
+              let idx = KatexEquation.fromRGB(rgb);
+              _this.$el.prepend($o);
+              $o.css({ 
+                position : 'absolute', 
+                top      : $el.offset().top, 
+                left     : $el.offset().left, 
+                height   : $el.height(), 
+                width    : $el.width()
+              })
+              .data('index', idx)
+              ;
+            })
+      }
+    }
+
+    let bigOps = ["sum", "prod", "bigvee", "bigotimes", "int", "coprod", "bigwedge", "bigoplus", "iint", "intop", "bigcap", "bigodot", "iiint", "smallint", "bigcup", "biguplus", "oint", "bigsqcup"];
+
+    jQuery(function(){
+        let frac = '\\frac{@}{@}'; // --> \frac{1@...@1}
+        let integral = '\\int\\limits_{@}^{@} @';
+        let bigcup = '\\bigcup\\limits_{@}^{@} @';
+        let $div = $('div#equation');
+
+        eq = new KatexEquation(integral, $div);
+        eq.addChild(frac, 3);
+        eq.render();
+
+        $div.on('click', 'div.overlay', function(){
+          let idx = $(this).data('index');
+          console.log('Adding element in location:', idx);
+          eq.addChild('\\bigcup\\limits_{@}^{@} @', idx);
+          eq.render();
+          return false
+        })
+
+        $('body').append('<h3>Big operators</h3>');
+        bigOps.forEach((op) => {
+          let $div = $('<span style="padding:0.5em">');
+          $('body').append($div);
+          katex.render(`\\${op}\\limits_{\\blacksquare}^{\\blacksquare} \\blacksquare`, $div[0]);
+        })
+    })
+  </script>
+</head>
+<body>
+  <div id="equation"></div>
+</body>
+</html>
