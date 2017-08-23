@@ -37,7 +37,7 @@ function render(data, depth=1) {
     );
 
     // wrap html in cheerio
-    var $ = cheerio.load(h);
+    var $ = cheerio.load(h, {xmlMode: true});
 
     // filter out headers
     var $h = $(':header').not('h1');
@@ -312,19 +312,29 @@ function syncToHtml(syncLoc) {
         // execute promises
         p = Promise.all(p);
 
+        // case-insensitive sorting function
+        function sorter(a,b) {
+            a_ = a.toLowerCase();
+            b_ = b.toLowerCase();
+            return a_ < b_ 
+                ? -1 
+                : (a_ > b_ 
+                    ? 1 
+                    : 0)
+        }
+
         // generate an index page for each notebook
         p.then(() => {
             Object.keys(notesByNotebook).forEach(nb => {
+                notesByNotebook[nb].sort((a,b) => sorter(a.title,b.title));
                 var li = notesByNotebook[nb].map(n => `* [${n.title}](${sanitizeFileURL(n.title, true)}.html)`);
-                li = li.sort((a,b) => a.toLowerCase() > b.toLowerCase());
                 var md = elinks+'\n## Page Index ##\n\n'+li.join('\n');
                 fs.writeFileSync(`${syncLoc}/html/${sanitizeFileName(nb)}/index.html`, render(md));
             });
         });
 
         // generate a cross-notebook index
-        var li = Object.keys(notesByNotebook).map(nb => `* [${nb}](${sanitizeFileURL(nb, true)}/index.html)`)
-        li = li.sort((a,b) => a.toLowerCase() > b.toLowerCase());
+        var li = Object.keys(notesByNotebook).sort(sorter).map(nb => `* [${nb}](${sanitizeFileURL(nb, true)}/index.html)`);
         var md = elinks+'\n## Page Index ##\n\n'+li.join('\n');
         fs.writeFileSync(`${syncLoc}/html/index.html`, render(md));
 
