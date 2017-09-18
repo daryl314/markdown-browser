@@ -1,3 +1,6 @@
 *~
 .DS_Store
 syncData
+.idea/*
+.vscode/*
+.*.swp

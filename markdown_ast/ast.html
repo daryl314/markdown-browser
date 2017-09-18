@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Markdown Editor</title>
+    <link rel="stylesheet" href="../lib/bootswatch-cosmo.min.css" />
+    <script type="text/javascript" src="markdown_new.js"></script>
+    <script type="text/javascript" src="../lib/jquery.min.js"></script>
+    <style>
+        #container {
+            width: 100%
+        }
+        #editor {
+            /*width: 50%;*/
+            float: left;
+            padding: 1em;
+        }
+        #ast_container {
+            /*width: 50%;*/
+            float: left;
+            padding: 1em;
+        }
+        #ast {
+            font-family: monospace;
+            white-space: pre;
+        }
+    </style>
+    </head>
+<body>
+    <div id="container">
+        <div id="editor">
+            <textarea name="" id="" cols="80" rows="40">
+# First-level heading
+
+Paragraph text
+            </textarea>
+        </div>
+        <div id="ast_container">
+            <h1>AST display</h1>
+            <div id="ast"></div>
+        </div>
+    </div>
+    <script type="text/javascript">
+        jQuery(function(){
+            ast = Model.parse($('#editor textarea').val());
+            $('#ast').text(ast.render());
+        })
+    </script>
+</body>
+</html>
