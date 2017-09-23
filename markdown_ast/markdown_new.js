@@ -482,49 +482,64 @@ let regex = function(){
 
   ////////// BOLD REGEX //////////
 
-  regex.strong = regex.Combine(
-      /^__/,        //   __ anchored at start of line
-      /([\s\S]+?)/, //   minimal multi-line wildcard
-      /__/,         //   __
-      /(?!_)/,      //   not followed by another _
-    /|/,            // OR
-      /^\*\*/,      //   ** anchored at start of line
-      /([\s\S]+?)/, //   minimal multi-line wildcard
-      /\*\*/,       //   **
-      /(?!\*)/      //   not followed by another *
-  )
+  regex.strong_us = regex.Combine(
+    /^__/,        //   __ anchored at start of line
+    /([\s\S]+?)/, //   minimal multi-line wildcard
+    /__/,         //   __
+    /(?!_)/,      //   not followed by another _
+  );
+  regex.strong_us.tokens = ['text'];
+
+  regex.strong_as = regex.Combine(
+    /^\*\*/,      //   ** anchored at start of line
+    /([\s\S]+?)/, //   minimal multi-line wildcard
+    /\*\*/,       //   **
+    /(?!\*)/      //   not followed by another *
+  );
+  regex.strong_as.tokens = ['text'];
+
+  regex.strong = regex.Combine(/^STRONG_US|^STRONG_AS/, {
+    STRONG_US: regex.strong_us,
+    STRONG_AS: regex.strong_as
+  })
   regex.strong.tokens = ['opt1','opt2'];
 
 
   ////////// ITALICS REGEX //////////
 
+  regex.em_us = regex.Combine(
+    /^\b_/,            // word boundary followed by _
+    '(',              // captured text
+      '(?:',          //   one or more (minimal) ...
+          /[^_]/,     //       non-underscore character
+        /|/,          //     OR
+          /__/,       //       double underscore
+      ')+?',          //   end grouping
+    ')',              // end captured text
+    /_\b/             // _ followed by word bounary
+  );
+  regex.em_us.tokens = ['text'];
+
+  regex.em_as = regex.Combine(
+    /^\*/,             // *
+    '(',              // captured text
+      '(?:',          //   one or more (minimal) ...
+          /\*\*/,     //       **
+        /|/,          //     OR
+          /[\s\S]/,   //       minimal multi-line wildcard`
+      ')+?',          //   end grouping
+    ')',              // end captured text
+    /\*/,             // *
+    /(?!\*)/          // not followed by another *
+  );
+  regex.em_as.tokens = ['text'];
+
   regex.em = regex.Combine(
-    /^UNDERSCORE|^ASTERISK/, // match anchored underscore or asterisk pattern
-  {
-    UNDERSCORE: regex.Combine(
-      /\b_/,            // word boundary followed by _
-      '(',              // captured text
-        '(?:',          //   one or more (minimal) ...
-            /[^_]/,     //       non-underscore character
-          /|/,          //     OR
-            /__/,       //       double underscore
-        ')+?',          //   end grouping
-      ')',              // end captured text
-      /_\b/             // _ followed by word bounary
-    ),
-    ASTERISK: regex.Combine(
-      /\*/,             // *
-      '(',              // captured text
-        '(?:',          //   one or more (minimal) ...
-            /\*\*/,     //       **
-          /|/,          //     OR
-            /[\s\S]/,   //       minimal multi-line wildcard`
-        ')+?',          //   end grouping
-      ')',              // end captured text
-      /\*/,             // *
-      /(?!\*)/          // not followed by another *
-    )
-  });
+    /^EM_US|^EM_AS/, { // match anchored underscore or asterisk pattern
+      EM_US: regex.em_us,
+      EM_AS: regex.em_as
+    }
+  );
   regex.em.tokens = ['opt1','opt2'];
 
   ////////// STRIKETHROUGH REGEX //////////
@@ -645,9 +660,8 @@ let regex = function(){
 
   ////////// INLINE TEXT REGEX //////////
 
-  regex.i_text = regex.Combine(
-    /^/,                // anchor to start of string
-    /[\s\S]+?/,         // minimal multi-line wildcard
+  // pattern to terminate inline text block
+  var i_text_after = regex.Combine(
     '(?=',              // followed by (positive lookahead) ...
         /[\\<!\[_*`~]/, //     one of \<![_*`~
       /|/,              //   OR
@@ -660,6 +674,17 @@ let regex = function(){
         /\$\$/,         //     $$
     ')'                 // end lookahead
   );
+
+  // non-captured version to match marked.js
+  regex.i_text = regex.Combine(
+    /^[\s\S]+?/, i_text_after
+  );
+
+  // version with captured text
+  regex.i_text1 = regex.Combine(
+    /^([\s\S]+?)/, i_text_after
+  );
+  regex.i_text1.tokens = ['text'];
 
 
   ////////// URL REGEX //////////
@@ -682,21 +707,13 @@ let regex = function(){
 // CLASS TO DEFINE A GRAMMAR RULE //
 ////////////////////////////////////
 
-class Result {
-  constructor(name, res, tok) {
+// subclass regexp to customize behavior?  https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/@@match
+
+class ResultArray {
+  constructor(name, arr) {
     this.leader = '  ';
     this.name = name;
-    this.attr = {};
-    this.match = res;
-
-    // assign tokenized results
-    if (tok) {
-      for (let i = 0; i < tok.length; i++) {
-        if (tok[i]) {
-          this.attr[tok[i]] = res[i+1];
-        }
-      }
-    }
+    this.arr = arr;
   }
 
   render() {
@@ -706,26 +723,147 @@ class Result {
   _render(depth=0) {
     let out = [];
     out.push(this.leader.repeat(depth) + `<${this.name}>`);
-    Object.keys(this.attr).forEach(k => {
-      out.push(this.leader.repeat(depth+1) + `<${k}>${this.attr[k]}</${k}>`);
+    this.arr.forEach(x => {
+      out = out.concat(x._render(depth+1))
     })
     out.push(this.leader.repeat(depth) + `</${this.name}>`);
-    return out
+    return out    
+  }
+}
+
+class Result {
+  constructor(rule, res, pos) {
+    this.rule = rule;
+    this.match = res.slice(1);
+    this.initialPosition = pos;
+    this.cap = res[0];
+    this.finalPosition = pos + this.cap.length;
+    this.n = this.cap.length;
+    this.leader = '  ';
+    this.attr = {};
+
+    // assign tokenized results
+    if (this.rule.tokens) {
+      for (let i = 0; i < this.rule.tokens.length; i++) {
+        if (this.rule.tokens[i]) {
+          let tok = this.rule.tokens[i];
+          if (this.rule.sub_rules && this.rule.sub_rules[tok]) {
+            let tokRule = this.rule.sub_rules[tok];
+            if (this.rule.ruleset) {
+              tokRule = this.rule.ruleset.rules[tokRule];
+            }
+            this.attr[tok] = tokRule.parse(this.match[i]);
+          } else {
+            this.attr[tok] = this.match[i];
+          }
+        }
+      }
+    }
+  }
+
+  render() {
+    return this._render().join('\n')
+  }
+
+  _indent(depth, txt) {
+    if (typeof txt === 'string') {
+      return this.leader.repeat(depth) + txt
+    } else {
+      return txt.map(x => this.leader.repeat(depth) + x)
+    }
+  }
+
+  _rawAttr() {
+    return Object.keys(this.attr).filter(k => typeof this.attr[k] === 'string')
+  }
+
+  _nestedAttr() {
+    return Object.keys(this.attr).filter(k => typeof this.attr[k] !== 'string')
+  }
+
+  _attrString() {
+    let inner = this._rawAttr().map(k => 
+      `${k}="${this.attr[k].replace(/\n/g, '\\n')}"`
+    )
+    return [this.rule.name].concat(inner).join(' ')
+  }
+
+  _render(depth=0) {
+
+    // convert nested objects into text blocks
+    let nestedAttr = this._nestedAttr().map(k => this._indent(1,
+      [`<${k}>`]
+      .concat(this.attr[k]._render(1))
+      .concat([`</${k}>`])
+    ))
+
+    // special case for no nested objects
+    if (nestedAttr.length == 0) {
+      return this._indent(depth,`<${this._attrString()}/>`)
+    }
+
+    // generate output text
+    let out = [];
+    out.push(`<${this._attrString()}>`);
+    nestedAttr.forEach(x => {out = out.concat(x)});
+    out.push(`</${this.rule.name}>`);
+
+    // return indented text
+    return this._indent(depth, out)
+  }
+}
+
+class RuleSet {
+  constructor(baseRule, regex) {
+    this.baseRule = baseRule;
+    this.regex = regex;
+    this.rules = {};
+  }
+
+  parse(txt, pos=0) {
+    return this.rules[this.baseRule].parse(txt,pos)
+  }
+
+  addRule(name, regex, sub_rules={}) {
+    this.rules[name] = new Rule(name, regex, sub_rules, this);
+  }
+
+  addRules(def) {
+    Object.keys(def).forEach(key => {
+      var [re,sub_rules] = def[key];
+      if (this.regex) {
+        re = this.regex[re];
+      }
+      this.addRule(key, re, sub_rules);
+    })
+  }
+
+  addDispatchRule(name, def) {
+    let rules = def.split('|').map(r => {
+      if (this.rules[r] === undefined) throw new Error('Undefined rule: '+r);
+      return this.rules[r]
+    })
+    this.rules[name] = new DispatchRule(name, rules);
+  }
+
+  addRepeatingRule(name, rule) {
+    this.rules[name] = new RepeatingRule(name, this.rules[rule]);
   }
 }
 
 class Rule {
-  constructor(name, re) {
+  constructor(name, regex, sub_rules, ruleset) {
     this.name = name;
-    let re_src = re.source[0] == '^' ? re.source.slice(1) : re.source;
-    this.re = new RegExp(re_src, 'y');
-    this.tokens = re.tokens;
+    this.regex = regex;
+    this.tokens = regex.tokens;
+    this.sub_rules = sub_rules;
+    this.ruleset = ruleset;
   }
 
   parse(txt, pos=0, fail_ok=false) {
-    let res = this.re.exec(txt);
+    let res = this.regex.exec(txt.slice(pos));
     if (res) {
-      return new Result(this.name, res, this.tokens)
+      return new Result(this, res, pos)
     } else if (fail_ok) {
       return null
     } else {
@@ -741,7 +879,18 @@ class RepeatingRule {
   }
 
   parse(txt, pos=0) {
-    return this.rule.parse(txt,pos);
+    let out = [];
+    let loc = pos;
+    while (loc + 1 < txt.length) {
+      let res = this.rule.parse(txt,loc);
+      if (res.n == 0) {
+        throw new Error('Empty regex match')
+      } else {
+        loc = res.finalPosition;
+        out.push(res);
+      }
+    }
+    return new ResultArray(this.name, out);
   }
 }
 
@@ -753,7 +902,7 @@ class DispatchRule {
 
   parse(txt, pos=0) {
     for (var i = 0; i < this.rules.length; i++) {
-      let res = this.rules[i].parse(txt,pos);
+      let res = this.rules[i].parse(txt,pos,true);
       if (res) {
         return res;
       }
@@ -762,16 +911,44 @@ class DispatchRule {
   }
 }
 
-///////////////////////
-// DEFINE SOME RULES //
-///////////////////////
+//////////////////////////
+// DEFINE GRAMMAR RULES //
+//////////////////////////
 
-let Heading   = new Rule('Heading', regex.heading);
-let Paragraph = new Rule('Paragraph', regex.paragraph);
+// create a container for set of rules
+let Model = new RuleSet(
+  'Block',  // top-level rule name
+  regex     // regex definition map
+);
 
-let Block = new DispatchRule('Block', [Heading,Paragraph]);
+// base-level block rules
+Model.addRules({
+  Heading   : ['heading'  , {text:'Inline'}],
+  Paragraph : ['paragraph', {text:'Inline'}]
+});
 
-let Model = new RepeatingRule('Model', Block);
+// 'Block' rule is repeated dispatch over block types
+Model.addDispatchRule('BlockElement', 'Heading|Paragraph');
+Model.addRepeatingRule('Block', 'BlockElement');
+
+// base-level inline rules
+/*inline.rules = [
+  'i_latex', 'b_latex', 'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
+  'strong', 'em', 'i_code', 'br', 'del', 'i_text'
+]*/
+Model.addRules({
+  StrongUs   : ['strong_us', {text:'Inline'}],
+  StrongAs   : ['strong_as', {text:'Inline'}],
+  EmUs       : ['em_us'    , {text:'Inline'}],
+  EmAs       : ['em_as'    , {text:'Inline'}],
+  Del        : ['del'      , {text:'Inline'}],
+  InlineText : ['i_text1'  , {}             ]
+});
+
+// 'Inline' rule is repeated dispatch over inline types
+Model.addDispatchRule('InlineElement', 'StrongUs|StrongAs|EmUs|EmAs|Del|InlineText');
+Model.addRepeatingRule('Inline', 'InlineElement');
+
 
 
 
