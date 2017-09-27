@@ -3,7 +3,10 @@ import curses
 import curses.panel
 import sys
 import re
+import time
+import math
 from collections import deque
+from os import abort
 
 import TerminalColors256
 
@@ -167,13 +170,175 @@ class TagPair:
         return TagPair(tags, html)
 
 ################################################################################
+
+class InlineData:
+    """Container class for parsed inline HTML data"""
+
+    def __init__(self, el):
+        self.data = []
+        self._parse(el.children, [el.leftTag.tag])
+
+    def _parse(self, children, tagStack):
+        for child in children:
+            if isinstance(child, str):
+                self.data.append((tagStack, child))
+            else:
+                newTag = child.leftTag.tag
+                self._parse(child.children, tagStack+[newTag])
+
+    def __len__(self):
+        if len(self.data) == 0:
+            return 0
+        else:
+            return sum([len(x[1]) for x in self.data]) + len(self.data) - 1
+
+    def padTo(self, n):
+        if len(self.data) == 0:
+            self.data.append(([], ' '*n))
+        else:
+            self.data[-1] = (self.data[-1][0], self.data[-1][1] + ' '*(n-len(self)))
+        return self
+
+class Renderer:
+
+    PassthroughTags = {
+        'h1','h2','h3','h4','h5','h6',
+        'p', 'pre'
+    }
+
+    def __init__(self, lineWidth):
+        self.lineData = []
+        self.lineWidth = lineWidth
+        self.curLine = []
+        self.curSpace = lineWidth
+
+    def render(self, container):    
+        for el in container.children:
+            if isinstance(el,TagPair):
+                tag = el.leftTag.tag
+                if tag != 'toc':
+                    if tag in self.PassthroughTags:
+                        inline = InlineData(el)
+                        for inlineChild in inline.data:
+                            self.append(inlineChild[1], inlineChild[0])
+                        self.newline(2)
+                    elif tag in ['ul','ol']:
+                        self.parseList(el, indent=0)
+                        self.newline()
+                    elif tag == 'table':
+                        self.parseTable(el)
+                        self.newline()
+                    else:
+                        raise RuntimeError("Unrecognized element: "+tag)
+                        print "Uncrecognized element:", tag
+                        import IPython;IPython.embed()
+            else:
+                raise RuntimeError("Unexpected raw text")
+        self.newline()
+        return self
+
+    def parseInline(self, children, tagStack, indent=0):
+        for child in children:
+            if isinstance(child, str):
+                self.append(child, tagStack, indent=indent)
+            else:
+                self.parseInline(child.children, tagStack+[child.leftTag.tag], indent)
+
+    def parseTable(self, table):
+
+        thead = [InlineData(th) for th in table.first('thead').first('tr')['th']]
+        tbody = []
+        for tr in table.first('tbody')['tr']:
+            tbody.append([InlineData(td) for td in tr['td']])
+
+        maxLen = map(len, thead)
+        for tr in tbody:
+            for i,td in enumerate(tr):
+                maxLen[i] = max(maxLen[i], len(td))
+
+        for tr in [thead]+tbody:
+            for i,td in enumerate(tr):
+                for el in td.padTo(maxLen[i]).data:
+                    self.append(el[1], el[0])
+            self.newline()
+
+    def parseList(self, el, indent=0):
+
+        # leader format string
+        if el.leftTag.tag == 'ol':
+            fmt = '%%%dd. ' % int(math.ceil(math.log10(len(el.children))))
+
+        # iterate over child <li> elements
+        for i,child in enumerate(el.children):
+            assert isinstance(child,TagPair) and child.leftTag.tag == 'li'
+
+            # start rendered <li> with bullet
+            if el.leftTag.tag == 'ul':
+                leader = '  ' * indent + '* '
+            else:
+                leader = '  ' * indent + fmt%i
+            self.append(leader, ['li'])
+
+            # iterate over <li> components
+            for subChild in child.children:
+
+                # if a <ul> is found, start a nested list at next indent level
+                if isinstance(subChild,TagPair) and subChild.leftTag.tag in ['ul','ol']:
+                    self.newline()
+                    self.parseList(subChild, indent=indent+1)
+
+                # otherwise...
+                else:
+                    self.parseInline([subChild], tagStack=['li'], indent=len(leader))
+
+            # newline after list item.  indentation for next item is handled above.  if <li> ended with an
+            # embedded <ul>, newline is handled by inner list's terminal <li>
+            if not isinstance(child.children[-1],TagPair) or child.children[-1].leftTag.tag not in ['ul','ol']:
+                self.newline()
+
+    def sol(self):
+        return self.curSpace == self.lineWidth
+
+    def eol(self):
+        return self.curSpace == 0
+
+    def newline(self, count=1, indent=0):
+        self.lineData.append(self.curLine)
+        for i in range(1, count):
+            self.lineData.append( [] )
+        if indent == 0:
+            self.curLine = []
+            self.curSpace = self.lineWidth
+        else:
+            self.curLine = [([], ' '*indent)]
+            self.curSpace = self.lineWidth - indent
+
+    def append(self, txt, styles, indent=0):
+        if len(txt) <= self.curSpace:
+            self.curLine.append((styles,txt))
+            self.curSpace -= len(txt)
+        else:
+            head,tail = txt[:self.curSpace],txt[self.curSpace:]
+            self.curLine.append((styles,head))
+            self.newline(indent=indent)
+            self.append(tail,styles)
+
+    def dumpString(self):
+        for line in self.lineData + self.curLine:
+            print ' '.join([x[1] for x in line])
+
+################################################################################
         
 # convert an HTML file into tag pair data
+t1 = time.time()
 html = open("./syncData/html/Wiki/Python.html",'rt').read()
 tags = TagPair.fromHTML(html)
+t2 = time.time()
+print "Parsed HTML in %.3f seconds" % (t2-t1)
 
 # extract table of contents
-toc = tags.first('body')['div#markdown-container'].first('toc')
+container = tags.first('body')['div#markdown-container']
+toc = container.first('toc')
 items = toc.first('ol')['li']
 
 # convert table of contents to list of strings to display
@@ -184,10 +349,7 @@ def renderTocItem(item, arr, indent=0):
             renderTocItem(li, arr, indent+1)
 tocRender = []
 for item in items:
-    renderTocItem(item, tocRender) 
-
-#import IPython;IPython.embed()
-#sys.exit()        
+    renderTocItem(item, tocRender)
 
 ################################################################################
 
@@ -226,13 +388,33 @@ stdscr = startup()
 
 # color configuration
 color_config = [
-    ('header', 'black'      , 'lightsalmon'),
-    ('footer', 'black'      , 'wheat'      ),
-    ('toc'   , 'deepskyblue', 'black'      )
+    ('header'  , 'black'      , 'lightsalmon'),
+    ('footer'  , 'black'      , 'wheat'      ),
+    ('body'    , 'white'      , 'black'      ),
+    ('toc'     , 'deepskyblue', 'black'      ),
+    ('heading' , 'red'        , 'black'      ),
+    ('code'    , 'pink'       , 'grey'       ),
+    ('th'      , 'white'      , 'blue'       )
 ]
 
 # configure colors
 colors = configColors(color_config)
+
+# return the curses style associated with a tag stack
+def stackColor(tagStack):
+    if len(tagStack) == 0:
+        return colors['body']
+    elif tagStack[0] in {'h1','h2','h3','h4','h5','h6'}:
+        return colors['heading'] | curses.A_UNDERLINE
+    elif tagStack[0] == 'th':
+        return colors['th']
+    elif 'code' in tagStack:
+        return colors['code']
+    else:
+        return colors['body']
+
+# render html
+lineData = Renderer(curses.COLS-34).render(container)
 
 ################################################################################
 
@@ -251,6 +433,13 @@ my_wins['body'].box(0,0)
 # add table of contents items to nav window
 for i,item in enumerate(tocRender):
     my_wins['nav'].addstr(i+1, 1, item, colors['toc'])
+
+# add rendered html to main window
+for row,line in enumerate(lineData.lineData[:curses.LINES-4]):
+    col = 1
+    for el in line:
+        my_wins['body'].addstr(row+1, col, el[1], stackColor(el[0]))
+        col += len(el[1]) + 1
 
 # placeholder text for header
 my_wins['header'].hline(0, 0, ' ', curses.COLS, colors['header'])
