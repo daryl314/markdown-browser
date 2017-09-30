@@ -2,9 +2,12 @@
 import curses
 import curses.panel
 import sys
+import os
 import re
 import time
 import math
+import logging
+import cStringIO
 from collections import deque
 from os import abort
 
@@ -24,7 +27,11 @@ import TerminalColors256
 #     os.environ['TERM'] = 'screen-256color'
 #     run browser.py
 
+
+
 # TODO: have popups with rendered latex from terminal browsing application
+
+logging.basicConfig(filename='browser.log', level=logging.INFO, filemode='wt')
 
 ################################################################################
 
@@ -62,18 +69,21 @@ class Tag:
 class TagPair:
     """Representation of a pair of HTML tags and their inner content"""
 
-    def __init__(self, tagIterator, html):
+    def __init__(self, tagIterator, html, unescape=True):
         self.tags = tagIterator  # iterator for Tag objects
         self.inhtml = html       # associated html
         self.children = []       # children of tag pair
         self.leftTag = None      # left tag in pair
         self.opt = None          # options associated with left tag
+        self.tag = None          # type of tag pair
         self.rightTag = None     # right tag in pair
         self.end = None          # position of right side of tag in html
+        self.unescape = unescape # should escaped text be converted?
 
         # opening tag in pair is first tag in queue
         self.leftTag = self.tags.popleft()
         self.opt = self.leftTag.opt
+        self.tag = self.leftTag.tag
 
         # if tag is self-closing, there is no closing tag
         if self.leftTag.isSelfClosing:
@@ -85,7 +95,7 @@ class TagPair:
 
             # search for closing tag.  everything until the closing tag is
             # a child of the current tag pair
-            while self.tags[0].tag != self.leftTag.tag:
+            while self.tags[0].tag != self.tag:
                 self.pushText()
                 self.pushTag()
             assert self.tags[0].isClosingTag
@@ -104,6 +114,14 @@ class TagPair:
     def pushText(self):
         """Add text to list of children"""
         txt = self.inhtml[ self.position() : self.tags[0].start ].lstrip().rstrip()
+        if self.unescape:
+            txt = txt\
+                .replace('&apos;' , "'" )\
+                .replace('&#39;'  , "'" )\
+                .replace('&quot;' , '"' )\
+                .replace('&gt;'   , '>' )\
+                .replace('&lt;'   , '<' )\
+                .replace('&amp;'  , '&' )
         if len(txt) > 0:
             self.children.append(txt)
 
@@ -114,14 +132,14 @@ class TagPair:
 
     def html(self):
         """Return an HTML representation of the tag pair"""
-        opt = ''.join([' %s="%s"'%x for x in self.leftTag.opt.items()]) 
+        opt = ''.join([' %s="%s"'%x for x in self.opt.items()])
         if self.leftTag.isSelfClosing:
-            left = "<" + self.leftTag.tag + opt + "/>"
+            left = "<" + self.tag + opt + "/>"
             inner = ''
             right = ''
         else:
-            left = "<" + self.leftTag.tag + opt + ">"
-            right = "</" + self.leftTag.tag + ">"
+            left = "<" + self.tag + opt + ">"
+            right = "</" + self.tag + ">"
         return left + inner + right
 
     def first(self,key):
@@ -134,7 +152,7 @@ class TagPair:
 
     def isType(self, tag):
         """Return true if tag pair is of specified type"""
-        return self.leftTag.tag == tag
+        return self.tag == tag
 
     def hasID(self, id):
         """Return true if tag pair has specified ID"""
@@ -175,29 +193,90 @@ class InlineData:
     """Container class for parsed inline HTML data"""
 
     def __init__(self, el):
-        self.data = []
-        self._parse(el.children, [el.leftTag.tag])
+        self.data = [[]]
+        if el is not None:
+            self._parse(el.children, [el.tag])
+
+    @staticmethod
+    def fromChild(child, tagStack=[]):
+        return InlineData(None)._parse([child], tagStack)
 
     def _parse(self, children, tagStack):
         for child in children:
             if isinstance(child, str):
-                self.data.append((tagStack, child))
+                logging.info("Processing child: " + child.__repr__())
+                for n,line in enumerate(child.split('\n')):
+                    if n > 0:
+                        self._newline()
+                    self._append(tagStack, line)
             else:
-                newTag = child.leftTag.tag
-                self._parse(child.children, tagStack+[newTag])
+                self._parse(child.children, tagStack+[child.tag])
+        return self
+
+    def _append(self, tagStack, txt):
+        self.data[-1].append((tagStack, txt))
+
+    def _newline(self):
+        self.data.append([])
 
     def __len__(self):
-        if len(self.data) == 0:
+        if len(self.data[0]) == 0:
             return 0
         else:
-            return sum([len(x[1]) for x in self.data]) + len(self.data) - 1
+            return max([self.rowLen(n) for n in range(len(self.data))])
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def rowLen(self, n):
+        row = self.data[n]
+        return sum([len(txt) for _, txt in row]) + len(row) - 1
+
+    def getRow(self, n):
+        out = InlineData(None)
+        if n < len(self.data):
+            out.data = [self.data[n]]
+        else:
+            out.data = [([], '')]
 
     def padTo(self, n):
-        if len(self.data) == 0:
-            self.data.append(([], ' '*n))
+        if len(self.data[0]) == 0:
+            self.data[0].append(([], ' '*n))
         else:
-            self.data[-1] = (self.data[-1][0], self.data[-1][1] + ' '*(n-len(self)))
+            for row in range(len(self.data)):
+                ts,txt = self.data[row][-1]
+                txt += ' '*(n-self.rowLen(row))
+                self.data[row] = self.data[row][:-1] + [(ts,txt)]
         return self
+
+  # var render_templates = {
+  #   space:      '',
+  #   hr:         '<hr{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>\n',
+  #   heading:    '<h{{level}} id="{{id}}"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</h{{level}}>\n',
+  #   b_code:     '<pre{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}><code{{IF lang}} class="lang-{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>{{IF lang}}\n{{ENDIF}}',
+  #   blockquote: '<blockquote{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{text}}</blockquote>\n',
+  #   html:       '{{text}}',
+  #   list:       '<{{listtype}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{text}}</{{listtype}}>\n',
+  #   listitem:   '<li{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</li>\n',
+  #   paragraph:  '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
+  #   b_text:     '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
+  #   table:      '<table{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n<thead>\n{{header}}</thead>\n<tbody>\n{{body}}</tbody>\n</table>\n',
+  #   tablerow:   '<tr{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{content}}</tr>\n',
+  #   tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>\n',
+  #   strong:     '<strong{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</strong>',
+  #   em:         '<em{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</em>',
+  #   i_code:     '<code{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{^^text}}</code>',
+  #   i_text:     '{{^text}}',
+  #   i_html:     '{{text}}',
+  #   br:         '<br{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
+  #   del:        '<del{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</del>',
+  #   link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</a>',
+  #   mailto:     '<a href="{{@href}}"}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{@text}}</a>',
+  #   image:      '<img src="{{^href}}" alt="{{^text}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
+  #   tag:        '<{{IF isClosing}}/{{ENDIF}}{{text}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}{{IF selfClose}}/{{ENDIF}}>',
+  #   i_latex:    '<latex class="inline"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{latex}}</latex>',
+  #   b_latex:    '<latex class="block"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{latex}}</latex>'
+  # }
 
 class Renderer:
 
@@ -206,7 +285,7 @@ class Renderer:
         'p', 'pre'
     }
 
-    def __init__(self, lineWidth):
+    def __init__(self, lineWidth=80):
         self.lineData = []
         self.lineWidth = lineWidth
         self.curLine = []
@@ -216,12 +295,14 @@ class Renderer:
         for el in container.children:
             if isinstance(el,TagPair):
                 tag = el.leftTag.tag
+                logging.info('Parsing tag: %s' % tag)
                 if tag != 'toc':
                     if tag in self.PassthroughTags:
-                        inline = InlineData(el)
-                        for inlineChild in inline.data:
-                            self.append(inlineChild[1], inlineChild[0])
-                        self.newline(2)
+                        for inlineRow in InlineData(el):
+                            for tagstack,txt in inlineRow:
+                                self.append(txt, tagstack)
+                            self.newline()
+                        self.newline(1)
                     elif tag in ['ul','ol']:
                         self.parseList(el, indent=0)
                         self.newline()
@@ -237,30 +318,38 @@ class Renderer:
         self.newline()
         return self
 
-    def parseInline(self, children, tagStack, indent=0):
-        for child in children:
-            if isinstance(child, str):
-                self.append(child, tagStack, indent=indent)
-            else:
-                self.parseInline(child.children, tagStack+[child.leftTag.tag], indent)
-
     def parseTable(self, table):
 
-        thead = [InlineData(th) for th in table.first('thead').first('tr')['th']]
+        # extract cell data
+        thead = self.parseTableRow(table.first('thead').first('tr')['th'])
         tbody = []
         for tr in table.first('tbody')['tr']:
-            tbody.append([InlineData(td) for td in tr['td']])
+            tbody += self.parseTableRow(tr['td'])
 
-        maxLen = map(len, thead)
-        for tr in tbody:
+        # calculate max length for each column
+        maxLen = map(len, thead[0])
+        for tr in thead[1:] + tbody:
             for i,td in enumerate(tr):
                 maxLen[i] = max(maxLen[i], len(td))
 
-        for tr in [thead]+tbody:
-            for i,td in enumerate(tr):
-                for el in td.padTo(maxLen[i]).data:
-                    self.append(el[1], el[0])
+        for tr in thead+tbody:
+            for n,td in zip(maxLen,tr):
+                padded = td.padTo(n)
+                assert len(padded.data) == 1
+                for tagStack,txt in padded.data[0]:
+                    self.append(txt, tagStack)
             self.newline()
+
+    def parseTableRow(self, cells):
+        rowData = [InlineData(td) for td in cells]
+        maxRows = max([len(td.data) for td in rowData])
+        if maxRows == 1:
+            return [rowData]
+        else:
+            out = []
+            for row in range(maxRows):
+                out.append([td.getRow(row) for td in rowData])
+            return out
 
     def parseList(self, el, indent=0):
 
@@ -289,7 +378,9 @@ class Renderer:
 
                 # otherwise...
                 else:
-                    self.parseInline([subChild], tagStack=['li'], indent=len(leader))
+                    for [inlineChild] in InlineData.fromChild(subChild, tagStack=['li']).data:
+                        self.append(inlineChild[1], inlineChild[0], indent=len(leader))
+                    # self.newline()
 
             # newline after list item.  indentation for next item is handled above.  if <li> ended with an
             # embedded <ul>, newline is handled by inner list's terminal <li>
@@ -323,9 +414,15 @@ class Renderer:
             self.newline(indent=indent)
             self.append(tail,styles)
 
-    def dumpString(self):
-        for line in self.lineData + self.curLine:
-            print ' '.join([x[1] for x in line])
+    def dumpString(self, withLines=False):
+        buf = cStringIO.StringIO()
+        for i,line in enumerate(self.lineData + self.curLine):
+            lineData = ' '.join([txt for _,txt in line])
+            if withLines:
+                buf.write('%d: %s\n' % (i, lineData))
+            else:
+                buf.write(lineData + '\n')
+        return buf.getvalue()
 
 ################################################################################
         
@@ -334,7 +431,7 @@ t1 = time.time()
 html = open("./syncData/html/Wiki/Python.html",'rt').read()
 tags = TagPair.fromHTML(html)
 t2 = time.time()
-print "Parsed HTML in %.3f seconds" % (t2-t1)
+logging.info("Parsed HTML in %.3f seconds" % (t2-t1))
 
 # extract table of contents
 container = tags.first('body')['div#markdown-container']
@@ -367,6 +464,12 @@ def configColors(colors):
 
 def startup():
     """Start a curses session"""
+
+    # required for underline support in tmux
+    if os.environ['TERM'] == 'screen-256color':
+        os.environ['TERM'] = 'xterm-256color'
+
+    # set up curses
     stdscr = curses.initscr()  # start curses mode
     curses.start_color()       # use colors
     curses.cbreak()            # interpret control characters normally
@@ -382,6 +485,8 @@ def teardown():
     curses.endwin()
 
 ################################################################################
+
+logging.info(Renderer(80).render(container).dumpString(withLines=True))
 
 # start curses session
 stdscr = startup()
@@ -411,10 +516,11 @@ def stackColor(tagStack):
     elif 'code' in tagStack:
         return colors['code']
     else:
-        return colors['body']
+        return curses.A_REVERSE #colors['body']
 
 # render html
 lineData = Renderer(curses.COLS-34).render(container)
+logging.info(lineData.dumpString(withLines=True))
 
 ################################################################################
 
@@ -434,12 +540,23 @@ my_wins['body'].box(0,0)
 for i,item in enumerate(tocRender):
     my_wins['nav'].addstr(i+1, 1, item, colors['toc'])
 
-# add rendered html to main window
-for row,line in enumerate(lineData.lineData[:curses.LINES-4]):
-    col = 1
-    for el in line:
-        my_wins['body'].addstr(row+1, col, el[1], stackColor(el[0]))
-        col += len(el[1]) + 1
+# display data starting from specified line
+main_height = curses.LINES - 4
+def displayData(startLine=0):
+    my_wins['body'].erase()
+    lines = lineData.lineData[startLine : startLine+main_height]
+    rows,cols = my_wins['body'].getmaxyx()
+    logging.info("Window size: " + (rows,cols).__repr__())
+    for row,line in enumerate(lines):
+        col = 1
+        for el in line:
+            if col < cols:
+                logging.info('Adding text at %d,%d: "%s"' % (row+1,col,el[1]))
+                my_wins['body'].addstr(row + 1, col, el[1][:cols-col], stackColor(el[0]))
+            else:
+                logging.info('Skipping text (beyond window): "%s"' % el[1])
+            col += len(el[1]) + 1
+    my_wins['body'].refresh()
 
 # placeholder text for header
 my_wins['header'].hline(0, 0, ' ', curses.COLS, colors['header'])
@@ -457,6 +574,12 @@ curses.panel.update_panels()
 
 # show screen
 curses.doupdate()
+
+# scroll data on key presses
+for row in range(0, len(lineData.lineData), main_height):
+    if row > 0:
+        stdscr.getch()
+    displayData(row)
 
 # embed an ipython kernel (connect with ipython --existing)
 #import IPython;IPython.start_kernel()
