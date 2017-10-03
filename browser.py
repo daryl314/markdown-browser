@@ -3,15 +3,15 @@ import curses
 import curses.panel
 import sys
 import os
-import re
 import time
 import math
 import logging
 import cStringIO
-from collections import deque
+import argparse
 from os import abort
 
 import TerminalColors256
+from TagPair import TagPair
 
 # Resources
 #   - http://www.tldp.org/HOWTO/NCURSES-Programming-HOWTO/
@@ -27,167 +27,7 @@ import TerminalColors256
 #     os.environ['TERM'] = 'screen-256color'
 #     run browser.py
 
-
-
 # TODO: have popups with rendered latex from terminal browsing application
-
-logging.basicConfig(filename='browser.log', level=logging.INFO, filemode='wt')
-
-################################################################################
-
-class ParserHelpers:
-    """Container class for parsing helper functions"""
-
-    # HTML regexes
-    TagProperty = re.compile('\\s*(\\w+)+\\s*=\\s*(\'.*?\'|".*?")')
-    Tag = re.compile(r'<\s*(\/?)\s*(\w+)(.*?)(\/?)>')
-
-    @staticmethod
-    def parseTagOptions(opt):
-        """Convert tag options to a dict"""
-        return dict([(x[0],x[1][1:-1]) for x in ParserHelpers.TagProperty.findall(opt)])
-
-################################################################################
-
-class Tag:
-    """Representation of an HTML tag"""
-
-    def __init__(self, match):
-        lClose,tag,opt,rClose = match.groups()
-        self.tag = tag
-        self.isClosingTag = lClose == '/'
-        self.isSelfClosing = rClose == '/'
-        self.start = match.start()
-        self.end = match.end()
-        self.opt = ParserHelpers.parseTagOptions(opt)
-
-    def __repr__(self):
-        return self.tag + self.opt.__repr__()
-
-################################################################################
-
-class TagPair:
-    """Representation of a pair of HTML tags and their inner content"""
-
-    def __init__(self, tagIterator, html, unescape=True):
-        self.tags = tagIterator  # iterator for Tag objects
-        self.inhtml = html       # associated html
-        self.children = []       # children of tag pair
-        self.leftTag = None      # left tag in pair
-        self.opt = None          # options associated with left tag
-        self.tag = None          # type of tag pair
-        self.rightTag = None     # right tag in pair
-        self.end = None          # position of right side of tag in html
-        self.unescape = unescape # should escaped text be converted?
-
-        # opening tag in pair is first tag in queue
-        self.leftTag = self.tags.popleft()
-        self.opt = self.leftTag.opt
-        self.tag = self.leftTag.tag
-
-        # if tag is self-closing, there is no closing tag
-        if self.leftTag.isSelfClosing:
-            self.rightTag = None
-            self.end = self.leftTag.end
-
-        # otherwise search for the closing tag
-        else:
-
-            # search for closing tag.  everything until the closing tag is
-            # a child of the current tag pair
-            while self.tags[0].tag != self.tag:
-                self.pushText()
-                self.pushTag()
-            assert self.tags[0].isClosingTag
-
-            # consume any text between last child and closing tag
-            self.pushText()
-
-            # attach closing tag and its position in input html
-            self.rightTag = self.tags.popleft()
-            self.end = self.rightTag.end
-
-    def pushTag(self):
-        """Add a tag pair to list of children"""
-        self.children.append(TagPair(self.tags, self.inhtml))
-
-    def pushText(self):
-        """Add text to list of children"""
-        txt = self.inhtml[ self.position() : self.tags[0].start ].lstrip().rstrip()
-        if self.unescape:
-            txt = txt\
-                .replace('&apos;' , "'" )\
-                .replace('&#39;'  , "'" )\
-                .replace('&quot;' , '"' )\
-                .replace('&gt;'   , '>' )\
-                .replace('&lt;'   , '<' )\
-                .replace('&amp;'  , '&' )
-        if len(txt) > 0:
-            self.children.append(txt)
-
-    def position(self):
-        """Return the index of the most recently consumed tag"""
-        lastTag = self.children[-1] if len(self.children) > 0 else self.leftTag
-        return lastTag.end
-
-    def html(self):
-        """Return an HTML representation of the tag pair"""
-        opt = ''.join([' %s="%s"'%x for x in self.opt.items()])
-        if self.leftTag.isSelfClosing:
-            left = "<" + self.tag + opt + "/>"
-            inner = ''
-            right = ''
-        else:
-            left = "<" + self.tag + opt + ">"
-            right = "</" + self.tag + ">"
-        return left + inner + right
-
-    def first(self,key):
-        """Return first matching child"""
-        matches = self.__getitem__(key)
-        if len(matches) > 0:
-            return matches[0]
-        else:
-            return None
-
-    def isType(self, tag):
-        """Return true if tag pair is of specified type"""
-        return self.tag == tag
-
-    def hasID(self, id):
-        """Return true if tag pair has specified ID"""
-        return 'id' in self.opt and self.opt['id'] == id
-
-    def __getitem__(self,key):
-        """Return a matching child"""
-        if '#' in key:
-            tag,id = key.split('#',1)
-            return [c for c in self.children if isinstance(c,TagPair) and c.isType(tag) and c.hasID(id)][0]
-        else:
-            return [c for c in self.children if isinstance(c,TagPair) and c.isType(key)]
-
-    def __repr__(self):
-        """String representation of TagPair"""
-        txt = [self.leftTag.__repr__()]
-        for i,c in enumerate(self.children):
-            if isinstance(c,TagPair):
-                s = c.leftTag.__repr__()
-            else:
-                if len(c) > 74:
-                    c = c[:70] + ' ...'
-                s = c.__repr__()
-            txt.append('  %d: %s'%(i,s))
-        return '\n'.join(txt)
-
-    @staticmethod
-    def fromHTML(html):
-        """Convert an html string into a TagPair"""
-        if html.startswith('<!DOCTYPE html>'):
-            html = re.sub(r'<!DOCTYPE html>\s*', '', html)
-        tags = deque(Tag(m) for m in ParserHelpers.Tag.finditer(html))
-        return TagPair(tags, html)
-
-################################################################################
 
 class InlineData:
     """Container class for parsed inline HTML data"""
@@ -425,165 +265,236 @@ class Renderer:
         return buf.getvalue()
 
 ################################################################################
-        
-# convert an HTML file into tag pair data
-t1 = time.time()
-html = open("./syncData/html/Wiki/Python.html",'rt').read()
-tags = TagPair.fromHTML(html)
-t2 = time.time()
-logging.info("Parsed HTML in %.3f seconds" % (t2-t1))
 
-# extract table of contents
-container = tags.first('body')['div#markdown-container']
-toc = container.first('toc')
-items = toc.first('ol')['li']
+class CursesHandler:
 
-# convert table of contents to list of strings to display
-def renderTocItem(item, arr, indent=0):
-    arr.append('**'*indent + item.first('a').children[0])
-    if item.first('ol') is not None:
-        for li in item.first('ol')['li']:
-            renderTocItem(li, arr, indent+1)
-tocRender = []
-for item in items:
-    renderTocItem(item, tocRender)
+    def __init__(self):
+        pass
+
+    def startup(self, term=None):
+        """Start a curses session"""
+
+        # set terminal environment variable
+        if term is not None:
+            os.environ['TERM'] = term
+
+        # set up curses
+        stdscr = curses.initscr()  # start curses mode
+        curses.start_color()  # use colors
+        curses.cbreak()  # interpret control characters normally
+        curses.noecho()  # don't echo input to terminal
+        stdscr.keypad(1)  # handle special keysj
+        self.stdscr = stdscr
+
+    def configColors(self, colors):
+        """Configure color data and return a dict of pairs"""
+        out = {}
+        for i, (k, fg, bg) in enumerate(colors):
+            if isinstance(fg, str) or fg > 16:
+                fg = TerminalColors256.Color256(fg).index
+            if isinstance(bg, str) or bg > 16:
+                bg = TerminalColors256.Color256(bg).index
+            curses.init_pair(i + 1, fg, bg)
+            out[k] = curses.color_pair(i + 1)
+        return out
+
+    def teardown(self):
+        """Terminate a curses session"""
+        curses.nocbreak()
+        self.stdscr.keypad(0)
+        curses.echo()
+        curses.endwin()
+
+    # solarized color scheme
+    SOLAR_BASE03 = 0x002b36  # Darkest background
+    SOLAR_BASE02 = 0x073642  # 2nd darkest background
+    SOLAR_BASE01 = 0x586e75  # Content darkest
+    SOLAR_BASE00 = 0x657b83  # Content 2nd darkest
+    SOLAR_BASE0 = 0x839496  # Content 2nd lightest
+    SOLAR_BASE1 = 0x93a1a1  # Content lightest
+    SOLAR_BASE2 = 0xeee8d5  # 2nd lightest background
+    SOLAR_BASE3 = 0xfdf6e3  # Lightest background
+    SOLAR_YELLOW = 0xb58900
+    SOLAR_ORANGE = 0xcb4b16
+    SOLAR_RED = 0xdc322f
+    SOLAR_MAGENTA = 0xd33682
+    SOLAR_VIOLET = 0x6c71c4
+    SOLAR_BLUE = 0x268bd2
+    SOLAR_CYAN = 0x2aa198
+    SOLAR_GREEN = 0x859900
 
 ################################################################################
 
-def configColors(colors):
-    """Configure color data and return a dict of pairs"""
-    out = {}
-    for i,(k,fg,bg) in enumerate(colors):
-        if isinstance(fg, str):
-            fg = TerminalColors256.Color256(fg).index
-        if isinstance(bg, str):
-            bg = TerminalColors256.Color256(bg).index
-        curses.init_pair(i+1, fg, bg)
-        out[k] = curses.color_pair(i+1)
-    return out
+class Application:
 
-def startup():
-    """Start a curses session"""
+    NAVWIDTH = 30
 
-    # required for underline support in tmux
-    if os.environ['TERM'] == 'screen-256color':
+    def __init__(self):
+        self.curses = CursesHandler()
+
+    def loadFile(self, fileName):
+        """Load HTML data from file"""
+
+        # extract tag data
+        t1 = time.time()
+        self.tags = TagPair.fromHTML(file=fileName)
+        t2 = time.time()
+        logging.info("Parsed HTML in %.3f seconds" % (t2-t1))
+
+        # extract table of contents
+        self.container = self.tags.first('body')['div#markdown-container']
+        self.toc = self.container.first('toc').first('ol')['li']
+
+        # if debugging, render content to log file
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.info(Renderer(80).render(self.container).dumpString(withLines=True))
+
+        # placeholders
+        self.windows = None
+        self.panels = None
+
+    def tocData(self):
+        """Return rendered TOC data as a list"""
+
+        # convert table of contents to list of strings to display
+        def renderTocItem(item, arr, indent=0):
+            arr.append('**'*indent + item.first('a').children[0])
+            if item.first('ol') is not None:
+                for li in item.first('ol')['li']:
+                    renderTocItem(li, arr, indent+1)
+        tocRender = []
+        for item in self.toc:
+            renderTocItem(item, tocRender)
+        return tocRender
+
+    def startCurses(self, term=None):
+
+        self.curses.startup(term=term)
+        self.colors = self.curses.configColors(self.color_config)
+
+        self.lineData = Renderer(curses.COLS - 34).render(app.container)
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.info(self.lineData.dumpString(withLines=True))
+
+        # configure windows
+        self.windows = {
+            'header': curses.newwin(1, curses.COLS, 0, 0),
+            'nav'   : curses.newwin(curses.LINES - 2, self.NAVWIDTH, 1, 0),
+            'body'  : curses.newwin(curses.LINES - 2, curses.COLS - self.NAVWIDTH, 1, self.NAVWIDTH),
+            'footer': curses.newwin(1, curses.COLS, curses.LINES - 1, 0)
+        }
+
+        # draw boxes around nav and body
+        self.windows['nav' ].box(0, 0)
+        self.windows['body'].box(0, 0)
+
+        # placeholder text for header and footer
+        self.headerText('Menu header goes here...')
+        self.footerText('Menu footer goes here...')
+
+        # add table of contents items to nav window
+        for i, item in enumerate(self.tocData()):
+            self.windows['nav'].addstr(i + 1, 1, item, self.colors['toc'])
+
+        # show screen
+        curses.doupdate()
+
+        # create panels from windows
+        self.panels = {}
+        for k,v in self.windows.items():
+            self.panels[k] = curses.panel.new_panel(v)
+        curses.panel.update_panels()
+
+    def displayData(self, startLine=0):
+        main_height = curses.LINES - 4
+        self.windows['body'].erase()
+        self.windows['body'].bkgd(' ', app.colors['body'])
+        lines = self.lineData.lineData[startLine: startLine + main_height]
+        rows, cols = self.windows['body'].getmaxyx()
+        logging.info("Window size: " + (rows, cols).__repr__())
+        for row,line in enumerate(lines):
+            col = 1
+            for el in line:
+                if col < cols:
+                    logging.info('Adding text at %d,%d: "%s"' % (row + 1, col, el[1]))
+                    self.windows['body'].addstr(row + 1, col, el[1][:cols - col], app.stackColor(el[0]))
+                else:
+                    logging.info('Skipping text (beyond window): "%s"' % el[1])
+                col += len(el[1]) + 1
+        self.windows['body'].refresh()
+
+    def headerText(self, txt):
+        self.windows['header'].hline(0, 0, ' ', curses.COLS, app.colors['header'])
+        self.windows['header'].addstr(0, 0, txt, app.colors['header'])
+
+    def footerText(self, txt):
+        self.windows['footer'].hline(0, 0, ' ', curses.COLS, app.colors['footer'])
+        self.windows['footer'].addstr(0, 0, txt, app.colors['footer'])
+
+    # return the curses style associated with a tag stack
+    def stackColor(self, tagStack):
+        if len(tagStack) == 0:
+            return self.colors['body']
+        elif tagStack[0] == 'h1':
+            return self.colors['h1']
+        elif tagStack[0] in {'h2', 'h3', 'h4', 'h5', 'h6'}:
+            return self.colors['heading'] | curses.A_UNDERLINE
+        elif tagStack[0] == 'th':
+            return self.colors['th']
+        elif 'code' in tagStack:
+            return self.colors['code']
+        else:
+            return self.colors['body']
+
+    # color configuration
+    color_config = [
+        ('header', CursesHandler.SOLAR_BASE01, CursesHandler.SOLAR_BASE3),
+        ('footer', CursesHandler.SOLAR_BASE01, CursesHandler.SOLAR_BASE3),
+        ('body', CursesHandler.SOLAR_BASE1, CursesHandler.SOLAR_BASE03),
+        ('toc', CursesHandler.SOLAR_BLUE, CursesHandler.SOLAR_BASE03),
+        ('h1', CursesHandler.SOLAR_RED, CursesHandler.SOLAR_BASE03),
+        ('heading', CursesHandler.SOLAR_RED, CursesHandler.SOLAR_BASE03),
+        ('code', CursesHandler.SOLAR_YELLOW, CursesHandler.SOLAR_BASE03),
+        ('th', CursesHandler.SOLAR_BASE1, CursesHandler.SOLAR_BLUE)
+    ]
+
+################################################################################
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description="Browser for rendered markdown")
+    parser.add_argument('--force-xterm-256', action='store_true', help="Force xterm-256color TERM environment variable")
+    parser.add_argument('--log-file', help="File to store log data")
+    parser.add_argument('--log-level', help="Logging level", default='INFO')
+    parser.add_argument('file', help="Input file name")
+    args = parser.parse_args()
+
+    # force xterm-256color for underline support
+    if args.force_xterm_256:
         os.environ['TERM'] = 'xterm-256color'
 
-    # set up curses
-    stdscr = curses.initscr()  # start curses mode
-    curses.start_color()       # use colors
-    curses.cbreak()            # interpret control characters normally
-    curses.noecho()            # don't echo input to terminal
-    stdscr.keypad(1)           # handle special keysj
-    return stdscr
+    # configure logging
+    if args.log_file is not None:
+        logging.basicConfig(
+            filename='browser.log',
+            level=getattr(logging,args.log_level),
+            filemode='wt')
 
-def teardown():
-    """Terminate a curses session"""
-    curses.nocbreak()
-    stdscr.keypad(0)
-    curses.echo()
-    curses.endwin()
+    # start application
+    app = Application()
+    app.loadFile(args.file)
+    app.startCurses()
 
-################################################################################
+    # scroll data on key presses
+    for row in range(0, len(app.lineData.lineData), curses.LINES - 4):
+        if row > 0:
+            app.curses.stdscr.getch()
+        app.displayData(row)
 
-logging.info(Renderer(80).render(container).dumpString(withLines=True))
+    # embed an ipython kernel (connect with ipython --existing)
+    # import IPython;IPython.start_kernel()
 
-# start curses session
-stdscr = startup()
+    # wait for character input
+    app.curses.stdscr.getch()
+    app.curses.teardown()
 
-# color configuration
-color_config = [
-    ('header'  , 'black'      , 'lightsalmon'),
-    ('footer'  , 'black'      , 'wheat'      ),
-    ('body'    , 'white'      , 'black'      ),
-    ('toc'     , 'deepskyblue', 'black'      ),
-    ('heading' , 'red'        , 'black'      ),
-    ('code'    , 'pink'       , 'grey'       ),
-    ('th'      , 'white'      , 'blue'       )
-]
-
-# configure colors
-colors = configColors(color_config)
-
-# return the curses style associated with a tag stack
-def stackColor(tagStack):
-    if len(tagStack) == 0:
-        return colors['body']
-    elif tagStack[0] in {'h1','h2','h3','h4','h5','h6'}:
-        return colors['heading'] | curses.A_UNDERLINE
-    elif tagStack[0] == 'th':
-        return colors['th']
-    elif 'code' in tagStack:
-        return colors['code']
-    else:
-        return curses.A_REVERSE #colors['body']
-
-# render html
-lineData = Renderer(curses.COLS-34).render(container)
-logging.info(lineData.dumpString(withLines=True))
-
-################################################################################
-
-# configure some windows
-my_wins = {
-    'header' : curses.newwin(1, curses.COLS, 0, 0),
-    'nav'    : curses.newwin(curses.LINES-2, 30, 1, 0),
-    'body'   : curses.newwin(curses.LINES-2, curses.COLS-30, 1, 30),
-    'footer' : curses.newwin(1, curses.COLS, curses.LINES-1, 0)
-}
-
-# draw boxes around nav and body
-my_wins['nav'].box(0,0)
-my_wins['body'].box(0,0)
-
-# add table of contents items to nav window
-for i,item in enumerate(tocRender):
-    my_wins['nav'].addstr(i+1, 1, item, colors['toc'])
-
-# display data starting from specified line
-main_height = curses.LINES - 4
-def displayData(startLine=0):
-    my_wins['body'].erase()
-    lines = lineData.lineData[startLine : startLine+main_height]
-    rows,cols = my_wins['body'].getmaxyx()
-    logging.info("Window size: " + (rows,cols).__repr__())
-    for row,line in enumerate(lines):
-        col = 1
-        for el in line:
-            if col < cols:
-                logging.info('Adding text at %d,%d: "%s"' % (row+1,col,el[1]))
-                my_wins['body'].addstr(row + 1, col, el[1][:cols-col], stackColor(el[0]))
-            else:
-                logging.info('Skipping text (beyond window): "%s"' % el[1])
-            col += len(el[1]) + 1
-    my_wins['body'].refresh()
-
-# placeholder text for header
-my_wins['header'].hline(0, 0, ' ', curses.COLS, colors['header'])
-my_wins['header'].addstr(0,0,'Menu header goes here...',colors['header'])
-
-# placeholder text for footer
-my_wins['footer'].hline(0, 0, ' ', curses.COLS, colors['footer'])
-my_wins['footer'].addstr(0,0,'Menu footer goes here...',colors['footer'])
-
-# create panels from windows
-my_panels = {}
-for k,v in my_wins.items():
-    my_panels[k] = curses.panel.new_panel(v)
-curses.panel.update_panels()
-
-# show screen
-curses.doupdate()
-
-# scroll data on key presses
-for row in range(0, len(lineData.lineData), main_height):
-    if row > 0:
-        stdscr.getch()
-    displayData(row)
-
-# embed an ipython kernel (connect with ipython --existing)
-#import IPython;IPython.start_kernel()
-
-# wait for character input
-stdscr.getch()
-teardown()
