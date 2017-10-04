@@ -28,6 +28,13 @@ from TagPair import TagPair
 #     run browser.py
 
 # TODO: have popups with rendered latex from terminal browsing application
+# TODO: use raw ANSI escape codes instead of curses for 24-bit color
+#   - http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
+# TODO: put in color schemes?
+#   - http://vimcolors.com/628/codedark/dark
+#   - http://vimcolors.com/21/seoul256/dark
+#   - http://vimcolors.com/9/zenburn/dark
+#   - http://vimcolors.com/196/ir_black/dark
 
 class InlineData:
     """Container class for parsed inline HTML data"""
@@ -89,40 +96,11 @@ class InlineData:
                 self.data[row] = self.data[row][:-1] + [(ts,txt)]
         return self
 
-  # var render_templates = {
-  #   space:      '',
-  #   hr:         '<hr{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>\n',
-  #   heading:    '<h{{level}} id="{{id}}"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</h{{level}}>\n',
-  #   b_code:     '<pre{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}><code{{IF lang}} class="lang-{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>{{IF lang}}\n{{ENDIF}}',
-  #   blockquote: '<blockquote{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{text}}</blockquote>\n',
-  #   html:       '{{text}}',
-  #   list:       '<{{listtype}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{text}}</{{listtype}}>\n',
-  #   listitem:   '<li{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</li>\n',
-  #   paragraph:  '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
-  #   b_text:     '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
-  #   table:      '<table{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n<thead>\n{{header}}</thead>\n<tbody>\n{{body}}</tbody>\n</table>\n',
-  #   tablerow:   '<tr{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{content}}</tr>\n',
-  #   tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>\n',
-  #   strong:     '<strong{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</strong>',
-  #   em:         '<em{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</em>',
-  #   i_code:     '<code{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{^^text}}</code>',
-  #   i_text:     '{{^text}}',
-  #   i_html:     '{{text}}',
-  #   br:         '<br{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
-  #   del:        '<del{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</del>',
-  #   link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</a>',
-  #   mailto:     '<a href="{{@href}}"}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{@text}}</a>',
-  #   image:      '<img src="{{^href}}" alt="{{^text}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
-  #   tag:        '<{{IF isClosing}}/{{ENDIF}}{{text}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}{{IF selfClose}}/{{ENDIF}}>',
-  #   i_latex:    '<latex class="inline"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{latex}}</latex>',
-  #   b_latex:    '<latex class="block"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{latex}}</latex>'
-  # }
-
 class Renderer:
 
+    # block tags that are processed as-is
     PassthroughTags = {
-        'h1','h2','h3','h4','h5','h6',
-        'p', 'pre'
+        'h1','h2','h3','h4','h5','h6','p','pre','blockquote','latex'
     }
 
     def __init__(self, lineWidth=80):
@@ -143,6 +121,8 @@ class Renderer:
                                 self.append(txt, tagstack)
                             self.newline()
                         self.newline(1)
+                    elif tag == 'hr':
+                        self.append('-'*10, ['hr'])
                     elif tag in ['ul','ol']:
                         self.parseList(el, indent=0)
                         self.newline()
@@ -393,8 +373,9 @@ class Application:
         self.footerText('Menu footer goes here...')
 
         # add table of contents items to nav window
+        self.windows['nav'].bkgd(' ', app.colors['toc'])
         for i, item in enumerate(self.tocData()):
-            self.windows['nav'].addstr(i + 1, 1, item, self.colors['toc'])
+            self.windows['nav'].addstr(i + 1, 1, item[:28], self.colors['toc'])
 
         # show screen
         curses.doupdate()
@@ -435,27 +416,68 @@ class Application:
     def stackColor(self, tagStack):
         if len(tagStack) == 0:
             return self.colors['body']
+        if 'em' in tagStack:
+            return curses.A_UNDERLINE | self.stackColor(list(set(tagStack) - {'em'}))
         elif tagStack[0] == 'h1':
             return self.colors['h1']
         elif tagStack[0] in {'h2', 'h3', 'h4', 'h5', 'h6'}:
-            return self.colors['heading'] | curses.A_UNDERLINE
+            return self.colors['heading'] | curses.A_BOLD
         elif tagStack[0] == 'th':
             return self.colors['th']
         elif 'code' in tagStack:
             return self.colors['code']
+        elif 'a' in tagStack or 'img' in tagStack:
+            return self.colors['a'] | curses.A_UNDERLINE
+        elif 'blockquote' in tagStack:
+            return self.colors['blockquote']
+        elif 'latex' in tagStack:
+            return self.colors['latex']
+        elif 'strong' in tagStack:
+            return self.colors['strong'] | curses.A_BOLD
+        elif 'del' in tagStack:
+            return self.colors['del']
         else:
             return self.colors['body']
 
-    # color configuration
+    # define some basic color codes
+    # https://github.com/tomasiser/vim-code-dark/blob/master/README.md
+    BG           = 0x1e1e1e
+    GRAY         = 0x808080
+    FG           = 0xd4d4d4
+    LIGHTBLUE    = 0x9cdcfe
+    BLUE         = 0x569cd6
+    BLUEGREEN    = 0x4ec9b0
+    GREEN        = 0x608b4e
+    LIGHTGREEN   = 0xb5cea8
+    YELLOW       = 0xdcdcaa
+    YELLOWORANGE = 0xd7ba7d
+    ORANGE       = 0xce9178
+    LIGHTRED     = 0xd16969
+    RED          = 0xF44747
+    PINK         = 0xc586c0
+    VIOLET       = 0x646695
+    WHITE        = 0xffffff
+
+    # color configuration for various element types
     color_config = [
-        ('header', CursesHandler.SOLAR_BASE01, CursesHandler.SOLAR_BASE3),
-        ('footer', CursesHandler.SOLAR_BASE01, CursesHandler.SOLAR_BASE3),
-        ('body', CursesHandler.SOLAR_BASE1, CursesHandler.SOLAR_BASE03),
-        ('toc', CursesHandler.SOLAR_BLUE, CursesHandler.SOLAR_BASE03),
-        ('h1', CursesHandler.SOLAR_RED, CursesHandler.SOLAR_BASE03),
-        ('heading', CursesHandler.SOLAR_RED, CursesHandler.SOLAR_BASE03),
-        ('code', CursesHandler.SOLAR_YELLOW, CursesHandler.SOLAR_BASE03),
-        ('th', CursesHandler.SOLAR_BASE1, CursesHandler.SOLAR_BLUE)
+        # menu elements
+        ('header'    , WHITE     , ORANGE),
+        ('footer'    , WHITE     , ORANGE),
+        ('toc'       , BLUE      , BG    ),
+        # tables
+        ('th'        , WHITE     , BLUE  ),
+        # inline styles
+        ('body'      , FG        , BG    ),
+        ('strong'    , WHITE     , BG    ),
+        ('del'       , GRAY      , BG    ),
+        ('a'         , BLUE      , BG    ),
+        # headings
+        ('h1'        , RED       , BG    ),
+        ('heading'   , RED       , BG    ),
+        # block styles
+        ('code'      , LIGHTBLUE , BG    ),
+        ('latex'     , LIGHTGREEN, BG    ),
+        ('blockquote', YELLOW    , BG    ),
     ]
 
 ################################################################################
