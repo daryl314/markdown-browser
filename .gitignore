@@ -3,4 +3,5 @@
 syncData
 .idea/*
 .vscode/*
+*.pyc
 .*.swp

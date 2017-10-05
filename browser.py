@@ -1,17 +1,14 @@
 #!/usr/bin/env python
 import curses
 import curses.panel
-import sys
 import os
 import time
-import math
 import logging
-import cStringIO
 import argparse
-from os import abort
 
 import TerminalColors256
 from TagPair import TagPair
+from Renderer import Renderer
 
 # Resources
 #   - http://www.tldp.org/HOWTO/NCURSES-Programming-HOWTO/
@@ -35,214 +32,6 @@ from TagPair import TagPair
 #   - http://vimcolors.com/21/seoul256/dark
 #   - http://vimcolors.com/9/zenburn/dark
 #   - http://vimcolors.com/196/ir_black/dark
-
-class InlineData:
-    """Container class for parsed inline HTML data"""
-
-    def __init__(self, el):
-        self.data = [[]]
-        if el is not None:
-            self._parse(el.children, [el.tag])
-
-    @staticmethod
-    def fromChild(child, tagStack=[]):
-        return InlineData(None)._parse([child], tagStack)
-
-    def _parse(self, children, tagStack):
-        for child in children:
-            if isinstance(child, str):
-                logging.info("Processing child: " + child.__repr__())
-                for n,line in enumerate(child.split('\n')):
-                    if n > 0:
-                        self._newline()
-                    self._append(tagStack, line)
-            else:
-                self._parse(child.children, tagStack+[child.tag])
-        return self
-
-    def _append(self, tagStack, txt):
-        self.data[-1].append((tagStack, txt))
-
-    def _newline(self):
-        self.data.append([])
-
-    def __len__(self):
-        if len(self.data[0]) == 0:
-            return 0
-        else:
-            return max([self.rowLen(n) for n in range(len(self.data))])
-
-    def __iter__(self):
-        return iter(self.data)
-
-    def rowLen(self, n):
-        row = self.data[n]
-        return sum([len(txt) for _, txt in row]) + len(row) - 1
-
-    def getRow(self, n):
-        out = InlineData(None)
-        if n < len(self.data):
-            out.data = [self.data[n]]
-        else:
-            out.data = [([], '')]
-
-    def padTo(self, n):
-        if len(self.data[0]) == 0:
-            self.data[0].append(([], ' '*n))
-        else:
-            for row in range(len(self.data)):
-                ts,txt = self.data[row][-1]
-                txt += ' '*(n-self.rowLen(row))
-                self.data[row] = self.data[row][:-1] + [(ts,txt)]
-        return self
-
-class Renderer:
-
-    # block tags that are processed as-is
-    PassthroughTags = {
-        'h1','h2','h3','h4','h5','h6','p','pre','blockquote','latex'
-    }
-
-    def __init__(self, lineWidth=80):
-        self.lineData = []
-        self.lineWidth = lineWidth
-        self.curLine = []
-        self.curSpace = lineWidth
-
-    def render(self, container):    
-        for el in container.children:
-            if isinstance(el,TagPair):
-                tag = el.leftTag.tag
-                logging.info('Parsing tag: %s' % tag)
-                if tag != 'toc':
-                    if tag in self.PassthroughTags:
-                        for inlineRow in InlineData(el):
-                            for tagstack,txt in inlineRow:
-                                self.append(txt, tagstack)
-                            self.newline()
-                        self.newline(1)
-                    elif tag == 'hr':
-                        self.append('-'*10, ['hr'])
-                    elif tag in ['ul','ol']:
-                        self.parseList(el, indent=0)
-                        self.newline()
-                    elif tag == 'table':
-                        self.parseTable(el)
-                        self.newline()
-                    else:
-                        raise RuntimeError("Unrecognized element: "+tag)
-                        print "Uncrecognized element:", tag
-                        import IPython;IPython.embed()
-            else:
-                raise RuntimeError("Unexpected raw text")
-        self.newline()
-        return self
-
-    def parseTable(self, table):
-
-        # extract cell data
-        thead = self.parseTableRow(table.first('thead').first('tr')['th'])
-        tbody = []
-        for tr in table.first('tbody')['tr']:
-            tbody += self.parseTableRow(tr['td'])
-
-        # calculate max length for each column
-        maxLen = map(len, thead[0])
-        for tr in thead[1:] + tbody:
-            for i,td in enumerate(tr):
-                maxLen[i] = max(maxLen[i], len(td))
-
-        for tr in thead+tbody:
-            for n,td in zip(maxLen,tr):
-                padded = td.padTo(n)
-                assert len(padded.data) == 1
-                for tagStack,txt in padded.data[0]:
-                    self.append(txt, tagStack)
-            self.newline()
-
-    def parseTableRow(self, cells):
-        rowData = [InlineData(td) for td in cells]
-        maxRows = max([len(td.data) for td in rowData])
-        if maxRows == 1:
-            return [rowData]
-        else:
-            out = []
-            for row in range(maxRows):
-                out.append([td.getRow(row) for td in rowData])
-            return out
-
-    def parseList(self, el, indent=0):
-
-        # leader format string
-        if el.leftTag.tag == 'ol':
-            fmt = '%%%dd. ' % int(math.ceil(math.log10(len(el.children))))
-
-        # iterate over child <li> elements
-        for i,child in enumerate(el.children):
-            assert isinstance(child,TagPair) and child.leftTag.tag == 'li'
-
-            # start rendered <li> with bullet
-            if el.leftTag.tag == 'ul':
-                leader = '  ' * indent + '* '
-            else:
-                leader = '  ' * indent + fmt%i
-            self.append(leader, ['li'])
-
-            # iterate over <li> components
-            for subChild in child.children:
-
-                # if a <ul> is found, start a nested list at next indent level
-                if isinstance(subChild,TagPair) and subChild.leftTag.tag in ['ul','ol']:
-                    self.newline()
-                    self.parseList(subChild, indent=indent+1)
-
-                # otherwise...
-                else:
-                    for [inlineChild] in InlineData.fromChild(subChild, tagStack=['li']).data:
-                        self.append(inlineChild[1], inlineChild[0], indent=len(leader))
-                    # self.newline()
-
-            # newline after list item.  indentation for next item is handled above.  if <li> ended with an
-            # embedded <ul>, newline is handled by inner list's terminal <li>
-            if not isinstance(child.children[-1],TagPair) or child.children[-1].leftTag.tag not in ['ul','ol']:
-                self.newline()
-
-    def sol(self):
-        return self.curSpace == self.lineWidth
-
-    def eol(self):
-        return self.curSpace == 0
-
-    def newline(self, count=1, indent=0):
-        self.lineData.append(self.curLine)
-        for i in range(1, count):
-            self.lineData.append( [] )
-        if indent == 0:
-            self.curLine = []
-            self.curSpace = self.lineWidth
-        else:
-            self.curLine = [([], ' '*indent)]
-            self.curSpace = self.lineWidth - indent
-
-    def append(self, txt, styles, indent=0):
-        if len(txt) <= self.curSpace:
-            self.curLine.append((styles,txt))
-            self.curSpace -= len(txt)
-        else:
-            head,tail = txt[:self.curSpace],txt[self.curSpace:]
-            self.curLine.append((styles,head))
-            self.newline(indent=indent)
-            self.append(tail,styles)
-
-    def dumpString(self, withLines=False):
-        buf = cStringIO.StringIO()
-        for i,line in enumerate(self.lineData + self.curLine):
-            lineData = ' '.join([txt for _,txt in line])
-            if withLines:
-                buf.write('%d: %s\n' % (i, lineData))
-            else:
-                buf.write(lineData + '\n')
-        return buf.getvalue()
 
 ################################################################################
 
@@ -284,24 +73,6 @@ class CursesHandler:
         self.stdscr.keypad(0)
         curses.echo()
         curses.endwin()
-
-    # solarized color scheme
-    SOLAR_BASE03 = 0x002b36  # Darkest background
-    SOLAR_BASE02 = 0x073642  # 2nd darkest background
-    SOLAR_BASE01 = 0x586e75  # Content darkest
-    SOLAR_BASE00 = 0x657b83  # Content 2nd darkest
-    SOLAR_BASE0 = 0x839496  # Content 2nd lightest
-    SOLAR_BASE1 = 0x93a1a1  # Content lightest
-    SOLAR_BASE2 = 0xeee8d5  # 2nd lightest background
-    SOLAR_BASE3 = 0xfdf6e3  # Lightest background
-    SOLAR_YELLOW = 0xb58900
-    SOLAR_ORANGE = 0xcb4b16
-    SOLAR_RED = 0xdc322f
-    SOLAR_MAGENTA = 0xd33682
-    SOLAR_VIOLET = 0x6c71c4
-    SOLAR_BLUE = 0x268bd2
-    SOLAR_CYAN = 0x2aa198
-    SOLAR_GREEN = 0x859900
 
 ################################################################################
 

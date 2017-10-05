@@ -1,4 +1,3 @@
-import struct
 import sys
 import math
 
@@ -237,6 +236,11 @@ class BaseColor(object):
     def underline():
         """Return ANSI underline code"""
         return "\033[4m"
+
+    @staticmethod
+    def bold():
+        """Return ANSI bold code"""
+        return "\033[1m"
 
     @staticmethod
     def getHue(r,g,b):
