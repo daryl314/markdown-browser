@@ -8,7 +8,7 @@ import argparse
 
 import TerminalColors256
 from TagPair import TagPair
-from Renderer import Renderer
+from Renderer import Parser, ColorConfiguration, BaseRenderer
 
 # Resources
 #   - http://www.tldp.org/HOWTO/NCURSES-Programming-HOWTO/
@@ -23,15 +23,6 @@ from Renderer import Renderer
 #     import os
 #     os.environ['TERM'] = 'screen-256color'
 #     run browser.py
-
-# TODO: have popups with rendered latex from terminal browsing application
-# TODO: use raw ANSI escape codes instead of curses for 24-bit color
-#   - http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
-# TODO: put in color schemes?
-#   - http://vimcolors.com/628/codedark/dark
-#   - http://vimcolors.com/21/seoul256/dark
-#   - http://vimcolors.com/9/zenburn/dark
-#   - http://vimcolors.com/196/ir_black/dark
 
 ################################################################################
 
@@ -59,10 +50,7 @@ class CursesHandler:
         """Configure color data and return a dict of pairs"""
         out = {}
         for i, (k, fg, bg) in enumerate(colors):
-            if isinstance(fg, str) or fg > 16:
-                fg = TerminalColors256.Color256(fg).index
-            if isinstance(bg, str) or bg > 16:
-                bg = TerminalColors256.Color256(bg).index
+            logging.info("Configuring color pair %s: (%d,%d,%d)" % (k,i+1,fg,bg))
             curses.init_pair(i + 1, fg, bg)
             out[k] = curses.color_pair(i + 1)
         return out
@@ -82,6 +70,7 @@ class Application:
 
     def __init__(self):
         self.curses = CursesHandler()
+        self.color_config = ColorConfiguration.vimCodeDark(ctor=TerminalColors256.Color256)
 
     def loadFile(self, fileName):
         """Load HTML data from file"""
@@ -98,7 +87,7 @@ class Application:
 
         # if debugging, render content to log file
         if logging.getLogger().isEnabledFor(logging.DEBUG):
-            logging.info(Renderer(80).render(self.container).dumpString(withLines=True))
+            logging.info(Parser(80).render(self.container).dumpString(withLines=True))
 
         # placeholders
         self.windows = None
@@ -121,9 +110,16 @@ class Application:
     def startCurses(self, term=None):
 
         self.curses.startup(term=term)
-        self.colors = self.curses.configColors(self.color_config)
+        colors = []
+        baseBg = self.color_config.baseBgColor()
+        baseFg = self.color_config.baseFgColor()
+        for k,v in self.color_config.colors.items():
+            fg = v.get('fg',baseFg)
+            bg = v.get('bg',baseBg)
+            colors.append(( k, fg.index, bg.index ))
+        self.colors = self.curses.configColors(colors)
 
-        self.lineData = Renderer(curses.COLS - 34).render(app.container)
+        self.lineData = Parser(curses.COLS - 34).render(app.container)
         if logging.getLogger().isEnabledFor(logging.DEBUG):
             logging.info(self.lineData.dumpString(withLines=True))
 
@@ -166,13 +162,14 @@ class Application:
         logging.info("Window size: " + (rows, cols).__repr__())
         for row,line in enumerate(lines):
             col = 1
-            for el in line:
+            for tagStack,txt in line:
                 if col < cols:
-                    logging.info('Adding text at %d,%d: "%s"' % (row + 1, col, el[1]))
-                    self.windows['body'].addstr(row + 1, col, el[1][:cols - col], app.stackColor(el[0]))
+                    style = BaseRenderer.simplifyStack(tagStack)
+                    logging.info('Adding text at %d,%d (%d): "%s"' % (row + 1, col, self.colors[style], txt))
+                    self.windows['body'].addstr(row + 1, col, txt[:cols - col], self.colors[style])
                 else:
-                    logging.info('Skipping text (beyond window): "%s"' % el[1])
-                col += len(el[1]) + 1
+                    logging.info('Skipping text (beyond window): "%s"' % txt)
+                col += len(txt) + 1
         self.windows['body'].refresh()
 
     def headerText(self, txt):
@@ -182,74 +179,6 @@ class Application:
     def footerText(self, txt):
         self.windows['footer'].hline(0, 0, ' ', curses.COLS, app.colors['footer'])
         self.windows['footer'].addstr(0, 0, txt, app.colors['footer'])
-
-    # return the curses style associated with a tag stack
-    def stackColor(self, tagStack):
-        if len(tagStack) == 0:
-            return self.colors['body']
-        if 'em' in tagStack:
-            return curses.A_UNDERLINE | self.stackColor(list(set(tagStack) - {'em'}))
-        elif tagStack[0] == 'h1':
-            return self.colors['h1']
-        elif tagStack[0] in {'h2', 'h3', 'h4', 'h5', 'h6'}:
-            return self.colors['heading'] | curses.A_BOLD
-        elif tagStack[0] == 'th':
-            return self.colors['th']
-        elif 'code' in tagStack:
-            return self.colors['code']
-        elif 'a' in tagStack or 'img' in tagStack:
-            return self.colors['a'] | curses.A_UNDERLINE
-        elif 'blockquote' in tagStack:
-            return self.colors['blockquote']
-        elif 'latex' in tagStack:
-            return self.colors['latex']
-        elif 'strong' in tagStack:
-            return self.colors['strong'] | curses.A_BOLD
-        elif 'del' in tagStack:
-            return self.colors['del']
-        else:
-            return self.colors['body']
-
-    # define some basic color codes
-    # https://github.com/tomasiser/vim-code-dark/blob/master/README.md
-    BG           = 0x1e1e1e
-    GRAY         = 0x808080
-    FG           = 0xd4d4d4
-    LIGHTBLUE    = 0x9cdcfe
-    BLUE         = 0x569cd6
-    BLUEGREEN    = 0x4ec9b0
-    GREEN        = 0x608b4e
-    LIGHTGREEN   = 0xb5cea8
-    YELLOW       = 0xdcdcaa
-    YELLOWORANGE = 0xd7ba7d
-    ORANGE       = 0xce9178
-    LIGHTRED     = 0xd16969
-    RED          = 0xF44747
-    PINK         = 0xc586c0
-    VIOLET       = 0x646695
-    WHITE        = 0xffffff
-
-    # color configuration for various element types
-    color_config = [
-        # menu elements
-        ('header'    , WHITE     , ORANGE),
-        ('footer'    , WHITE     , ORANGE),
-        ('toc'       , BLUE      , BG    ),
-        # tables
-        ('th'        , WHITE     , BLUE  ),
-        # inline styles
-        ('body'      , FG        , BG    ),
-        ('strong'    , WHITE     , BG    ),
-        ('del'       , GRAY      , BG    ),
-        ('a'         , BLUE      , BG    ),
-        # headings
-        ('h1'        , RED       , BG    ),
-        ('heading'   , RED       , BG    ),
-        # block styles
-        ('code'      , LIGHTBLUE , BG    ),
-        ('latex'     , LIGHTGREEN, BG    ),
-        ('blockquote', YELLOW    , BG    ),
-    ]
 
 ################################################################################
 
@@ -269,7 +198,7 @@ if __name__ == '__main__':
     # configure logging
     if args.log_file is not None:
         logging.basicConfig(
-            filename='browser.log',
+            filename=args.log_file,
             level=getattr(logging,args.log_level),
             filemode='wt')
 

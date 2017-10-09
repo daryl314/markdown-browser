@@ -180,7 +180,7 @@ class BaseColor(object):
 
         # if a list or tuple was passed, recurse
         if isinstance(color,list) or isinstance(color,tuple):
-            return [self.resolveIndex(c,boundaries) for c in color]
+            return [BaseColor.resolveIndex(c,boundaries) for c in color]
         
         # if index is zero, return the first boundary
         if color == 0:

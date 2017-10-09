@@ -9,6 +9,15 @@ import argparse
 import TerminalColors256
 from TagPair import TagPair
 
+# TODO: have popups with rendered latex from terminal browsing application
+# TODO: use raw ANSI escape codes instead of curses for 24-bit color
+#   - http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
+# TODO: put in color schemes?
+#   - http://vimcolors.com/628/codedark/dark
+#   - http://vimcolors.com/21/seoul256/dark
+#   - http://vimcolors.com/9/zenburn/dark
+#   - http://vimcolors.com/196/ir_black/dark
+
 ################################################################################
 
 class InlineData:
@@ -251,7 +260,8 @@ class BaseRenderer(object):
     def __init__(self):
         pass
 
-    def simplifyStack(self, ts):
+    @staticmethod
+    def simplifyStack(ts):
         """Simplify tag stack to a single tag"""
 
         # style as body if there are no tags
@@ -275,7 +285,7 @@ class BaseRenderer(object):
         elif ts[-1] == 'del':
             return 'del'
         else:
-            return self.simplifyStack(ts[:-1])
+            return BaseRenderer.simplifyStack(ts[:-1])
 
     def render(self, lines, cols=80):
         """Render parsed HTML data"""
