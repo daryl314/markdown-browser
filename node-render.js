@@ -71,15 +71,6 @@ function render(data, depth=1) {
         <link rel="stylesheet" href="${'../'.repeat(depth)}lib/bootswatch-cosmo.min.css" />
         <style type='text/css'>
             @media tty { /* CSS for terminal web browsers */
-                h1      {color:red;     font-weight:bold; text-align:left; }
-                h2      {color:yellow;  font-weight:bold; text-align:left; }
-                h3      {color:yellow;                    text-align:left; }
-                a       {color:aqua;    font-weight:bold; }
-                strong  {color:white;   font-weight:bold; }
-                code    {color:lime;    font-weight:bold; }
-                pre     {color:lime;    font-weight:bold; }
-                th      {color:white;   font-weight:bold; }
-                em      {text-decoration:underline;       }
             }
             body {
                 padding: 5px 20px;
