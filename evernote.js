@@ -1587,7 +1587,7 @@ class Synchronizer {
         this.logMessageSync(`Skipping note: ${n.title} [${n.guid}]`);
       });
       this.fileData.oldResources.forEach(r => {
-        this.logMessageSync(`Skipping existing resource: [${r.guid}] ${r.parent.title}`);
+        this.logMessageSync(`Skipping existing resource: [${r.guid}] ${(r.parent || {title:'[Deleted]'}).title}`);
       });
       this.fileData.bigResources.forEach(r => {
         this.logMessageSync(`Skipping large resource (${r.hSize}): [${r.guid}] ${r.parent.title}`);
