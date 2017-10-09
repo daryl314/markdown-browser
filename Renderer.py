@@ -73,7 +73,7 @@ class InlineData:
 
 ################################################################################
 
-class Renderer:
+class Parser:
 
     # block tags that are processed as-is
     PassthroughTags = {
@@ -235,28 +235,56 @@ class Renderer:
             container = container[element]
 
         # get line data
-        return Renderer(width).render(container)
+        return Parser(width).render(container)
 
     @staticmethod
     def fromFile(fileName, element=None, width=None):
         with open(fileName, 'rt') as F:
             html = F.read()
-        return Renderer.fromString(html, element=element, width=width)
+        return Parser.fromString(html, element=element, width=width)
 
 ################################################################################
 
-class TextRenderer(object):
+class BaseRenderer(object):
+    """Base class for rendering parsed data"""
 
     def __init__(self):
         pass
 
-    def displayData(self, lines, cols=80):
-        for row,line in enumerate(lines):
+    def simplifyStack(self, ts):
+        """Simplify tag stack to a single tag"""
+
+        # style as body if there are no tags
+        if len(ts) == 0:
+            return 'body'
+
+        # block tags prevent any other processing
+        for tag in ['code', 'a', 'img', 'blockquote', 'latex', 'h1']:
+            if tag in ts:
+                return tag
+        if ts[0] in {'h2', 'h3', 'h4', 'h5', 'h6'}:
+            return 'heading'
+        if ts[0] == 'th':
+            return 'th'
+
+        # otherwise recurse for inline styles
+        if ts[-1] == 'em':
+            return 'em'
+        elif ts[-1] == 'strong':
+            return 'strong'
+        elif ts[-1] == 'del':
+            return 'del'
+        else:
+            return self.simplifyStack(ts[:-1])
+
+    def render(self, lines, cols=80):
+        """Render parsed HTML data"""
+        for row, line in enumerate(lines):
             col = 0
-            for tags,txt in line:
+            for tags, txt in line:
                 if col < cols:
                     if col + len(txt) > cols:
-                        txt = txt[:cols-col]
+                        txt = txt[:cols - col]
                         logging.info('Trimming text')
                     logging.info('Adding text at %d,%d: "%s"' % (row + 1, col, txt))
                     self.writeStyled(txt, tags)
@@ -265,101 +293,159 @@ class TextRenderer(object):
                 col += len(txt) + 1
                 if col < cols:
                     self.writeStyled(' ', ['body'])
-            self.writeStyled(' '*(cols-col), ['body'])
+            self.writeStyled(' ' * (cols - col), ['body'])
             sys.stdout.write('\n')
 
     def writeStyled(self, txt, tags):
-        fg, bg, b, u = self.stackColor(tags)
-        sys.stdout.write(self.render(txt, fg=fg, bg=bg, bold=b, underline=u))
+        tag = self.simplifyStack(tags)
+        sys.stdout.write('<%s>%s</%s>' % (tag, txt, tag))
 
-    def render(self, txt, fg=None, bg=None, bold=False, underline=False):
-        out = []
-        if fg is not None:
-            out.append(fg.escapeFG())
-        if bg is not None:
-            out.append(bg.escapeBG())
-        if bold:
-            out.append(TerminalColors256.BaseColor.bold())
-        if underline:
-            out.append(TerminalColors256.BaseColor.underline())
-        out.append(txt)
-        out.append(TerminalColors256.BaseColor.escapeClear())
-        return ''.join(out)
+################################################################################
 
-    # return the curses style associated with a tag stack
-    def stackColor(self, tagStack):
-        u = False
-        b = False
-        if len(tagStack) == 0:
-            fg,bg = self.colors['body']
-        elif 'em' in tagStack:
-            fg,bg,_,_ = self.stackColor(list(set(tagStack) - {'em'}))
-            u = True
-        elif tagStack[0] == 'h1':
-            fg, bg = self.colors['h1']
-        elif tagStack[0] in {'h2', 'h3', 'h4', 'h5', 'h6'}:
-            fg, bg = self.colors['heading']
-            b = True
-        elif tagStack[0] == 'th':
-            fg, bg = self.colors['th']
-        elif 'code' in tagStack:
-            fg, bg = self.colors['code']
-        elif 'a' in tagStack or 'img' in tagStack:
-            fg, bg = self.colors['a']
-            u = True
-        elif 'blockquote' in tagStack:
-            fg, bg = self.colors['blockquote']
-        elif 'latex' in tagStack:
-            fg, bg = self.colors['latex']
-        elif 'strong' in tagStack:
-            fg, bg = self.colors['strong']
-            b = True
-        elif 'del' in tagStack:
-            fg, bg = self.colors['del']
-        else:
-            fg, bg = self.colors['body']
-        return fg,bg,b,u
+class ColorConfiguration:
+    """Base class for a color scheme"""
 
-    # define some basic color codes
-    # https://github.com/tomasiser/vim-code-dark/blob/master/README.md
-    BG           = TerminalColors256.Color24Bit(0x1e1e1e)
-    GRAY         = TerminalColors256.Color24Bit(0x808080)
-    FG           = TerminalColors256.Color24Bit(0xd4d4d4)
-    LIGHTBLUE    = TerminalColors256.Color24Bit(0x9cdcfe)
-    BLUE         = TerminalColors256.Color24Bit(0x569cd6)
-    BLUEGREEN    = TerminalColors256.Color24Bit(0x4ec9b0)
-    GREEN        = TerminalColors256.Color24Bit(0x608b4e)
-    LIGHTGREEN   = TerminalColors256.Color24Bit(0xb5cea8)
-    YELLOW       = TerminalColors256.Color24Bit(0xdcdcaa)
-    YELLOWORANGE = TerminalColors256.Color24Bit(0xd7ba7d)
-    ORANGE       = TerminalColors256.Color24Bit(0xce9178)
-    LIGHTRED     = TerminalColors256.Color24Bit(0xd16969)
-    RED          = TerminalColors256.Color24Bit(0xF44747)
-    PINK         = TerminalColors256.Color24Bit(0xc586c0)
-    VIOLET       = TerminalColors256.Color24Bit(0x646695)
-    WHITE        = TerminalColors256.Color24Bit(0xffffff)
+    def __init__(self, colors, ctor=TerminalColors256.Color24Bit):
+        self.ctor = ctor
+        self.colors = {}
+        for k,v in colors.items():
+            self.colors[k] = {'bold':False, 'italic':False, 'underline':False}
+            for k2,v2 in v.items():
+                if k2 in ['fg','bg']:
+                    self.colors[k][k2] = ctor(v2)
+                else:
+                    self.colors[k][k2] = v2
 
-    # color configuration for various element types
-    colors = {
-        # menu elements
-        'header'    : (WHITE     , ORANGE),
-        'footer'    : (WHITE     , ORANGE),
-        'toc'       : (BLUE      , BG    ),
-        # tables
-        'th'        : (WHITE     , BLUE  ),
-        # inline styles
-        'body'      : (FG        , BG    ),
-        'strong'    : (WHITE     , BG    ),
-        'del'       : (GRAY      , BG    ),
-        'a'         : (BLUE      , BG    ),
-        # headings
-        'h1'        : (RED       , BG    ),
-        'heading'   : (RED       , BG    ),
-        # block styles
-        'code'      : (LIGHTBLUE , BG    ),
-        'latex'     : (LIGHTGREEN, BG    ),
-        'blockquote': (YELLOW    , BG    ),
-    }
+    def baseBgColor(self):
+        """Return the base background color"""
+        return self.colors['body']['bg']
+
+    def baseFgColor(self):
+        """Return the base foreground color"""
+        return self.colors['body']['fg']
+
+    def guiStyle(self, key):
+        """Return the style for a gui element"""
+        return self.colors[key]
+
+    def tagStyle(self, tag):
+        """Return the style for a tag"""
+        return self.colors[tag]
+
+    @staticmethod
+    def vimCodeDark(ctor=TerminalColors256.Color24Bit):
+        """Construct a ColorConfiguration with vim-code-dark scheme"""
+
+        # define some basic color codes
+        # https://github.com/tomasiser/vim-code-dark/blob/master/README.md
+        BG = 0x1e1e1e
+        GRAY = 0x808080
+        FG = 0xd4d4d4
+        LIGHTBLUE = 0x9cdcfe
+        BLUE = 0x569cd6
+        BLUEGREEN = 0x4ec9b0
+        GREEN = 0x608b4e
+        LIGHTGREEN = 0xb5cea8
+        YELLOW = 0xdcdcaa
+        YELLOWORANGE = 0xd7ba7d
+        ORANGE = 0xce9178
+        LIGHTRED = 0xd16969
+        RED = 0xF44747
+        PINK = 0xc586c0
+        VIOLET = 0x646695
+        WHITE = 0xffffff
+
+        # use colors in a configuration
+        color_config = {
+            # gui elements
+            'header': {'fg':WHITE, 'bg':ORANGE},
+            'footer': {'fg':WHITE, 'bg':ORANGE},
+            'toc'   : {'fg':BLUE},
+            # tables
+            'th': {'fg':WHITE, 'bg':BLUE},
+            # inline styles
+            'body': {'fg':FG, 'bg':BG},
+            'strong': {'fg':WHITE, 'bold':True},
+            'em':{'underline':True},
+            'del': {'fg':GRAY},
+            'a':{'fg':BLUE, 'underline':True},
+            'img':{'fg':BLUE, 'underline':True},
+            # headings
+            'h1':{'fg':WHITE, 'bg':RED, 'bold':True},
+            'heading':{'fg':RED, 'bold':True},
+            # block styles
+            'code':{'fg':LIGHTBLUE},
+            'latex':{'fg':LIGHTGREEN},
+            'blockquote':{'fg':YELLOW}
+        }
+
+        # construct an object
+        return ColorConfiguration(color_config, ctor=ctor)
+
+################################################################################
+
+class VimRenderer(BaseRenderer):
+
+    def __init__(self, colors):
+        self.colors = colors
+
+    def genStyle(self, fileName=sys.stdout):
+        with open(fileName, 'wt') as F:
+            F.write('setlocal conceallevel=2\n')
+            F.write('setlocal nowrap\n')
+            F.write('setlocal concealcursor=nc\n')
+            F.write('\n')
+            F.write('hi Normal')
+            F.write(' guifg=%s' % self._colorHex(self.colors.baseFgColor()))
+            F.write('guibg=%s\n' % self._colorHex(self.colors.baseBgColor()))
+            F.write('\n')
+            for k,data in self.colors.colors.items():
+                F.write('syn region in{0} concealends matchgroup={0} start="<{0}>" end="</{0}>"\n'.format(k))
+            F.write('\n')
+            for k,data in self.colors.colors.items():
+                F.write('hi in%s'%k)
+                if 'fg' in data:
+                    F.write(' guifg=%s' % self._colorHex(data['fg']))
+                if 'bg' in data:
+                    F.write(' guibg=%s' % self._colorHex(data['bg']))
+                attr = []
+                if data['bold']:
+                    attr.append('bold')
+                if data['italic']:
+                    attr.append('italic')
+                if data['underline']:
+                    attr.append('underline')
+                if len(attr) > 0:
+                    F.write(' gui=%s' % ','.join(attr))
+                F.write('\n')
+
+    @staticmethod
+    def _colorHex(color):
+        return '#%02x%02x%02x' % (color.r,color.g,color.b)
+
+################################################################################
+
+class ColoredRenderer(BaseRenderer):
+
+    def __init__(self, colors):
+        self.colors = colors
+
+    def writeStyled(self, txt, tags):
+        def render(txt, fg=None, bg=None, bold=False, underline=False):
+            out = []
+            if fg is not None:
+                out.append(fg.escapeFG())
+            if bg is not None:
+                out.append(bg.escapeBG())
+            if bold:
+                out.append(TerminalColors256.BaseColor.bold())
+            if underline:
+                out.append(TerminalColors256.BaseColor.underline())
+            out.append(txt)
+            out.append(TerminalColors256.BaseColor.escapeClear())
+            return ''.join(out)
+        style = self.colors.guiStyle(self.simplifyStack(tags))
+        sys.stdout.write(render(txt, fg=style.get('fg',None), bg=style.get('bg',None), bold=style['bold'], underline=style['underline']))
 
 ################################################################################
 
@@ -369,6 +455,9 @@ if __name__ == '__main__':
     parser.add_argument('--log-file', help="File to store log data")
     parser.add_argument('--log-level', help="Logging level", default='INFO')
     parser.add_argument('--columns', help="Number of columns to display", type=int, default=80)
+    parser.add_argument('--256', help="Use 256 colors instead of 24-bit", action="store_true")
+    parser.add_argument('--vim', help="Use tags recognizable in vim", action="store_true")
+    parser.add_argument('--vim-style', help="Generate a style file for generated vim")
     parser.add_argument('file', help="Input file name")
     args = parser.parse_args()
 
@@ -379,7 +468,26 @@ if __name__ == '__main__':
             level=getattr(logging,args.log_level),
             filemode='wt')
 
-    # start application
-    lineData = Renderer.fromFile(args.file, element='div#markdown-container', width=args.columns).lineData
-    TextRenderer().displayData(lineData, cols=args.columns)
+    # parse html
+    lineData = Parser.fromFile(args.file, element='div#markdown-container', width=args.columns).lineData
+
+    # configure colors
+    if getattr(args, '256'):
+        colors = ColorConfiguration.vimCodeDark(ctor=TerminalColors256.Color256)
+    else:
+        colors = ColorConfiguration.vimCodeDark()
+
+    # configure renderer
+    if args.vim:
+        renderer = VimRenderer(colors)
+    else:
+        renderer = ColoredRenderer(colors)
+
+    # generate output
+    renderer.render(lineData, cols=args.columns)
+
+    # generate vim style file
+    if args.vim_style:
+        renderer = VimRenderer(colors)
+        renderer.genStyle(args.vim_style)
 
