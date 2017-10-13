@@ -13,10 +13,13 @@ from TagPair import TagPair
 # TODO: use raw ANSI escape codes instead of curses for 24-bit color
 #   - http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
 # TODO: put in color schemes?
-#   - http://vimcolors.com/628/codedark/dark
 #   - http://vimcolors.com/21/seoul256/dark
 #   - http://vimcolors.com/9/zenburn/dark
 #   - http://vimcolors.com/196/ir_black/dark
+
+# http://vimdoc.sourceforge.net/htmldoc/autocmd.html
+# http://learnvimscriptthehardway.stevelosh.com/chapters/11.html (buffer local commands and options)
+# http://learnvimscriptthehardway.stevelosh.com/chapters/50.html (section movement)
 
 ################################################################################
 
@@ -269,11 +272,11 @@ class BaseRenderer(object):
             return 'body'
 
         # block tags prevent any other processing
-        for tag in ['code', 'a', 'img', 'blockquote', 'latex', 'h1']:
+        for tag in ['code', 'a', 'img', 'blockquote', 'latex']:
             if tag in ts:
                 return tag
-        if ts[0] in {'h2', 'h3', 'h4', 'h5', 'h6'}:
-            return 'heading'
+        if ts[0] in {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}:
+            return ts[0]
         if ts[0] == 'th':
             return 'th'
 
@@ -287,7 +290,7 @@ class BaseRenderer(object):
         else:
             return BaseRenderer.simplifyStack(ts[:-1])
 
-    def render(self, lines, cols=80):
+    def render(self, lines, cols=80, logger=sys.stdout):
         """Render parsed HTML data"""
         for row, line in enumerate(lines):
             col = 0
@@ -297,18 +300,18 @@ class BaseRenderer(object):
                         txt = txt[:cols - col]
                         logging.info('Trimming text')
                     logging.info('Adding text at %d,%d: "%s"' % (row + 1, col, txt))
-                    self.writeStyled(txt, tags)
+                    self.writeStyled(txt, tags, logger=logger)
                 else:
                     logging.info('Skipping text (beyond window): "%s"' % txt)
                 col += len(txt) + 1
                 if col < cols:
-                    self.writeStyled(' ', ['body'])
-            self.writeStyled(' ' * (cols - col), ['body'])
-            sys.stdout.write('\n')
+                    self.writeStyled(' ', ['body'], logger=logger)
+            self.writeStyled(' ' * (cols - col), ['body'], logger=logger)
+            logger.write('\n')
 
-    def writeStyled(self, txt, tags):
+    def writeStyled(self, txt, tags, logger=sys.stdout):
         tag = self.simplifyStack(tags)
-        sys.stdout.write('<%s>%s</%s>' % (tag, txt, tag))
+        logger.write('<%s>%s</%s>' % (tag, txt, tag))
 
 ################################################################################
 
@@ -334,13 +337,12 @@ class ColorConfiguration:
         """Return the base foreground color"""
         return self.colors['body']['fg']
 
-    def guiStyle(self, key):
-        """Return the style for a gui element"""
-        return self.colors[key]
-
     def tagStyle(self, tag):
         """Return the style for a tag"""
-        return self.colors[tag]
+        if tag in {'h2','h3','h4','h5','h6'}:
+            return self.colors['heading']
+        else:
+            return self.colors[tag]
 
     @staticmethod
     def vimCodeDark(ctor=TerminalColors256.Color24Bit):
@@ -399,25 +401,31 @@ class VimRenderer(BaseRenderer):
     def __init__(self, colors):
         self.colors = colors
 
-    def genStyle(self, fileName=sys.stdout):
-        with open(fileName, 'wt') as F:
-            F.write('setlocal conceallevel=2\n')
-            F.write('setlocal nowrap\n')
-            F.write('setlocal concealcursor=nc\n')
-            F.write('\n')
-            F.write('hi Normal')
-            F.write(' guifg=%s' % self._colorHex(self.colors.baseFgColor()))
-            F.write('guibg=%s\n' % self._colorHex(self.colors.baseBgColor()))
-            F.write('\n')
+    def genStyle(self, fileName=None, logger=sys.stdout):
+        if fileName is not None:
+            with open(fileName, 'wt') as F:
+                self.genStyle(logger=F)
+        else:
+            logger.write('setlocal conceallevel=2\n')
+            logger.write('setlocal nowrap\n')
+            logger.write('setlocal concealcursor=nc\n')
+            logger.write('\n')
+            logger.write('hi Normal')
+            logger.write(' guifg=%s' % self._colorHex(self.colors.baseFgColor()))
+            logger.write('guibg=%s\n' % self._colorHex(self.colors.baseBgColor()))
+            logger.write('\n')
             for k,data in self.colors.colors.items():
-                F.write('syn region in{0} concealends matchgroup={0} start="<{0}>" end="</{0}>"\n'.format(k))
-            F.write('\n')
+                if k == 'heading':
+                    logger.write('syn region in{0} concealends matchgroup={0} start="<{1}>" end="</{1}>"\n'.format(k,'h[2-6]'))
+                else:
+                    logger.write('syn region in{0} concealends matchgroup={0} start="<{0}>" end="</{0}>"\n'.format(k))
+            logger.write('\n')
             for k,data in self.colors.colors.items():
-                F.write('hi in%s'%k)
+                logger.write('hi in%s'%k)
                 if 'fg' in data:
-                    F.write(' guifg=%s' % self._colorHex(data['fg']))
+                    logger.write(' guifg=%s' % self._colorHex(data['fg']))
                 if 'bg' in data:
-                    F.write(' guibg=%s' % self._colorHex(data['bg']))
+                    logger.write(' guibg=%s' % self._colorHex(data['bg']))
                 attr = []
                 if data['bold']:
                     attr.append('bold')
@@ -426,8 +434,8 @@ class VimRenderer(BaseRenderer):
                 if data['underline']:
                     attr.append('underline')
                 if len(attr) > 0:
-                    F.write(' gui=%s' % ','.join(attr))
-                F.write('\n')
+                    logger.write(' gui=%s' % ','.join(attr))
+                logger.write('\n')
 
     @staticmethod
     def _colorHex(color):
@@ -440,7 +448,7 @@ class ColoredRenderer(BaseRenderer):
     def __init__(self, colors):
         self.colors = colors
 
-    def writeStyled(self, txt, tags):
+    def writeStyled(self, txt, tags, logger=sys.stdout):
         def render(txt, fg=None, bg=None, bold=False, underline=False):
             out = []
             if fg is not None:
@@ -454,8 +462,8 @@ class ColoredRenderer(BaseRenderer):
             out.append(txt)
             out.append(TerminalColors256.BaseColor.escapeClear())
             return ''.join(out)
-        style = self.colors.guiStyle(self.simplifyStack(tags))
-        sys.stdout.write(render(txt, fg=style.get('fg',None), bg=style.get('bg',None), bold=style['bold'], underline=style['underline']))
+        style = self.colors.tagStyle(self.simplifyStack(tags))
+        logger.write(render(txt, fg=style.get('fg',None), bg=style.get('bg',None), bold=style['bold'], underline=style['underline']))
 
 ################################################################################
 
