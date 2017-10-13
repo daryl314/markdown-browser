@@ -264,6 +264,10 @@ function syncToHtml(syncLoc) {
     copyResource('lib/highlight-9.8.0.min.js');
     copyResource('markdown.js');
     copyResource('katex-0.5.1');
+    copyResource('script/renderer.vim');
+    copyResource('script/Renderer.py');
+    copyResource('script/TagPair.py');
+    copyResource('script/TerminalColors256.py');
 
     // create connection to sync data
     var conn = new WrappedNoteCollectionSyncData(syncLoc, ioHandler=NodeIO);

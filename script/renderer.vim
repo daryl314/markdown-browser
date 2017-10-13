@@ -1,6 +1,7 @@
 " python imports
 py import vim
 py import cStringIO
+py import re
 
 " application imports
 py import Renderer
@@ -47,7 +48,6 @@ silent execute "file" g:fname
 
 " fill out table of contents window
 wincmd h
-py import re
 py headings = [
   \ (line.split('</h')[0],i) 
   \ for i,line in enumerate(renderedLines) 
