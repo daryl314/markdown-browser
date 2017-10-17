@@ -1,5 +1,8 @@
+#!/usr/bin/env python
+
 import sys
 import math
+import argparse
 
 cssnames = {
     "black":0x000000,
@@ -459,9 +462,21 @@ class Color24Bit(BaseColor):
 
 if __name__ == '__main__':
 
+    # parse command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--chart256', action='store_true', help='Generate 256 color chart')
+    parser.add_argument('--colornames', action='store_true', help='Display CSS color names')
+    parser.add_argument('--lookup256', help='Look up a 256 color equivalent to a color name or hex code')
+    args = parser.parse_args()
+
+    # show help if no options were passed
+    if not args.chart256 and not args.colornames and args.lookup256 is None:
+        parser.print_help()
+
     # create a 256-color chart
-    Color256.printChart()
-    print
+    if args.chart256:
+        Color256.printChart()
+        print
 
     # css color names sorted by hue
     def cssHue(name):
@@ -470,11 +485,15 @@ if __name__ == '__main__':
     names.sort(key=cssHue)
 
     # display renderings of css colors
-    fmt = '%-{}s'.format(max(map(len, names)))
-    print BaseColor.underline() + fmt%'24-bit' , fmt%'256-Color' , fmt%'16-Color'
-    for k in names:
-        Color24Bit(k).render(fmt % k)
-        Color256(k)  .render(fmt % k)
-        Color16(k)   .render(fmt % k)
-        print
+    if args.colornames:
+        fmt = '%-{}s'.format(max(map(len, names)))
+        print BaseColor.underline() + fmt%'24-bit' , fmt%'256-Color' , fmt%'16-Color'
+        for k in names:
+            Color24Bit(k).render(fmt % k)
+            Color256(k)  .render(fmt % k)
+            Color16(k)   .render(fmt % k)
+            print
 
+    # look up a 256-color equivalent to a color name or hex code
+    if args.lookup256 is not None:
+        print "Index for %s => %d" % (args.lookup256.__repr__(), Color256(args.lookup256).index)
