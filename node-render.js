@@ -215,21 +215,6 @@ function render(data, depth=1) {
     return $.html()
 }
 
-// help text on using elinks
-const elinks = `## Using elinks ##
-
-* \`j\` - scroll down
-* \`k\` - scroll up
-* \`Ctrl-F\` - scroll forward one screen
-* \`Ctrl-B\` - scroll backward one screen
-* \`Ctrl-D\` - scroll down a half screen
-* \`Ctrl-U\` - scroll up a half screen
-* \`Left\` - go to previous page
-* \`Down\` - go to next link
-* \`Enter\`, \`Right\`, or click - follow link
-* \`Escape\` - show menu
-`;
-
 // function to process synchronization data and generate html
 function syncToHtml(syncLoc) {
 
@@ -268,6 +253,7 @@ function syncToHtml(syncLoc) {
     copyResource('script/Renderer.py');
     copyResource('script/TagPair.py');
     copyResource('script/TerminalColors256.py');
+    copyResource('script/browser.sh');
 
     // create connection to sync data
     var conn = new WrappedNoteCollectionSyncData(syncLoc, ioHandler=NodeIO);
@@ -323,14 +309,14 @@ function syncToHtml(syncLoc) {
             Object.keys(notesByNotebook).forEach(nb => {
                 notesByNotebook[nb].sort((a,b) => sorter(a.title,b.title));
                 var li = notesByNotebook[nb].map(n => `* [${n.title}](${sanitizeFileURL(n.title, true)}.html)`);
-                var md = elinks+'\n## Page Index ##\n\n'+li.join('\n');
+                var md = '## Page Index ##\n\n'+li.join('\n');
                 fs.writeFileSync(`${syncLoc}/html/${sanitizeFileName(nb)}/index.html`, render(md));
             });
         });
 
         // generate a cross-notebook index
         var li = Object.keys(notesByNotebook).sort(sorter).map(nb => `* [${nb}](${sanitizeFileURL(nb, true)}/index.html)`);
-        var md = elinks+'\n## Page Index ##\n\n'+li.join('\n');
+        var md = '## Page Index ##\n\n'+li.join('\n');
         fs.writeFileSync(`${syncLoc}/html/index.html`, render(md));
 
     });
