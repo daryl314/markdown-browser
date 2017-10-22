@@ -63,10 +63,9 @@ class TagPair:
 
             # search for closing tag.  everything until the closing tag is
             # a child of the current tag pair
-            while self.tags[0].tag != self.tag:
+            while self.tags[0].tag != self.tag or not self.tags[0].isClosingTag:
                 self.pushText()
                 self.pushTag()
-            assert self.tags[0].isClosingTag
 
             # consume any text between last child and closing tag
             self.pushText()

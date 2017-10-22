@@ -9,6 +9,14 @@ import argparse
 import TerminalColors256
 from TagPair import TagPair
 
+# TODO: proper file browser
+# TODO: Bug fixes (Arch Linux, etc)
+# TODO: Line highlight
+# TODO: Folds
+# TODO: Custom fold text
+# TODO: Rewire 'helpme' to use new script
+# TODO: Better visual handling for dangling TOC tree items
+
 # TODO: have popups with rendered latex from terminal browsing application
 # TODO: use raw ANSI escape codes instead of curses for 24-bit color
 #   - http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
@@ -136,8 +144,8 @@ class Parser:
             tbody += self.parseTableRow(tr['td'])
 
         # calculate max length for each column
-        maxLen = map(len, thead[0])
-        for tr in thead[1:] + tbody:
+        maxLen = [0] * max(map(len, thead+tbody))
+        for tr in thead + tbody:
             for i,td in enumerate(tr):
                 maxLen[i] = max(maxLen[i], len(td))
 
@@ -373,6 +381,8 @@ class ColorConfiguration:
             'header': {'fg':WHITE, 'bg':ORANGE},
             'footer': {'fg':WHITE, 'bg':ORANGE},
             'toc'   : {'fg':BLUE},
+            'treeline' : {'fg':BLUEGREEN},
+            'treetext' : {'fg':WHITE},
             # tables
             'th': {'fg':WHITE, 'bg':BLUE},
             # inline styles
@@ -401,6 +411,29 @@ class VimRenderer(BaseRenderer):
     def __init__(self, colors):
         self.colors = colors
 
+    def vimStyle(self, data, name):
+        prop = []
+
+        if 'fg' in data:
+            prop.append('guifg=%s' % self._colorHex(data['fg']))
+            prop.append('ctermfg=%s' % data['fg'].index256())
+        if 'bg' in data:
+            prop.append('guibg=%s' % self._colorHex(data['bg']))
+            prop.append('ctermbg=%s' % data['bg'].index256())
+            
+        attr = []
+        if data['bold']:
+            attr.append('bold')
+        if data['italic']:
+            attr.append('italic')
+        if data['underline']:
+            attr.append('underline')
+        if len(attr) > 0:
+            prop.append('gui=%s' % ','.join(attr))
+            prop.append('cterm=%s' % ','.join(attr))
+
+        return 'hi %s %s\n' % (name, ' '.join(prop))
+
     def genStyle(self, fileName=None, logger=sys.stdout):
         if fileName is not None:
             with open(fileName, 'wt') as F:
@@ -410,10 +443,12 @@ class VimRenderer(BaseRenderer):
             logger.write('setlocal nowrap\n')
             logger.write('setlocal concealcursor=nc\n')
             logger.write('\n')
-            logger.write('hi Normal')
-            logger.write(' guifg=%s' % self._colorHex(self.colors.baseFgColor()))
-            logger.write('guibg=%s\n' % self._colorHex(self.colors.baseBgColor()))
-            logger.write('\n')
+            logger.write('hi Normal guifg=%s guibg=%s ctermfg=%s ctermbg=%s\n' % (
+                self._colorHex(self.colors.baseFgColor()),
+                self._colorHex(self.colors.baseBgColor()),
+                self.colors.baseFgColor().index256(),
+                self.colors.baseBgColor().index256()
+            ))
             for k,data in self.colors.colors.items():
                 if k == 'heading':
                     logger.write('syn region in{0} concealends matchgroup={0} start="<{1}>" end="</{1}>"\n'.format(k,'h[2-6]'))
@@ -421,21 +456,95 @@ class VimRenderer(BaseRenderer):
                     logger.write('syn region in{0} concealends matchgroup={0} start="<{0}>" end="</{0}>"\n'.format(k))
             logger.write('\n')
             for k,data in self.colors.colors.items():
-                logger.write('hi in%s'%k)
-                if 'fg' in data:
-                    logger.write(' guifg=%s' % self._colorHex(data['fg']))
-                if 'bg' in data:
-                    logger.write(' guibg=%s' % self._colorHex(data['bg']))
-                attr = []
-                if data['bold']:
-                    attr.append('bold')
-                if data['italic']:
-                    attr.append('italic')
-                if data['underline']:
-                    attr.append('underline')
-                if len(attr) > 0:
-                    logger.write(' gui=%s' % ','.join(attr))
-                logger.write('\n')
+                logger.write(self.vimStyle(data,'in'+k))
+    
+    def genTreeStyle(self, fileName=None, logger=sys.stdout):
+        if fileName is not None:
+            with open(fileName, 'wt') as F:
+                self.genTreeStyle(logger=F)
+        else:
+            logger.write('syn match treeLine "\\%u2500\\|\\%u2502\\|\\%u2514\\|\\%u251c"\n')
+            logger.write(self.vimStyle(self.colors.colors['treeline'], 'treeLine'))
+            #logger.write('hi treeLine guifg=#4040ff\n')
+            logger.write('hi Normal guifg=#ffffff ctermfg=white gui=bold cterm=bold\n')
+
+    @staticmethod
+    def getTOC(renderedLines):
+
+        # identify headings
+        headings = [
+            line[2:].split('<')[0].split('>')+[i]
+            for i,line in enumerate(renderedLines)
+            if line[:4] in {'<h2>','<h3>','<h4>','<h5>','<h6>'}
+        ]
+        headings = [(int(a),b,c) for a,b,c in headings]
+
+        # fix any bad level numbers
+        lvl = [None]*len(headings)
+        txt = [None]*len(headings)
+        src = [None]*len(headings)
+        for i,heading in enumerate(headings):
+            l,t,s = heading
+            if i == 0 and l > 2:
+                l = 2
+            elif i > 0 and l > headings[i-1][0] + 1:
+                l = headings[i-1][0] + 1
+            lvl[i],txt[i],src[i] = l,t,s
+
+        # identify whether headings have downstream siblings
+        # (later entry exists with same level without being broken by higher level)
+        has_sibling = [None] * len(lvl)
+        found_levels = [False] * 7
+        for i in range(len(lvl))[::-1]:
+            level = lvl[i]
+            for j in range(level+1,7):
+                found_levels[j] = False
+            if not found_levels[level]:
+                found_levels[level] = True
+                has_sibling[i] = False
+            else:
+                has_sibling[i] = True
+
+        # identify parent headings
+        parents = [None] * len(headings)
+        found_parents = [None] * 7
+        for i in range(len(lvl)):
+            found_parents[lvl[i]] = i
+            if lvl[i] > 2:
+                parents[i] = found_parents[lvl[i]-1]
+
+        # return leader sequence depending on existence of siblings
+        def treeLeader(i, recurse=False):
+            if i is None:
+                return ''
+            elif not recurse:
+                if has_sibling[i]:
+                    tail = u'\u251c' + u'\u2500'*2 # tee
+                else:
+                    tail = u'\u2514' + u'\u2500'*2 # elbow
+                return treeLeader(parents[i], recurse=True) + tail
+            else:
+                if has_sibling[i]:
+                    tail = u'\u2502' + ' '*2 # pipe
+                else:
+                    tail = ' '*3 # spaces
+                return treeLeader(parents[i], recurse=True) + tail
+
+        # build tree
+        tree = [treeLeader(i)+t for i,t in enumerate(txt)]
+
+        # identify folds
+        folds = []
+        for i,level in enumerate(lvl):
+            if i+1 < len(lvl) and lvl[i+1] > level:
+                foldEnd = [i+j for j,x in enumerate(lvl[i+1:]) if x <= level]
+                if len(foldEnd) > 0:
+                    folds.append(( i,foldEnd[0] ))
+                else:
+                    folds.append(( i,len(lvl)-1 ))
+        
+        # return results
+        return tree,folds,src
 
     @staticmethod
     def _colorHex(color):
@@ -476,6 +585,7 @@ if __name__ == '__main__':
     parser.add_argument('--256', help="Use 256 colors instead of 24-bit", action="store_true")
     parser.add_argument('--vim', help="Use tags recognizable in vim", action="store_true")
     parser.add_argument('--vim-style', help="Generate a style file for generated vim")
+    parser.add_argument('--vim-tree-style', help="Generate a style file for generated vim tree")
     parser.add_argument('file', help="Input file name")
     args = parser.parse_args()
 
@@ -503,9 +613,12 @@ if __name__ == '__main__':
 
     # generate output
     renderer.render(lineData, cols=args.columns)
-
+    
     # generate vim style file
     if args.vim_style:
         renderer = VimRenderer(colors)
         renderer.genStyle(args.vim_style)
+    elif args.vim_tree_style:
+        renderer = VimRenderer(colors)
+        renderer.genTreeStyle(args.vim_tree_style)
 

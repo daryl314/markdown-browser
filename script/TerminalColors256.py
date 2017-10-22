@@ -226,6 +226,10 @@ class BaseColor(object):
                 for c in [color[-6:-4], color[-4:-2], color[-2:]]
             ]
 
+        # assign an rgb tuple
+        elif isinstance(color, tuple):
+            return color
+
         # otherwise an error
         else:
             raise RuntimeError('Invalid input!')
@@ -409,6 +413,10 @@ class Color256(BaseColor):
         """Return escape code for colored background"""
         return self.setBG(self.index)
 
+    def index256(self):
+        """Return the associated 256-color index"""
+        return self.index
+
     @staticmethod
     def setFG(index):
         """Escape code for colored foreground given a 256-color index"""
@@ -447,6 +455,10 @@ class Color24Bit(BaseColor):
     def escapeBG(self):
         """Return escape code for colored background"""
         return self.setBG(self.r, self.g, self.b)
+
+    def index256(self):
+        """Return the associated 256-color index"""
+        return Color256(( self.r,self.g,self.b )).index
 
     @staticmethod
     def setFG(r, g, b):
