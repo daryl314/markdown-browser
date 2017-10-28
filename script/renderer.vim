@@ -6,6 +6,9 @@ py import re
 " application imports
 py import Renderer
 
+" initialize content window variables
+py tocBuffer,contentBuffer = None,None
+
 " function to process an HTML file
 function! ParseHTML()
 
@@ -14,6 +17,7 @@ function! ParseHTML()
 
     " grab input html and clear input buffer
     py inData = '\n'.join(vim.current.buffer)
+    only
     bd
 
     " create a window for table of contents
@@ -22,12 +26,14 @@ function! ParseHTML()
     setlocal cursorline
     hi CursorLine term=bold cterm=bold guibg=Grey40
     silent file 'TOC'
+    py tocBuffer = vim.current.buffer.number
 
     " configure folding for TOC
     setlocal foldtext=getline(v:foldstart)
 
     " move to content window
     wincmd l
+    py contentBuffer = vim.current.buffer.number
 
     " parse input html file
     py nCols = int(vim.eval('winwidth(0)')) - int(vim.current.window.options['numberwidth'])
@@ -51,6 +57,9 @@ function! ParseHTML()
 
     " display rendered text
     setlocal buftype=nofile
+    setlocal nocursorline
+    setlocal colorcolumn=0
+    setlocal nonumber
     py vim.current.buffer[:] = renderedLines
     py for line in styleCommands: vim.command(line)
     setlocal nomodifiable
@@ -73,9 +82,14 @@ function! ParseHTML()
     py tocStyleCommands = buf.getvalue().split('\n')
     py for line in tocStyleCommands: vim.command(line)
 
-    " scroll rendered text when <ENTER> is pressed in TOC
+    " jump to rendered text when <ENTER> is pressed in TOC
     nnoremap <buffer> <ENTER> :call ScrollToTOC()<CR>
 
+endfunction
+
+" close buffers
+function! CloseBuffers()
+    py if tocBuffer is not None and contentBuffer is not None: vim.command('bdelete %d %d' % (tocBuffer,contentBuffer))
 endfunction
 
 " scroll rendered text when <ENTER> is pressed in TOC
@@ -86,4 +100,9 @@ function! ScrollToTOC()
     normal zt
 endfunction
 
+" call processing fuction when a new file is loaded
 autocmd BufRead *.html call ParseHTML()
+
+" clear existing buffers when a new file is loaded
+autocmd BufReadPre *.html :call CloseBuffers()
+

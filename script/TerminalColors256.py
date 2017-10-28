@@ -168,9 +168,12 @@ class BaseColor(object):
         """Distance between object rgb and provided rgb"""
         return math.sqrt((r-self.r)**2 + (g-self.g)**2 + (b-self.b)**2)
 
-    def render(self, txt):
+    def render(self, txt, display=True):
         """Render text using color for foreground"""
-        print self.escapeFG() + txt + self.escapeClear(),
+        txt = self.escapeFG() + txt + self.escapeClear()
+        if display:
+            sys.stdout.write(txt)
+        return txt
 
     @staticmethod
     def resolveIndices(r, g, b, boundaries):

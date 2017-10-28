@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys
+import os
 import time
 import math
 import logging
@@ -9,13 +10,12 @@ import argparse
 import TerminalColors256
 from TagPair import TagPair
 
-# TODO: proper file browser
-# TODO: Bug fixes (Arch Linux, etc)
+# TODO: proper file browser (adapts to opening files)
 # TODO: Line highlight
 # TODO: Folds
 # TODO: Custom fold text
-# TODO: Rewire 'helpme' to use new script
-# TODO: Better visual handling for dangling TOC tree items
+# TODO: Help text at top of tree (like netrw)
+# TODO: add support for passing a hyperlink to command line: Python.html#Functions
 
 # TODO: have popups with rendered latex from terminal browsing application
 # TODO: use raw ANSI escape codes instead of curses for 24-bit color
@@ -195,8 +195,9 @@ class Parser:
 
                 # otherwise...
                 else:
-                    for [inlineChild] in InlineData.fromChild(subChild, tagStack=['li']).data:
-                        self.append(inlineChild[1], inlineChild[0], indent=len(leader))
+                    for line in InlineData.fromChild(subChild, tagStack=['li']).data:
+                        for styles,txt in line:
+                            self.append(txt, styles, indent=len(leader))
 
             # newline after list item.  indentation for next item is handled above.  if <li> ended with an
             # embedded <ul>, newline is handled by inner list's terminal <li>
@@ -576,6 +577,23 @@ class ColoredRenderer(BaseRenderer):
 
 ################################################################################
 
+def testDirectory(dirname, renderer, cols):
+    if os.path.isdir(dirname):
+        for f in [os.path.join(dirname,ff) for ff in os.listdir(dirname)]:
+            if os.path.isdir(f):
+                testDirectory(f, renderer, cols)
+            elif f.endswith('.html'):
+                try:
+                    lineData = Parser.fromFile(f, element='div#markdown-container', width=cols).lineData
+                    with open('/dev/null', 'wt') as devnull:
+                        renderer.render(lineData, cols=cols, logger=devnull)
+                    status = TerminalColors256.Color16('green').render('PASS', display=False)
+                except:
+                    status = TerminalColors256.Color16('red').render('FAIL', display=False)
+                print "[%s] %s" % (status, f)
+
+################################################################################
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Browser for rendered markdown")
@@ -586,6 +604,7 @@ if __name__ == '__main__':
     parser.add_argument('--vim', help="Use tags recognizable in vim", action="store_true")
     parser.add_argument('--vim-style', help="Generate a style file for generated vim")
     parser.add_argument('--vim-tree-style', help="Generate a style file for generated vim tree")
+    parser.add_argument('--test', help="Test parser on files in specified directory", action="store_true")
     parser.add_argument('file', help="Input file name")
     args = parser.parse_args()
 
@@ -595,9 +614,6 @@ if __name__ == '__main__':
             filename='browser.log',
             level=getattr(logging,args.log_level),
             filemode='wt')
-
-    # parse html
-    lineData = Parser.fromFile(args.file, element='div#markdown-container', width=args.columns).lineData
 
     # configure colors
     if getattr(args, '256'):
@@ -611,8 +627,12 @@ if __name__ == '__main__':
     else:
         renderer = ColoredRenderer(colors)
 
-    # generate output
-    renderer.render(lineData, cols=args.columns)
+    # parse html and generate output
+    if not args.test:
+        lineData = Parser.fromFile(args.file, element='div#markdown-container', width=args.columns).lineData
+        renderer.render(lineData, cols=args.columns)
+    else:
+        testDirectory(args.file, renderer, args.columns)
     
     # generate vim style file
     if args.vim_style:
