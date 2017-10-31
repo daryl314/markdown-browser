@@ -10,25 +10,6 @@ import argparse
 import TerminalColors256
 from TagPair import TagPair
 
-# TODO: proper file browser (adapts to opening files)
-# TODO: Line highlight
-# TODO: Folds
-# TODO: Custom fold text
-# TODO: Help text at top of tree (like netrw)
-# TODO: add support for passing a hyperlink to command line: Python.html#Functions
-
-# TODO: have popups with rendered latex from terminal browsing application
-# TODO: use raw ANSI escape codes instead of curses for 24-bit color
-#   - http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
-# TODO: put in color schemes?
-#   - http://vimcolors.com/21/seoul256/dark
-#   - http://vimcolors.com/9/zenburn/dark
-#   - http://vimcolors.com/196/ir_black/dark
-
-# http://vimdoc.sourceforge.net/htmldoc/autocmd.html
-# http://learnvimscriptthehardway.stevelosh.com/chapters/11.html (buffer local commands and options)
-# http://learnvimscriptthehardway.stevelosh.com/chapters/50.html (section movement)
-
 ################################################################################
 
 class InlineData:
@@ -441,7 +422,6 @@ class VimRenderer(BaseRenderer):
                 self.genStyle(logger=F)
         else:
             logger.write('setlocal conceallevel=2\n')
-            logger.write('setlocal nowrap\n')
             logger.write('setlocal concealcursor=nc\n')
             logger.write('\n')
             logger.write('hi Normal guifg=%s guibg=%s ctermfg=%s ctermbg=%s\n' % (
@@ -465,9 +445,12 @@ class VimRenderer(BaseRenderer):
                 self.genTreeStyle(logger=F)
         else:
             logger.write('syn match treeLine "\\%u2500\\|\\%u2502\\|\\%u2514\\|\\%u251c"\n')
+            logger.write('syn region tocHeader concealends matchgroup=tocHeader start="{" end="$"\n')
+            logger.write(self.vimStyle(self.colors.colors['treeline'], 'tocHeader'))
             logger.write(self.vimStyle(self.colors.colors['treeline'], 'treeLine'))
-            #logger.write('hi treeLine guifg=#4040ff\n')
-            logger.write('hi Normal guifg=#ffffff ctermfg=white gui=bold cterm=bold\n')
+            logger.write(self.vimStyle(self.colors.colors['strong'], 'Normal'))
+            logger.write('setlocal conceallevel=2\n')
+            logger.write('setlocal concealcursor=nc\n')
 
     @staticmethod
     def getTOC(renderedLines):
