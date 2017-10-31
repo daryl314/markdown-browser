@@ -9,7 +9,9 @@ py import Renderer
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 " initialize content window variables
-py tocBuffer,contentBuffer = None,None
+py tocBuffer = None      # buffer number for table of contents
+py contentBuffer = None  # buffer number for rendered markdown
+let g:hasdata = 0        " has an initial data load happened?
 
 " initialize renderer
 py renderer = Renderer.VimRenderer(Renderer.ColorConfiguration.vimCodeDark())
@@ -124,6 +126,13 @@ function! ParseHTML()
     nnoremap <buffer> <TAB> :wincmd l<CR>             " switch to content window
     nnoremap <buffer> <C-T> :call ToggleTOC()<CR>     " toggle TOC
 
+    " resize rendered text when a buffer is hidden or a window is resized
+    if !g:hasdata
+        let g:hasdata = 1
+        autocmd VimResized * :call RenderHTML()
+        autocmd BufHidden * :call RenderHTML()
+    endif
+
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -174,7 +183,3 @@ autocmd BufRead *.html call ParseHTML()
 
 " clear existing buffers when a new file is loaded
 autocmd BufReadPre *.html :call CloseBuffers()
-
-" resize rendered text when a buffer is hidden or window is resized
-autocmd VimResized * :call RenderHTML()
-autocmd BufHidden * :call RenderHTML()
