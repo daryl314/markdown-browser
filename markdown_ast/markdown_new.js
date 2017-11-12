@@ -5,6 +5,394 @@ if (typeof window !== 'undefined') {
   global.markdown = {};
 }
 
+////////////////////////////////////
+// CLASS TO DEFINE A GRAMMAR RULE //
+////////////////////////////////////
+
+// subclass regexp to customize behavior?  https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/@@match
+
+class ResultArray {
+  constructor(name, arr) {
+    this.leader = '  ';
+    this.name = name;
+    this.arr = arr;
+  }
+
+  render() {
+    return this._render().join('\n')
+  }
+
+  _render(depth=0) {
+    let out = [];
+    out.push(this.leader.repeat(depth) + `<${this.name}>`);
+    this.arr.forEach(x => {
+      out = out.concat(x._render(depth+1))
+    })
+    out.push(this.leader.repeat(depth) + `</${this.name}>`);
+    return out    
+  }
+}
+
+class Result {
+  constructor(rule, res, pos) {
+    this.rule = rule;
+    this.match = res.slice(1);
+    this.initialPosition = pos;
+    this.cap = res[0];
+    this.finalPosition = pos + this.cap.length;
+    this.n = this.cap.length;
+    this.lines = (this.cap.match(/\n/g) || []).length;
+    this.leader = '  ';
+    this.attr = {};
+
+    // assign tokenized results
+    if (this.rule.tokens) {
+      for (let i = 0; i < this.rule.tokens.length; i++) {
+        if (this.rule.tokens[i]) {
+          let tok = this.rule.tokens[i];
+          if (this.rule.sub_rules && this.rule.sub_rules[tok]) {
+            let tokRule = this.rule.sub_rules[tok];
+            if (this.rule.ruleset) {
+              tokRule = this.rule.ruleset.rules[tokRule];
+            }
+            this.attr[tok] = tokRule.parse(this.match[i]);
+          } else {
+            this.attr[tok] = this.match[i];
+          }
+        }
+      }
+    }
+  }
+
+  render() {
+    return this._render().join('\n')
+  }
+
+  _indent(depth, txt) {
+    if (typeof txt === 'string') {
+      return this.leader.repeat(depth) + txt
+    } else {
+      return txt.map(x => this.leader.repeat(depth) + x)
+    }
+  }
+
+  _rawAttr() {
+    return Object.keys(this.attr).filter(k => typeof this.attr[k] === 'string')
+  }
+
+  _nestedAttr() {
+    return Object.keys(this.attr).filter(k => typeof this.attr[k] !== 'string')
+  }
+
+  _attrString() {
+    let inner = this._rawAttr().map(k => 
+      `${k}="${this.attr[k].replace(/\n/g, '\\n')}"`
+    )
+    return [`${this.rule.name} lines=${this.lines}`].concat(inner).join(' ')
+  }
+
+  _render(depth=0) {
+
+    // convert nested objects into text blocks
+    let nestedAttr = this._nestedAttr().map(k => this._indent(1,
+      [`<${k}>`]
+      .concat(this.attr[k]._render(1))
+      .concat([`</${k}>`])
+    ))
+
+    // special case for no nested objects
+    if (nestedAttr.length == 0) {
+      return this._indent(depth,`<${this._attrString()}/>`)
+    }
+
+    // generate output text
+    let out = [];
+    out.push(`<${this._attrString()}>`);
+    nestedAttr.forEach(x => {out = out.concat(x)});
+    out.push(`</${this.rule.name}>`);
+
+    // return indented text
+    return this._indent(depth, out)
+  }
+}
+
+class RuleSet {
+  constructor(baseRule, regex) {
+    this.baseRule = baseRule;
+    this.regex = regex;
+    this.rules = {};
+  }
+
+  parse(txt, pos=0) {
+    return this.rules[this.baseRule].parse(txt,pos)
+  }
+
+  addRule(name, regex, sub_rules={}) {
+    this.rules[name] = new Rule(name, regex, sub_rules, this);
+  }
+
+  addRules(def) {
+    Object.keys(def).forEach(key => {
+      var [re,sub_rules] = def[key];
+      if (this.regex) {
+        re = this.regex[re];
+      }
+      this.addRule(key, re, sub_rules);
+    })
+  }
+
+  addDispatchRule(name, def) {
+    let rules = def.split('|').map(r => {
+      if (this.rules[r] === undefined) throw new Error('Undefined rule: '+r);
+      return this.rules[r]
+    })
+    this.rules[name] = new DispatchRule(name, rules);
+  }
+
+  addRepeatingRule(name, rule) {
+    this.rules[name] = new RepeatingRule(name, this.rules[rule]);
+  }
+}
+
+class Rule {
+  constructor(name, regex, sub_rules, ruleset, processor) {
+    this.name = name;
+    this.regex = regex;
+    this.tokens = regex.tokens;
+    this.sub_rules = sub_rules;
+    this.ruleset = ruleset;
+    this.processor = processor;
+  }
+
+  parse(txt, pos=0, fail_ok=false) {
+    let res = this.regex.exec(txt.slice(pos));
+    if (res) {
+      return new Result(this, res, pos)
+    } else if (fail_ok) {
+      return null
+    } else {
+      throw new Error('Failed to match regex rule: ' + txt.charCodeAt(0));
+    }
+  }
+}
+
+class RepeatingRule {
+  constructor(name, rule) {
+    this.name = name;
+    this.rule = rule;
+  }
+
+  parse(txt, pos=0) {
+    let out = [];
+    let loc = pos;
+    while (loc + 1 < txt.length) {
+      let res = this.rule.parse(txt,loc);
+      if (res.n == 0) {
+        throw new Error('Empty regex match')
+      } else {
+        loc = res.finalPosition;
+        out.push(res);
+      }
+    }
+    return new ResultArray(this.name, out);
+  }
+}
+
+class DispatchRule {
+  constructor(name, rules) {
+    this.name = name;
+    this.rules = rules;
+  }
+
+  parse(txt, pos=0) {
+    for (var i = 0; i < this.rules.length; i++) {
+      let res = this.rules[i].parse(txt,pos,true);
+      if (res) {
+        return res;
+      }
+    }
+    throw new Error('Failed to match a dispatch rule: ' + txt.charCodeAt(0));
+  }
+}
+
+///////////////////////////////////
+// CLASS TO DEFINE AST RENDERING //
+///////////////////////////////////
+
+class Renderer {
+  // define templates for rendering
+  // {{myField}} ..................... insert input.myField
+  // {{^myField}} .................... insert escaped html input.myField
+  // {{^^myField}} ................... insert escaped text input.myField
+  // {{@myField}} .................... insert mangled text input.myField
+  // {{IF expr}}A{{ENDIF}} ........... if expr is true, insert "A"
+  // {{IF expr}}A{{ELSE}}B{{ENDIF}} .. if expr is true, insert "A", otherwise insert "B"
+  constructor(def={}) {
+    this.rules = {};
+    Object.keys(def).forEach(k => {this.addRule(k, def[k])})
+  }
+
+  // add a rule to the definition set
+  addRule(name, def) {
+    this.rules[name] = Renderer.convertTemplate(def);
+  }
+
+  // render an input object
+  render(obj, currentLine=1) {
+
+    // input is an array: render elements and join strings
+    if (obj instanceof ResultArray) {
+      let line = currentLine;
+      return obj.arr.map(x => {
+        let txt = this.render(x, line);
+        line += x.lines;
+        return txt
+      }).join('');
+
+    // input is an AST element: render with template
+    } else if (obj instanceof Result) {
+
+      // identify template
+      var fn;
+      if (fn = this.rules[obj.rule.name]) {
+
+        // render nested AST elements
+        let attr = {};
+        Object.keys(obj.attr).forEach(f => {
+          attr[f] = this.render(obj.attr[f], currentLine)
+        })
+
+        // attach line number
+        attr.sourceLine = currentLine;
+
+        // perform post-processing if applicable
+        if (obj.rule.processor) {
+          obj.rule.processor(attr);
+        }
+
+        // call template rendering function
+        return this.rules[obj.rule.name](attr)
+
+      // error if template wasn't found
+      } else {
+        throw new Error('Unrecognized rule: '+obj.rule.name)
+      }
+
+    // otherwise pass through raw value
+    } else {
+      return obj
+    }
+  }
+  
+  // escape HTML (taken from from marked.js)
+  // - escape(html) to escape HTML (respecting already-escaped characters)
+  // - escape(html,true) to escape text inside HTML (like code)
+  static escape(html, encode) {
+    return html
+      .replace(                 // replace ...
+        !encode                 //   not encode? (default behavior) ...
+          ? /&(?!#?\w+;)/g      //     '&' that is not part of an escape sequence
+          : /&/g,               //     raw '&' (if 'encode' is true)
+        '&amp;')                // -> &amp;
+      .replace(/</g, '&lt;')    // replace < -> &lt;
+      .replace(/>/g, '&gt;')    // replace > -> &gt;
+      .replace(/"/g, '&quot;')  // replace " -> &quot;
+      .replace(/'/g, '&#39;')   // replace ' -> &#39;
+  };
+
+  // mangle mailto links (taken from marked.js)
+  static mangle(text) {
+    var out = '';                           // initialize output string
+    for (var i = 0; i < text.length; i++) { // iterate over characters in input...
+      var ch = text.charCodeAt(i);          //   current decimal character code
+      if (Math.random() > 0.5) {            //   with 50% probability...
+        ch = 'x' + ch.toString(16);         //     use hex representation instead
+      }                                     //
+      out += '&#' + ch + ';';               //   append hex/decimal character
+    }                                       //
+    return out;                             // return generated string
+  };
+
+  // helper function to convert a template string to JavaScript code
+  static _templateToCode(src) {
+    
+    // accumulated code
+    var code = [];
+
+    // variables to hold captured text
+    var cap, cap2;
+
+    // consume string
+    while(src) {
+
+      // match an IF block
+      if (cap2 = src.match(/^{{IF[\s\S]*?{{ENDIF}}/)) {
+
+        // process if-else
+        if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ELSE}}([\s\S]*?){{ENDIF}}/.exec(cap2)) {
+          code.push('(x.'+cap[1]+'?'+Renderer._templateToCode(cap[2])+':'+Renderer._templateToCode(cap[3])+')');
+
+        // process if
+        } else if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ENDIF}}/.exec(cap2)) {
+          code.push('(x.'+cap[1]+'?'+Renderer._templateToCode(cap[2])+":'')");
+
+        // exception otherwise
+        } else {
+          throw new Error('Failed to process template: invalid {{IF}} expression');
+        }
+      }
+
+      // match other expressions 
+      else if (cap = /^{{(?!\^)(?!@)(.*?)}}/.exec(src)) code.push('x.'+cap[1]                ); // field
+      else if (cap = /^{{\^\^(.*?)}}/       .exec(src)) code.push('escape(x.'+cap[1]+',true)'); // escaped text
+      else if (cap = /^{{\^(.*?)}}/         .exec(src)) code.push('escape(x.'+cap[1]+')'     ); // escaped html
+      else if (cap = /^{{@(.*?)}}/          .exec(src)) code.push('mangle(x.'+cap[1]+')'     ); // mangled text
+      else if (cap = /^\n/                  .exec(src)) code.push("'\\n'"                    ); // newline
+      else if (cap = /^.+?(?={{|\n|$)/      .exec(src)) code.push("'" + cap[0] + "'"         ); // normal text
+      
+      // otherwise throw an exception
+      else {
+        throw new Error('Failed to process template');
+      }
+
+      // if match length was zero, throw an exception
+      if (cap[0].length == 0) {
+        throw new Error('Failed to consume a token');
+      }
+
+      // slice off matched text and continue processing
+      src = src.slice(cap[0].length);
+
+    } // end of string consumption
+
+    // return code to concatenate the components together
+    return code.join('+');
+  }
+
+  // helper function to return the code associated with a function
+  static _functionToCode(fn, name) {
+    var txt = fn.toString()
+      .replace(/\/\/.*/g, '')
+      .replace(/\s+/g, '')
+      .replace(/var/g,'var ')
+      .replace('return','return ') + ';';
+    return txt
+  }
+
+  // convert a template to a processing function
+  static convertTemplate(src) {
+    var fx = 
+      ( src.match(/{{\^/) // add escape function if there is any escaping in template
+        ? 'function '+Renderer._functionToCode(Renderer.escape) 
+        : ''
+      ) + (src.match(/{{@/) // add mangle function if there is any mangling in the template
+        ? 'function '+Renderer._functionToCode(Renderer.mangle)
+        : ''
+      ) + 'return '+Renderer._templateToCode(src.replace(/'/g,"\\'"));
+    return new Function('x', fx);
+  }
+}
+
 //////////////////////////
 // DEFINE REGEX GRAMMAR //
 //////////////////////////
@@ -593,7 +981,7 @@ let regex = function(){
     /\1/,         // captured backticks
     /(?!`)/       // not followed by another backtick
   );
-  regex.i_code.tokens = ['', 'text'];
+  regex.i_code.tokens = ['ticks', 'text'];
 
 
   ////////// ESCAPED CHARACTER REGEX //////////
@@ -703,213 +1091,7 @@ let regex = function(){
   return regex;
 }();
 
-////////////////////////////////////
-// CLASS TO DEFINE A GRAMMAR RULE //
-////////////////////////////////////
 
-// subclass regexp to customize behavior?  https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/@@match
-
-class ResultArray {
-  constructor(name, arr) {
-    this.leader = '  ';
-    this.name = name;
-    this.arr = arr;
-  }
-
-  render() {
-    return this._render().join('\n')
-  }
-
-  _render(depth=0) {
-    let out = [];
-    out.push(this.leader.repeat(depth) + `<${this.name}>`);
-    this.arr.forEach(x => {
-      out = out.concat(x._render(depth+1))
-    })
-    out.push(this.leader.repeat(depth) + `</${this.name}>`);
-    return out    
-  }
-}
-
-class Result {
-  constructor(rule, res, pos) {
-    this.rule = rule;
-    this.match = res.slice(1);
-    this.initialPosition = pos;
-    this.cap = res[0];
-    this.finalPosition = pos + this.cap.length;
-    this.n = this.cap.length;
-    this.leader = '  ';
-    this.attr = {};
-
-    // assign tokenized results
-    if (this.rule.tokens) {
-      for (let i = 0; i < this.rule.tokens.length; i++) {
-        if (this.rule.tokens[i]) {
-          let tok = this.rule.tokens[i];
-          if (this.rule.sub_rules && this.rule.sub_rules[tok]) {
-            let tokRule = this.rule.sub_rules[tok];
-            if (this.rule.ruleset) {
-              tokRule = this.rule.ruleset.rules[tokRule];
-            }
-            this.attr[tok] = tokRule.parse(this.match[i]);
-          } else {
-            this.attr[tok] = this.match[i];
-          }
-        }
-      }
-    }
-  }
-
-  render() {
-    return this._render().join('\n')
-  }
-
-  _indent(depth, txt) {
-    if (typeof txt === 'string') {
-      return this.leader.repeat(depth) + txt
-    } else {
-      return txt.map(x => this.leader.repeat(depth) + x)
-    }
-  }
-
-  _rawAttr() {
-    return Object.keys(this.attr).filter(k => typeof this.attr[k] === 'string')
-  }
-
-  _nestedAttr() {
-    return Object.keys(this.attr).filter(k => typeof this.attr[k] !== 'string')
-  }
-
-  _attrString() {
-    let inner = this._rawAttr().map(k => 
-      `${k}="${this.attr[k].replace(/\n/g, '\\n')}"`
-    )
-    return [this.rule.name].concat(inner).join(' ')
-  }
-
-  _render(depth=0) {
-
-    // convert nested objects into text blocks
-    let nestedAttr = this._nestedAttr().map(k => this._indent(1,
-      [`<${k}>`]
-      .concat(this.attr[k]._render(1))
-      .concat([`</${k}>`])
-    ))
-
-    // special case for no nested objects
-    if (nestedAttr.length == 0) {
-      return this._indent(depth,`<${this._attrString()}/>`)
-    }
-
-    // generate output text
-    let out = [];
-    out.push(`<${this._attrString()}>`);
-    nestedAttr.forEach(x => {out = out.concat(x)});
-    out.push(`</${this.rule.name}>`);
-
-    // return indented text
-    return this._indent(depth, out)
-  }
-}
-
-class RuleSet {
-  constructor(baseRule, regex) {
-    this.baseRule = baseRule;
-    this.regex = regex;
-    this.rules = {};
-  }
-
-  parse(txt, pos=0) {
-    return this.rules[this.baseRule].parse(txt,pos)
-  }
-
-  addRule(name, regex, sub_rules={}) {
-    this.rules[name] = new Rule(name, regex, sub_rules, this);
-  }
-
-  addRules(def) {
-    Object.keys(def).forEach(key => {
-      var [re,sub_rules] = def[key];
-      if (this.regex) {
-        re = this.regex[re];
-      }
-      this.addRule(key, re, sub_rules);
-    })
-  }
-
-  addDispatchRule(name, def) {
-    let rules = def.split('|').map(r => {
-      if (this.rules[r] === undefined) throw new Error('Undefined rule: '+r);
-      return this.rules[r]
-    })
-    this.rules[name] = new DispatchRule(name, rules);
-  }
-
-  addRepeatingRule(name, rule) {
-    this.rules[name] = new RepeatingRule(name, this.rules[rule]);
-  }
-}
-
-class Rule {
-  constructor(name, regex, sub_rules, ruleset) {
-    this.name = name;
-    this.regex = regex;
-    this.tokens = regex.tokens;
-    this.sub_rules = sub_rules;
-    this.ruleset = ruleset;
-  }
-
-  parse(txt, pos=0, fail_ok=false) {
-    let res = this.regex.exec(txt.slice(pos));
-    if (res) {
-      return new Result(this, res, pos)
-    } else if (fail_ok) {
-      return null
-    } else {
-      throw new Error('Failed to match regex rule: ' + txt.charCodeAt(0));
-    }
-  }
-}
-
-class RepeatingRule {
-  constructor(name, rule) {
-    this.name = name;
-    this.rule = rule;
-  }
-
-  parse(txt, pos=0) {
-    let out = [];
-    let loc = pos;
-    while (loc + 1 < txt.length) {
-      let res = this.rule.parse(txt,loc);
-      if (res.n == 0) {
-        throw new Error('Empty regex match')
-      } else {
-        loc = res.finalPosition;
-        out.push(res);
-      }
-    }
-    return new ResultArray(this.name, out);
-  }
-}
-
-class DispatchRule {
-  constructor(name, rules) {
-    this.name = name;
-    this.rules = rules;
-  }
-
-  parse(txt, pos=0) {
-    for (var i = 0; i < this.rules.length; i++) {
-      let res = this.rules[i].parse(txt,pos,true);
-      if (res) {
-        return res;
-      }
-    }
-    throw new Error('Failed to match a dispatch rule: ' + txt.charCodeAt(0));
-  }
-}
 
 //////////////////////////
 // DEFINE GRAMMAR RULES //
@@ -941,16 +1123,78 @@ Model.addRules({
   StrongAs   : ['strong_as', {text:'Inline'}],
   EmUs       : ['em_us'    , {text:'Inline'}],
   EmAs       : ['em_as'    , {text:'Inline'}],
+  InlineCode : ['i_code'   , {}             ],
+  Break      : ['br'       , {}             ],
   Del        : ['del'      , {text:'Inline'}],
   InlineText : ['i_text1'  , {}             ]
 });
 
 // 'Inline' rule is repeated dispatch over inline types
-Model.addDispatchRule('InlineElement', 'StrongUs|StrongAs|EmUs|EmAs|Del|InlineText');
+Model.addDispatchRule('InlineElement', 'StrongUs|StrongAs|EmUs|EmAs|InlineCode|Break|Del|InlineText');
 Model.addRepeatingRule('Inline', 'InlineElement');
 
+////////////////////////////////////
+// DEFINE POST-PROCESSING ACTIONS //
+////////////////////////////////////
 
+// define actions
+let post_process = {
+  Heading: function(x) {
+    x.level = x.depth.length; // convert captured depth to a number
+    x.id = x.text.toLowerCase().replace(/<.*?>/g,'').replace(/[^\w]+/g, '-'); // create a heading ID
+  }
+};
 
+// attach actions
+Object.keys(post_process).forEach(k => {
+  Model.rules[k].processor = post_process[k]
+})
+
+////////////////////////
+// CONFIGURE RENDERER //
+////////////////////////
+
+renderer = new Renderer({
+   Heading    : '<h{{level}} id="{{id}}"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</h{{level}}>\n',
+   Paragraph  : '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
+   StrongUs   : '<strong{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</strong>',
+   StrongAs   : '<strong{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</strong>',
+   EmUs       : '<em{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</em>',
+   EmAs       : '<em{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</em>',
+   InlineCode : '<code{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{^^text}}</code>',
+   Break      : '<br{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
+   Del        : '<del{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</del>',
+   InlineText : '{{text}}'
+})
+
+// renderer = new Renderer({
+//   space:      '',
+//   hr:         '<hr{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>\n',
+//   Heading:    '<h{{level}} id="{{id}}"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</h{{level}}>\n',
+//   b_code:     '<pre{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}><code{{IF lang}} class="lang-{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>{{IF lang}}\n{{ENDIF}}',
+//   blockquote: '<blockquote{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{text}}</blockquote>\n',
+//   html:       '{{text}}',
+//   list:       '<{{listtype}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{text}}</{{listtype}}>\n',
+//   listitem:   '<li{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</li>\n',
+//   paragraph:  '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
+//   b_text:     '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
+//   table:      '<table{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n<thead>\n{{header}}</thead>\n<tbody>\n{{body}}</tbody>\n</table>\n',
+//   tablerow:   '<tr{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>\n{{content}}</tr>\n',
+//   tablecell:  '<{{IF header}}th{{ELSE}}td{{ENDIF}}{{IF align}} style="text-align:{{align}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</{{IF header}}th{{ELSE}}td{{ENDIF}}>\n',
+//   strong:     '<strong{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</strong>',
+//   em:         '<em{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</em>',
+//   i_code:     '<code{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{^^text}}</code>',
+//   i_text:     '{{^text}}',
+//   i_html:     '{{text}}',
+//   br:         '<br{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
+//   del:        '<del{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</del>',
+//   link:       '<a href="{{^href}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</a>',
+//   mailto:     '<a href="{{@href}}"}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{@text}}</a>',
+//   image:      '<img src="{{^href}}" alt="{{^text}}"{{IF title}} title="{{^title}}"{{ENDIF}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
+//   tag:        '<{{IF isClosing}}/{{ENDIF}}{{text}}{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}{{IF selfClose}}/{{ENDIF}}>',
+//   i_latex:    '<latex class="inline"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{latex}}</latex>',
+//   b_latex:    '<latex class="block"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{latex}}</latex>'
+// });
 
 
 

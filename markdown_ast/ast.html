@@ -21,6 +21,11 @@
             float: left;
             padding: 1em;
         }
+        #rendered_container {
+            float: left;
+            padding: 1em;
+            width: 600px;
+        }
         #ast {
             font-family: monospace;
             white-space: pre;
@@ -33,18 +38,26 @@
             <textarea name="" id="" cols="80" rows="40">
 # First-level **bolded _and italicized_** heading
 
-Paragraph text
+Paragraph text `// with some code`
+  
+Blah...
             </textarea>
         </div>
         <div id="ast_container">
             <h1>AST display</h1>
             <div id="ast"></div>
         </div>
+        <div id="rendered_container">
+            <h1>Rendered text</h1>
+            <pre><div id="rendered"></div></pre>
+        </div>
     </div>
     <script type="text/javascript">
         jQuery(function(){
             ast = Model.parse($('#editor textarea').val());
             $('#ast').text(ast.render());
+            html = renderer.render(ast)
+            $('#rendered').text(html);
         })
     </script>
 </body>
