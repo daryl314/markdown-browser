@@ -10,7 +10,6 @@
   "license": "ISC",
   "dependencies": {
     "evernote": "^2.0.1-beta",
-    "evernote-sdk-sample-node": "file:express",
-    "express-session": "^1.15.5"
+    "express": "^4.16.2"
   }
 }

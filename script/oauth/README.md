@@ -3,3 +3,4 @@ Adapted from Evernote SDK example application: https://github.com/evernote/evern
 * Run `npm install` to pull in dependencies
 * Start with `node app.js`
 * Browse to `http://localhost:3000` to authorize application
+* Paste token displayed after authorization into application (File > Update Token)
