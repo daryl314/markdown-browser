@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Heading Browser</title>
+    <link rel="stylesheet" href="../lib/bootswatch-cosmo.min.css" />
+    <script type="text/javascript" src="markdown_ast.js"></script>
+    <script type="text/javascript" src="../lib/jquery.min.js"></script>
+    <script type="text/javascript" src="../lib/jqtree-1.4.3/tree.jquery.js"></script>
+    <link rel="stylesheet" href="../lib/jqtree-1.4.3/jqtree.css">
+    <style>
+        #container {
+            width: 100%
+        }
+        #ast_container {
+            /*width: 50%;*/
+            float: left;
+            padding: 1em;
+        }
+        #rendered_container {
+            float: left;
+            padding: 1em;
+            width: 600px;
+        }
+        #ast {
+            font-family: monospace;
+            white-space: pre;
+        }
+    </style>
+    </head>
+<body>
+    <div id="container">
+        <div id="ast_container">
+            <h1>AST display</h1>
+            <div id="ast"></div>
+        </div>
+        <div id="rendered_container">
+            <h1>Rendered text</h1>
+            <button>Render</button>
+            <pre><div id="rendered"></div></pre>
+        </div>
+    </div>
+    <script type="text/javascript">
+        jQuery(function(){
+            $.get('climbing_training.md', function(data){
+                
+                // clear any sub-rules in model
+                Object.keys(Model.rules).forEach(k => {
+                    Model.rules[k].sub_rules = {}
+                })
+
+                // parse data
+                let ast = Model.parse('# Climbing Training #\n\n' + data);
+
+                // break content into chunks by heading
+                let headings = [];
+                let node = {name:'', depth:1, children:[]};
+                ast.arr.forEach(el => {
+                    if (el.rule.name === 'Heading' && el.attr.depth.length >= 2) {
+                        if (node.children.length > 0) {
+                            headings.push(node)
+                        }
+                        node = {name:el.attr.text, depth:el.attr.depth.length, children:[el.cap]};
+                    } else {
+                        node.children.push(el.cap);
+                    }
+                })
+                headings.push(node);
+
+                // convert heading data into a tree structure
+                let tree = {name:'Root', depth:1, children:[], id:0, content:headings[0].children.join('')};
+                let chain = [tree];
+                let ids = [tree];
+                headings.slice(1).forEach(el => {
+                    if (el.depth - 1 <= chain.length) {
+                        let obj = {name:el.name, depth:el.depth, children:[], id:ids.length, content:el.children.slice(1).join('')};
+                        chain[el.depth-2].children.push(obj);
+                        chain[el.depth-1] = obj;
+                        chain = chain.slice(0, el.depth);
+                        ids.push(obj);
+                    } else {
+                        barf // TODO: implement...
+                    }
+                });
+
+                // convert tree to json object for jqTree plugin: https://mbraak.github.io/jqTree/#multiple-selection
+                function treeToJson(node) {
+                    return node.children.map(c => {return {name:c.name, id:c.id, children:treeToJson(c)}})
+                }
+                $('#ast').tree({
+                    data: [{
+                        name:'Root',
+                        id:0,
+                        children: treeToJson(tree)
+                    }],
+                    autoOpen: true, 
+                    dragAndDrop: true
+                });
+
+                // convert tree to text with click on button
+                $('#rendered_container button').on('click', function(){ 
+                    var rootNode = $('#ast').tree('getTree');
+                    function processChild(child) {
+                        var lvl = child.getLevel();
+                        var ref = ids[child.id];
+                        var childData = child.children.map(processChild).join('');
+                        if (lvl > 1) {
+                            return `${'#'.repeat(lvl)} ${ref.name} ${'#'.repeat(lvl)}\n\n` + ref.content + childData
+                        } else {
+                            return ref.content + childData
+                        }
+                    }
+                    var txt = rootNode.children.map(processChild).join('');
+                    $('#rendered').text(txt)
+                })
+                
+             })
+        })
+    </script>
+</body>
+</html>
