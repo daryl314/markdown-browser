@@ -717,7 +717,8 @@ class GuiControl {
       refs.$helpWindow,
       refs.$browserMenu,
       refs.$browserTable,
-      refs.$browserViewer
+      refs.$browserViewer,
+      refs.$sorterWindow
     ].reduce( (a,b) => a.add($(b)), $() );
 
     // collection of items to disable without a server connection
