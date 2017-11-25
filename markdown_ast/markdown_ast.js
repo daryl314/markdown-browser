@@ -1,8 +1,8 @@
 // placeholder for data
 if (typeof window !== 'undefined') {
-  window.markdown = {};
+  window.markdown_ast = {};
 } else {
-  global.markdown = {};
+  global.markdown_ast = {};
 }
 
 ////////////////////////////////////
@@ -12,10 +12,11 @@ if (typeof window !== 'undefined') {
 // subclass regexp to customize behavior?  https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/@@match
 
 class ResultArray {
-  constructor(name, arr) {
+  constructor(name, arr, cap) {
     this.leader = '  ';
     this.name = name;
     this.arr = arr;
+    this.cap = cap;
   }
 
   render() {
@@ -194,7 +195,7 @@ class RepeatingRule {
         out.push(res);
       }
     }
-    return new ResultArray(this.name, out);
+    return new ResultArray(this.name, out, txt);
   }
 }
 
@@ -398,7 +399,7 @@ class Renderer {
 //////////////////////////
 
 // compile regex grammar
-let regex = function(){
+let regex_md = function(){
 
   ///////////////////////////////
   // REGEX PROCESSING FUNCTION //
@@ -1025,6 +1026,7 @@ let regex = function(){
 
   ////////// TAG REGEX //////////
 
+  // non-captured version to match marked.js
   regex.tag = regex.Combine(
       /^/,            //   anchor to start of string
       /<!--/,         //   <!--
@@ -1045,6 +1047,9 @@ let regex = function(){
       />/             //   >
   );
 
+  // version with captured text
+  regex.tag1 = new RegExp(`^(${regex.tag.source.slice(1)})`);
+  regex.tag1.tokens = ['text'];
 
   ////////// INLINE TEXT REGEX //////////
 
@@ -1092,7 +1097,6 @@ let regex = function(){
 }();
 
 
-
 //////////////////////////
 // DEFINE GRAMMAR RULES //
 //////////////////////////
@@ -1100,37 +1104,71 @@ let regex = function(){
 // create a container for set of rules
 let Model = new RuleSet(
   'Block',  // top-level rule name
-  regex     // regex definition map
+  regex_md  // regex definition map
 );
 
 // base-level block rules
+//<Rule Name>      <Regex Name>   <Sub Rules>
 Model.addRules({
-  Heading   : ['heading'  , {text:'Inline'}],
-  Paragraph : ['paragraph', {text:'Inline'}]
+  BlockCode      : ['b_code'    , {}             ],
+  Fences         : ['fences'    , {}             ],
+  Heading        : ['heading'   , {text:'Inline'}],
+  NoPipeTable    : ['nptable'   , {}             ],
+  LineHeading    : ['lheading'  , {text:'Inline'}],
+  HorizontalRule : ['hr'        , {}             ],
+  BlockQuote     : ['blockquote', {}             ],
+  List           : ['list'      , {}             ],
+  HTML           : ['html'      , {}             ],
+  Definition     : ['def'       , {}             ],
+  Table          : ['table'     , {}             ],
+  Paragraph      : ['paragraph' , {text:'Inline'}],
+  BlockText      : ['b_text'    , {text:'Inline'}]
 });
 
 // 'Block' rule is repeated dispatch over block types
-Model.addDispatchRule('BlockElement', 'Heading|Paragraph');
+Model.addDispatchRule('BlockElement', 
+  'BlockCode|Fences|Heading|NoPipeTable|LineHeading|HorizontalRule|BlockQuote|List|' +
+  'HTML|Definition|Table|Paragraph');
 Model.addRepeatingRule('Block', 'BlockElement');
 
+// 'ListBlock' rule is used in list processing (or when processing a list and a block quote)
+Model.addDispatchRule('ListBlockElement', 
+'BlockCode|Fences|Heading|LineHeading|HorizontalRule|BlockQuote|List|HTML|BlockText');
+Model.addRepeatingRule('ListBlock', 'ListBlockElement');
+
+// 'QuoteBlock' rule is used when processing block quotes (but not lists)
+Model.addDispatchRule('QuoteBlockElement', 
+  'BlockCode|Fences|Heading|NoPipeTable|LineHeading|HorizontalRule|BlockQuote|List|' +
+  'HTML|Table|Paragraph');
+Model.addRepeatingRule('QuoteBlock', 'QuoteBlockElement');
+
+
 // base-level inline rules
-/*inline.rules = [
-  'i_latex', 'b_latex', 'escape', 'autolink', 'url', 'tag', 'link', 'reflink', 'nolink',
-  'strong', 'em', 'i_code', 'br', 'del', 'i_text'
-]*/
 Model.addRules({
-  StrongUs   : ['strong_us', {text:'Inline'}],
-  StrongAs   : ['strong_as', {text:'Inline'}],
-  EmUs       : ['em_us'    , {text:'Inline'}],
-  EmAs       : ['em_as'    , {text:'Inline'}],
-  InlineCode : ['i_code'   , {}             ],
-  Break      : ['br'       , {}             ],
-  Del        : ['del'      , {text:'Inline'}],
-  InlineText : ['i_text1'  , {}             ]
+  InlineLatex   : ['i_latex'  , {}             ],
+  BlockLatex    : ['b_latex'  , {}             ],
+  Escape        : ['escape'   , {}             ],
+  AutoLink      : ['autolink' , {}             ],
+  URL           : ['url'      , {}             ],
+  Tag           : ['tag1'     , {}             ],
+  Link          : ['link'     , {text:'Inline'}],
+  ReferenceLink : ['reflink'  , {}             ],
+  NoTextRefLink : ['nolink'   , {}             ],
+  StrongUs      : ['strong_us', {text:'Inline'}],
+  StrongAs      : ['strong_as', {text:'Inline'}],
+  EmUs          : ['em_us'    , {text:'Inline'}],
+  EmAs          : ['em_as'    , {text:'Inline'}],
+  InlineCode    : ['i_code'   , {}             ],
+  Break         : ['br'       , {}             ],
+  Del           : ['del'      , {text:'Inline'}],
+  InlineText    : ['i_text1'  , {}             ]
 });
 
 // 'Inline' rule is repeated dispatch over inline types
-Model.addDispatchRule('InlineElement', 'StrongUs|StrongAs|EmUs|EmAs|InlineCode|Break|Del|InlineText');
+Model.addDispatchRule('InlineElement', 
+  'InlineLatex|BlockLatex|Escape|AutoLink|URL|Tag|Link|ReferenceLink|NoTextRefLink|' +
+  'StrongUs|StrongAs|EmUs|EmAs|InlineCode|Break|Del|InlineText'
+);
 Model.addRepeatingRule('Inline', 'InlineElement');
 
 ////////////////////////////////////

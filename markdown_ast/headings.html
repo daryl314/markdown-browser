@@ -68,20 +68,47 @@
                 })
                 headings.push(node);
 
-                // convert heading data into a tree structure
-                let tree = {name:'Root', depth:1, children:[], id:0, content:headings[0].children.join('')};
+                // initialize root of tree to containg nested headings
+                let tree = {
+                    name     : 'Root', 
+                    depth    : 1, 
+                    children : [], 
+                    id       : 0, 
+                    content  : headings[0].children.join('')
+                };
+
+                // initialize a chain of parent nodes to identify current parent at a given heading depth
                 let chain = [tree];
+
+                // initialize lookup list to map id numbers to heading nodes
                 let ids = [tree];
+
+                // iterate over lower-level headings
                 headings.slice(1).forEach(el => {
-                    if (el.depth - 1 <= chain.length) {
-                        let obj = {name:el.name, depth:el.depth, children:[], id:ids.length, content:el.children.slice(1).join('')};
-                        chain[el.depth-2].children.push(obj);
-                        chain[el.depth-1] = obj;
-                        chain = chain.slice(0, el.depth);
-                        ids.push(obj);
-                    } else {
-                        barf // TODO: implement...
+
+                    // extend chain for any detached headings (such as an h4 inside an h2)
+                    while (el.depth >= chain.length) {
+                        chain.push( chain[chain.length-1] )
                     }
+
+                    // create object
+                    let obj = {
+                        name     : el.name, 
+                        depth    : el.depth, 
+                        children : [], 
+                        id       : ids.length, 
+                        content  : el.children.slice(1).join('')
+                    };
+
+                    // add object to parent (using chain to identify)
+                    chain[el.depth-2].children.push(obj);
+
+                    // add object to chain and trim off any lower-level items
+                    chain[el.depth-1] = obj;
+                    chain = chain.slice(0, el.depth);
+
+                    // add object to id lookup list
+                    ids.push(obj);
                 });
 
                 // convert tree to json object for jqTree plugin: https://mbraak.github.io/jqTree/#multiple-selection

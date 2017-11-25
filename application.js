@@ -402,14 +402,23 @@ class GuiControl {
       help    : 5
     };
 
+    // enumeration for editor side panes
+    this.sidePanes = {
+      none    : 1,
+      preview : 2,
+      help    : 3,
+      sorter  : 4
+    };
+
     // state properties that trigger a refresh
     this.state = {
-      currentNote   : null,             // GUID of current note
-      currentTab    : this.tabs.editor, // currently selected tab
-      floatingTOC   : false,            // display floating TOC menu?
-      noteClean     : true,             // are there unsaved changes?
-      noteTitle     : 'Untitled Note',  // title of current note
-      showNoteList  : false             // should note list be rendered?
+      currentNote   : null,                   // GUID of current note
+      currentTab    : this.tabs.editor,       // currently selected tab
+      sidePane      : this.sidePanes.preview, // side pane displayed with editor
+      floatingTOC   : false,                  // display floating TOC menu?
+      noteClean     : true,                   // are there unsaved changes?
+      noteTitle     : 'Untitled Note',        // title of current note
+      showNoteList  : false                   // should note list be rendered?
     };
 
     // other properties
@@ -448,6 +457,7 @@ class GuiControl {
   // getters for properties that trigger a refresh
   get currentNote  () { return this.state.currentNote  }
   get currentTab   () { return this.state.currentTab   }
+  get sidePane     () { return this.state.sidePane     }
   get floatingTOC  () { return this.state.floatingTOC  }
   get noteClean    () { return this.state.noteClean    }
   get noteTitle    () { return this.state.noteTitle    }
@@ -458,12 +468,13 @@ class GuiControl {
   get isWritable   () { }
 
   // setters for state properties that trigger a refresh
-  set currentNote  (v)  { this.state.currentNote  = v; this._debouncedRefresh(); }
-  set currentTab   (v)  { this.state.currentTab   = v; this._debouncedRefresh(); }
-  set floatingTOC  (v)  { this.state.floatingTOC  = v; this._debouncedRefresh(); }
-  set noteClean    (v)  { this.state.noteClean    = v; this._debouncedRefresh(); }
-  set noteTitle    (v)  { this.state.noteTitle    = v; this._debouncedRefresh(); }
-  set showNoteList (v)  { this.state.showNoteList = v; this._debouncedRefresh();
+  set currentNote  (v)  { this._updateProperty(v,'currentNote' ) }
+  set currentTab   (v)  { this._updateProperty(v,'currentTab'  ) }
+  set sidePane     (v)  { this._updateProperty(v,'sidePane'    ) }
+  set floatingTOC  (v)  { this._updateProperty(v,'floatingTOC' ) }
+  set noteClean    (v)  { this._updateProperty(v,'noteClean'   ) }
+  set noteTitle    (v)  { this._updateProperty(v,'noteTitle'   ) }
+  set showNoteList (v)  { this._updateProperty(v,'showNoteList') ; 
                           if (v) {
                             this.server.connect().then(conn => {
                               this.populateNoteList(conn.notes);
@@ -471,6 +482,14 @@ class GuiControl {
                           }
                         }
 
+  // update a property and trigger a refresh if the property changed
+  _updateProperty(v,k) {
+    if (this.state[k] !== v) {
+      this.state[k] = v;
+      this._debouncedRefresh();
+    }
+  }
+  
   // throttled call to refresh function
   _debouncedRefresh() {
     var _this = this;
@@ -536,6 +555,13 @@ class GuiControl {
       this.$fileMenu.hide();
     }
 
+    // hide side pane menu unless in editor mode
+    if (this.currentTab === this.tabs.editor) {
+      this.$sidePaneMenu.show()
+    } else {
+      this.$sidePaneMenu.hide()
+    }
+
     // reset column size classes
     clearWidthClasses(this.$previewWindow.add(this.$editorWindow).add(this.$historyWindow));
 
@@ -564,7 +590,20 @@ class GuiControl {
 
       case this.tabs.editor:
         this.$viewEditor.addClass('arrow_box');
-        setWidthClass( this.$editorWindow.add(this.$previewWindow) ).show();
+        let $windows = this.$editorWindow;
+        if (this.state.sidePane === this.sidePanes.preview) {
+          $windows = $windows.add(this.$previewWindow);
+          this.$sidePaneTitle.html('Preview<span class="caret"></span></a>');
+        } else if (this.state.sidePane === this.sidePanes.help) {
+          $windows = $windows.add(this.$helpWindow);
+          this.$sidePaneTitle.html('Help<span class="caret"></span></a>');
+        } else if (this.state.sidePane === this.sidePanes.sorter) {
+          $windows = $windows.add(this.$sorterWindow);
+          this.$sidePaneTitle.html('Sorter<span class="caret"></span></a>');
+        } else {
+          this.$sidePaneTitle.html('None<span class="caret"></span></a>');
+        }
+        setWidthClass($windows).show();
         break;
 
       case this.tabs.viewer:
@@ -589,11 +628,6 @@ class GuiControl {
         this.$viewHistory.addClass('arrow_box');
         this.$historyWindow.addClass('col-md-10').show();
         this.$historyMenu.show();
-        break;
-
-      case this.tabs.help:
-        this.$viewHelp.addClass('arrow_box');
-        setWidthClass( this.$editorWindow.add(this.$helpWindow) ).show();
         break;
 
       default:
@@ -626,13 +660,20 @@ class GuiControl {
     refs.$noteTitle       = $('body > header#main-menu li#noteTitle');
     refs.$toggleTOC       = $('body > header#main-menu a#toggleFloatingTOC');
 
+    // Editor side pane selection menu
+    refs.$sidePaneMenu    = $('body > header#main-menu li#editSidePane');
+    refs.$sidePaneTitle   = $('body > header#main-menu li#editSidePane > a.dropdown-toggle');
+    refs.$sidePaneNone    = $('body > header#main-menu a#sidePaneNone');
+    refs.$sidePanePreview = $('body > header#main-menu a#sidePanePreview');
+    refs.$sidePaneHelp    = $('body > header#main-menu a#sidePaneHelp');
+    refs.$sidePaneSorter  = $('body > header#main-menu a#sidePaneSorter');
+
     // Tabs
     refs.$viewEditor      = $('body > header#main-menu a#viewEditor');
     refs.$viewHistory     = $('body > header#main-menu a#viewHistory');
     refs.$viewViewer      = $('body > header#main-menu a#viewViewer');
     refs.$viewBrowser     = $('body > header#main-menu a#viewBrowser');
     refs.$viewChanges     = $('body > header#main-menu a#viewChanges');
-    refs.$viewHelp        = $('body > header#main-menu a#viewHelp');
 
     // floating table of contents
     refs.$floatingTOC     = $('#application-window ul#floating-toc');
@@ -653,6 +694,8 @@ class GuiControl {
     refs.$browserMenu     = $('#application-window section#browser-menu');
     refs.$browserTable    = $('#application-window section#browser-notes');
     refs.$browserViewer   = $('#application-window section#browser-viewer');
+    refs.$sorterWindow    = $('#application-window section#sorter-container');
+    refs.$sorterTree      = $('#application-window section#sorter-container div#sorter-tree');
 
     // attach a wrapped set of tabs
     refs.$allTabs = [
@@ -661,7 +704,6 @@ class GuiControl {
       refs.$viewBrowser,
       refs.$viewHistory,
       refs.$viewChanges,
-      refs.$viewHelp
     ].reduce( (a,b) => a.add($(b)), $() );
 
     // attach a wrapped set of windows
@@ -707,7 +749,6 @@ class GuiControl {
           _this.diffCache = {}; // clear cache
           _this.currentTab = _this.tabs.history;
           _this.floatingTOC = false;
-          _this.showHelp = false;
           _this.server.connect()
             .then(conn => {
               let note = conn.getNote(_this.currentNote);
@@ -722,20 +763,14 @@ class GuiControl {
 
     // bind to clicking on 'Editor' tab
     this.$viewEditor.off('click').on('click', function(){
-      if (_this.currentTab !== _this.tabs.editor) {
-        _this.currentTab = _this.tabs.editor;
-        _this.floatingTOC = false;
-        _this.showHelp = false;
-      }
+      _this.currentTab = _this.tabs.editor;
+      _this.floatingTOC = false;
     });
 
     // bind to clicking on 'Viewer' tab
     this.$viewViewer.off('click').on('click', function(){
-      if (_this.currentTab !== _this.tabs.viewer) {
-        _this.currentTab = _this.tabs.viewer;
-        _this.floatingTOC = false;
-        _this.showHelp = false;
-      }
+      _this.currentTab = _this.tabs.viewer;
+      _this.floatingTOC = false;
     });
 
     // bind to clicking on 'Browser' tab
@@ -746,40 +781,33 @@ class GuiControl {
         }
         _this.currentTab = _this.tabs.browser;
         _this.floatingTOC = false;
-        _this.showHelp = false;
         _this.showNoteList = false;
       })
     })
 
-    // bind to clicking on 'Help' tab
-    this.$viewHelp.off('click').on('click', function(){
-      if (_this.currentTab !== _this.tabs.help) {
-        _this.currentTab = _this.tabs.help;
-        _this.floatingTOC = false;
-        _this.showHelp = true;
+    // bind to clicking on 'Changes' tab --> preview note changes from server version
+    this.$viewChanges.off('click').on('click', function(){
+      if (_this.currentNote === null) {
+        _this.transientAlert("No note currently loaded!")
+      } else {
+        _this.server.connect()
+          .then(conn => {
+            let note = conn.getNote(_this.currentNote);
+            note.getContent()
+              .then(oldContent => {
+                _this.currentTab = _this.tabs.changes;
+                _this.floatingTOC = false;
+                compareBlocks(oldContent, _this.cm.getValue(), _this.diffOptions(note.title));
+              })
+          })
       }
     })
 
-    // bind to clicking on 'Changes' tab --> preview note changes from server version
-    this.$viewChanges.off('click').on('click', function(){
-      if (_this.currentTab !== _this.tabs.changes) {
-        if (_this.currentNote === null) {
-          _this.transientAlert("No note currently loaded!")
-        } else {
-          _this.server.connect()
-            .then(conn => {
-              let note = conn.getNote(_this.currentNote);
-              note.getContent()
-                .then(oldContent => {
-                  _this.currentTab = _this.tabs.changes;
-                  _this.floatingTOC = false;
-                  _this.showHelp = false;
-                  compareBlocks(oldContent, _this.cm.getValue(), _this.diffOptions(note.title));
-                })
-            })
-        }
-      }
-    })
+    // bind to clicking on side panel selection menu
+    this.$sidePaneNone   .off('click').on('click', function(){ _this.sidePane = _this.sidePanes.none    });
+    this.$sidePanePreview.off('click').on('click', function(){ _this.sidePane = _this.sidePanes.preview });
+    this.$sidePaneHelp   .off('click').on('click', function(){ _this.sidePane = _this.sidePanes.help    });
+    this.$sidePaneSorter .off('click').on('click', function(){ _this.sidePane = _this.sidePanes.sorter  ; _this.refreshSorter() });
 
     // bind to table of contents entry clicks
     function navigationHandler(event){
@@ -1099,6 +1127,115 @@ class GuiControl {
       // otherwise diff data are ready, so return true
       return true
     }
+  }
+
+  // start note heading sorter
+  refreshSorter() {
+
+    // parse data
+    let ast = Model.parse(this.cm.getValue());
+
+    // break content into chunks by heading
+    let headings = [];
+    let node = {name:'', depth:1, children:[]};
+    ast.arr.forEach(el => {
+      if (el.rule.name === 'Heading' && el.attr.depth.length >= 2) {
+        if (node.children.length > 0) {
+          headings.push(node)
+        }
+        node = {name:el.attr.text.cap, depth:el.attr.depth.length, children:[el.cap]};
+      } else {
+        node.children.push(el.cap);
+      }
+    })
+    headings.push(node);
+
+    // initialize root of tree to containg nested headings
+    let tree = {
+      name     : 'Root', 
+      depth    : 1, 
+      children : [], 
+      id       : 0, 
+      content  : headings[0].children.join('')
+    };
+
+    // initialize a chain of parent nodes to identify current parent at a given heading depth
+    let chain = [tree];
+
+    // initialize lookup list to map id numbers to heading nodes
+    let ids = [tree];
+
+    // iterate over lower-level headings
+    headings.slice(1).forEach(el => {
+
+      // extend chain for any detached headings (such as an h4 inside an h2)
+      while (el.depth >= chain.length) {
+        chain.push( chain[chain.length-1] )
+      }
+
+      // create object
+      let obj = {
+        name     : el.name, 
+        depth    : el.depth, 
+        children : [], 
+        id       : ids.length, 
+        content  : el.children.slice(1).join('')
+      };
+
+      // add object to parent (using chain to identify)
+      chain[el.depth-2].children.push(obj);
+
+      // add object to chain and trim off any lower-level items
+      chain[el.depth-1] = obj;
+      chain = chain.slice(0, el.depth);
+
+      // add object to id lookup list
+      ids.push(obj);
+    });
+
+    // convert tree to json object for jqTree plugin: https://mbraak.github.io/jqTree
+    function treeToJson(node) {
+      return node.children.map(c => {return {name:c.name, id:c.id, children:treeToJson(c)}})
+    }
+    this.$sorterTree.tree({
+      data: [{
+        name:'Root',
+        id:0,
+        children: treeToJson(tree)
+      }],
+      autoOpen: true, 
+      dragAndDrop: true
+    });
+
+    // update editor when a node is moved
+    let _this = this;
+    this.$sorterTree.bind('tree.move', function(event) {
+          
+      // hook is pre-move so let move happen first
+      event.preventDefault();
+      event.move_info.do_move();
+
+      // get reference to root node of tree
+      var rootNode = $(this).tree('getTree');
+
+      // convert a node back to markdown text
+      function processChild(child) {
+        var lvl = child.getLevel();
+        var ref = ids[child.id];
+        var childData = child.children.map(processChild).join('');
+        if (lvl > 1) {
+          return `${'#'.repeat(lvl)} ${ref.name} ${'#'.repeat(lvl)}\n\n` + ref.content + childData
+        } else {
+          return ref.content + childData
+        }
+      }
+
+      // recursively convert tree back to markdown text
+      var txt = rootNode.children.map(processChild).join('');
+
+      // update editor
+      _this.cm.setValue(txt);
+    });
   }
 }
 

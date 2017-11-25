@@ -119,6 +119,12 @@
       margin-bottom: 0px;
       font-weight: 900;
     }
+    header#main-menu .navbar-nav>li#editSidePane {
+      background: #dd5600;
+    }
+    header#main-menu .navbar-nav>li#noteTitle {
+      text-transform: uppercase
+    }
 
     /* Text diff styles */
 
@@ -320,14 +326,17 @@
     .toc-menu, .toc-menu ul, .toc-menu li {
       padding: 0px;
     }
-    .toc-menu > li > a {
+    .toc-menu > li > a { /* H2 */
       padding-left:20px;
     }
-    .toc-menu > li > ul > li > a {
+    .toc-menu > li > ul > li > a { /* H3 */
       padding-left:40px;
     }
-    .toc-menu > li > ul > li > ul > li > a {
+    .toc-menu > li > ul > li > ul > li > a { /* H4 */
       padding-left:60px;
+    }
+    .toc-menu > li > ul > li > ul > li > ul > li > a { /* H5 */
+      padding-left:80px;
     }
 
     ul#floating-toc a {
@@ -432,7 +441,8 @@
   <header id="main-menu" class="hidden-print">
     <nav class="navbar navbar-default navbar-fixed-top">
       <div class="container-fluid">
-        <div class="navbar-header">
+        <div class="collapse navbar-collapse">
+
           <ul class="nav navbar-nav">
             <li class="dropdown" id="fileMenu">
               <a class="dropdown-toggle" role="button" data-toggle="dropdown">File
@@ -447,6 +457,7 @@
                 <li><a id="updateToken" href="#" style="display:none">Update token</a></li>
               </ul>
             </li>
+
             <li class="dropdown" id="editMenu">
               <a class="dropdown-toggle" role="button" data-toggle="dropdown">Edit
               <span class="caret"></span></a>
@@ -454,6 +465,7 @@
                 <li><a id="reformatTable" href="#" onClick="app.cm.getMode().reformatTable(app.cm)">Reformat Table</a></li>
               </ul>
             </li>
+
             <li class="dropdown">
               <a class="dropdown-toggle" role="button" data-toggle="dropdown">Nav
               <span class="caret"></span></a>
@@ -462,15 +474,31 @@
                 <li role="separator" class="divider"></li>
               </ul>
             </li>
+
             <li><a id="viewEditor" class="arrow_box" href="#">Editor</a></li>
+            
+            <li class="dropdown" id="editSidePane">
+              <a class="dropdown-toggle" role="button" data-toggle="dropdown">Preview
+              <span class="caret"></span></a>
+              <ul class="dropdown-menu">
+                <li><a id="sidePaneNone" href="#">None</a></li>
+                <li><a id="sidePanePreview" href="#">Preview</a></li>
+                <li><a id="sidePaneHelp" href="#">Help</a></li>
+                <li><a id="sidePaneSorter" href="#">Sorter</a></li>
+              </ul>
+            </li>
+            
             <li><a id="viewViewer" href="#">Viewer</a></li>
             <li><a id="viewBrowser" href="#">Browser</a></li>
             <li class="disabled"><a id="viewChanges" href="#">Changes</a></li>
             <li class="disabled"><a id="viewHistory" href="#">History</a></li>
-            <li><a id="viewHelp" href="#">Help</a></li>
-            <li class="navbar-text" id="noteTitle">Untitled Note</li>
           </ul>
-        </div>
+
+          <ul class="nav navbar-nav navbar-right">
+            <li class="navbar-text" id="noteTitle">Untitled Note</li> 
+          </ul>
+
+        </div> <!-- /.navbar-collapse -->
       </div>
     </nav>
   </header>
@@ -515,6 +543,12 @@
     <!-- HELP TEXT WINDOW -->
     <section id="help-container" style="display:none" class="col-md-6" role="complementary">
       <div id="rendered-help"></div>
+    </section>
+
+    <!-- SORTER WINDOW -->
+    <section id="sorter-container" style="display:none" class="col-md-6" role="complementary">
+      <h1>Heading Sorter</h1>
+      <div id="sorter-tree"></div>
     </section>
 
     <!-- FLOATING TABLE OF CONTENTS -->
@@ -572,6 +606,11 @@
   <!-- TEXT DIFF (NOT NEEDED FOR INITIAL LOAD) -->
   <script type="text/javascript" src="lib/diff_match_patch-20121119.min.js"></script>
   <script type="text/javascript" src="text-diff.js"></script>
+
+  <!-- HEADING SORTER RESOURCES -->
+  <script type="text/javascript" src="markdown_ast/markdown_ast.js"></script>
+  <script type="text/javascript" src="lib/jqtree-1.4.3/tree.jquery.js"></script>
+  <link rel="stylesheet" href="../lib/jqtree-1.4.3/jqtree.css">
 
   <!-- SUPPLEMENTAL RESOURCES NOT NEEDED FOR INITIAL LOAD -->
   <link rel="stylesheet" href="katex-0.5.1/katex.min.css">
