@@ -283,6 +283,7 @@ class BaseRenderer(object):
     def render(self, lines, cols=80, logger=sys.stdout):
         """Render parsed HTML data"""
         for row, line in enumerate(lines):
+            self.startLine(logger)
             col = 0
             for tags, txt in line:
                 if col < cols:
@@ -297,7 +298,15 @@ class BaseRenderer(object):
                 if col < cols:
                     self.writeStyled(' ', ['body'], logger=logger)
             self.writeStyled(' ' * (cols - col), ['body'], logger=logger)
-            logger.write('\n')
+            self.endLine(logger)            
+
+    def startLine(self, logger):
+        """Start a line"""
+        pass
+
+    def endLine(self, logger):
+        """End a line"""
+        logger.write('\n')
 
     def writeStyled(self, txt, tags, logger=sys.stdout):
         tag = self.simplifyStack(tags)
@@ -378,7 +387,7 @@ class ColorConfiguration:
             'h1':{'fg':WHITE, 'bg':RED, 'bold':True},
             'heading':{'fg':RED, 'bold':True},
             # block styles
-            'code':{'fg':LIGHTBLUE},
+            'code':{'fg':LIGHTBLUE, 'italic':True},
             'latex':{'fg':LIGHTGREEN},
             'blockquote':{'fg':YELLOW}
         }
@@ -536,6 +545,52 @@ class VimRenderer(BaseRenderer):
 
 ################################################################################
 
+class RtfRenderer(BaseRenderer):
+
+    def __init__(self, colors):
+        self.colors = colors
+
+    def render(self, lines, cols=80, logger=sys.stdout):
+        """Render parsed HTML data"""
+        logger.write('{\\rtf1\\ansi\deff0\n')
+        logger.write('{\\fonttbl {\\f0 Menlo;}}\\f0\\fs16\n')
+        logger.write("{\colortbl ; \\red0\\green0\\blue0; \\red255\\green255\\blue255; }\n")
+        logger.write('\\deflang1033 ') # language is US English
+        logger.write('\\widowctrl ')
+        logger.write('\\margr720 \\margl720 \\margt720 \\margb720\n') # set margins to 0.5"
+
+        super(RtfRenderer,self).render(lines, cols=cols, logger=logger)
+        logger.write('}')
+
+    def startLine(self, logger):
+        """Start a line"""
+        logger.write('{\\pard ')
+
+    def endLine(self, logger):
+        """End a line"""
+        logger.write(' \\par}\n')
+
+    def writeStyled(self, txt, tags, logger=sys.stdout):
+        txt = txt.replace('\\','\\\\').replace('{','\\{').replace('}','\\}')
+
+        stack = self.simplifyStack(tags)
+        style = self.colors.tagStyle(stack)
+        if style['bold']:
+            txt = '{\\b ' + txt + '}'
+        if style['italic']:
+            txt = '{\\i ' + txt + '}'
+        if style['underline']:
+            txt = '{\\ul ' + txt + '}'
+        if 'h1' in stack:
+            txt = '{\\fs28 ' + txt + '}'
+        if 'th' in stack:
+            txt = '{\\cf0{\\chshdng10000\\chcbpat1\\chcfpat1\\cb1 ' + txt + '}}'
+        if 'code' in stack:
+            txt = '{\\cf0{\\chshdng3000\\chcbpat1\\chcfpat1\\cb1 ' + txt + '}}'
+        logger.write(txt)
+
+################################################################################
+
 class ColoredRenderer(BaseRenderer):
 
     def __init__(self, colors):
@@ -582,11 +637,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Browser for rendered markdown")
     parser.add_argument('--log-file', help="File to store log data")
     parser.add_argument('--log-level', help="Logging level", default='INFO')
-    parser.add_argument('--columns', help="Number of columns to display", type=int, default=80)
+    parser.add_argument('--columns', help="Number of columns to display", type=int)
     parser.add_argument('--256', help="Use 256 colors instead of 24-bit", action="store_true")
     parser.add_argument('--vim', help="Use tags recognizable in vim", action="store_true")
     parser.add_argument('--vim-style', help="Generate a style file for generated vim")
     parser.add_argument('--vim-tree-style', help="Generate a style file for generated vim tree")
+    parser.add_argument('--rtf', help="Generate output as an RTF", action="store_true")
     parser.add_argument('--test', help="Test parser on files in specified directory", action="store_true")
     parser.add_argument('file', help="Input file name")
     args = parser.parse_args()
@@ -607,8 +663,14 @@ if __name__ == '__main__':
     # configure renderer
     if args.vim:
         renderer = VimRenderer(colors)
+    elif args.rtf:
+        renderer = RtfRenderer(colors)
     else:
         renderer = ColoredRenderer(colors)
+
+    # configure column count
+    if args.columns is None:
+        args.columns = 110 if args.rtf else 80
 
     # parse html and generate output
     if not args.test:
