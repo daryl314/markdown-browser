@@ -6,6 +6,7 @@ import math
 import logging
 import cStringIO
 import argparse
+import re
 
 import TerminalColors256
 from TagPair import TagPair
@@ -53,7 +54,7 @@ class InlineData:
 
     def rowLen(self, n):
         row = self.data[n]
-        return sum([len(txt) for _, txt in row]) + len(row) - 1
+        return sum([len(txt) for _, txt in row])
 
     def getRow(self, n):
         out = InlineData(None)
@@ -62,14 +63,17 @@ class InlineData:
         else:
             out.data = [([], '')]
 
-    def padTo(self, n):
+    def padTo(self, n, extendStyle=False):
         if len(self.data[0]) == 0:
             self.data[0].append(([], ' '*n))
         else:
             for row in range(len(self.data)):
-                ts,txt = self.data[row][-1]
-                txt += ' '*(n-self.rowLen(row))
-                self.data[row] = self.data[row][:-1] + [(ts,txt)]
+                if extendStyle:
+                    ts,txt = self.data[row][-1]
+                    txt += ' '*(n-self.rowLen(row))
+                    self.data[row] = self.data[row][:-1] + [(ts,txt)]
+                else:
+                    self.data[row].append(([], ' '*(n-self.rowLen(row))))
         return self
 
 ################################################################################
@@ -131,11 +135,13 @@ class Parser:
                 maxLen[i] = max(maxLen[i], len(td))
 
         for tr in thead+tbody:
-            for n,td in zip(maxLen,tr):
-                padded = td.padTo(n)
+            for col,(n,td) in enumerate(zip(maxLen,tr)):
+                padded = td.padTo(n, extendStyle=td.data[0][0][0][0] == 'th')
                 assert len(padded.data) == 1
                 for tagStack,txt in padded.data[0]:
                     self.append(txt, tagStack)
+                if col+1 < len(tr):
+                    self.append('|', [])
             self.newline()
 
     def parseTableRow(self, cells):
@@ -153,7 +159,7 @@ class Parser:
 
         # leader format string
         if el.leftTag.tag == 'ol':
-            fmt = '%%%dd.' % int(math.ceil(math.log10(len(el.children))))
+            fmt = '%%%dd. ' % int(math.ceil(math.log10(len(el.children))))
 
         # iterate over child <li> elements
         for i,child in enumerate(el.children):
@@ -161,7 +167,7 @@ class Parser:
 
             # start rendered <li> with bullet
             if el.leftTag.tag == 'ul':
-                leader = '  ' * indent + '*'
+                leader = '  ' * indent + '* '
             else:
                 leader = '  ' * indent + fmt%i
             self.append(leader, ['li'])
@@ -294,9 +300,7 @@ class BaseRenderer(object):
                     self.writeStyled(txt, tags, logger=logger)
                 else:
                     logging.info('Skipping text (beyond window): "%s"' % txt)
-                col += len(txt) + 1
-                if col < cols:
-                    self.writeStyled(' ', ['body'], logger=logger)
+                col += len(txt)
             self.writeStyled(' ' * (cols - col), ['body'], logger=logger)
             self.endLine(logger)            
 
@@ -552,23 +556,69 @@ class RtfRenderer(BaseRenderer):
 
     def render(self, lines, cols=80, logger=sys.stdout):
         """Render parsed HTML data"""
+
+        # generate RTF header
         logger.write('{\\rtf1\\ansi\deff0\n')
+        # default font
         logger.write('{\\fonttbl {\\f0 Menlo;}}\\f0\\fs16\n')
-        logger.write("{\colortbl ; \\red0\\green0\\blue0; \\red255\\green255\\blue255; }\n")
-        logger.write('\\deflang1033 ') # language is US English
+        # color table
+        logger.write("{\colortbl ;\\red255\\green255\\blue255;\\red0\\green0\\blue0;\\red192\\green192\\blue192;}")
+        # language is US English
+        logger.write('\\deflang1033 ')
+        # avoid dangling single lines in paragraphs
         logger.write('\\widowctrl ')
-        logger.write('\\margr720 \\margl720 \\margt720 \\margb720\n') # set margins to 0.5"
+        # set margins to 0.5 inches
+        logger.write('\\margr720 \\margl720 \\margt720 \\margb720\n')
 
-        super(RtfRenderer,self).render(lines, cols=cols, logger=logger)
+        # rearrange line data
+        blocks = [[]]
+        for line in lines:
+            if len(line) == 0:
+                blocks.append([])
+            else:
+                blocks[-1].append(line)
+
+        # heading numbering counter
+        headingCounter = [0]*5
+
+        # iterate over blocks
+        for block in blocks:
+            logger.write('{\\pard \\widctlpar \\sa180')
+
+            # special case for headings
+            if len(block) < 5:
+                logger.write(' \\keep')
+            if len(block) > 0 and block[0][0][0][0] in {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}:
+                logger.write(' \\keepn')
+                level = int(block[0][0][0][0][1])
+                if level > 1:
+                    logger.write('\n') # end pard properties and start heading with numbering
+                    for i in range(level-1,5):
+                        headingCounter[i] = 0
+                    headingCounter[level-2] += 1
+                    logger.write('.'.join(['%d'%x for x in headingCounter[:level-1]]))
+                    logger.write(' ')
+                else:
+                    logger.write('\n') # end pard properties for h1 title
+            else:
+                logger.write('\n') # end pard properties for non-heading
+
+            # call renderer
+            buf = cStringIO.StringIO()
+            super(RtfRenderer,self).render(block, cols=cols, logger=buf)
+
+            # strip line break from last line
+            logger.write(re.sub(r'\\line\n$', '\n', buf.getvalue()))
+
+            # terminate paragraph
+            logger.write('\\par}\n')
+
+        # terminate RTF
         logger.write('}')
-
-    def startLine(self, logger):
-        """Start a line"""
-        logger.write('{\\pard ')
 
     def endLine(self, logger):
         """End a line"""
-        logger.write(' \\par}\n')
+        logger.write('\\line\n')
 
     def writeStyled(self, txt, tags, logger=sys.stdout):
         txt = txt.replace('\\','\\\\').replace('{','\\{').replace('}','\\}')
@@ -584,9 +634,9 @@ class RtfRenderer(BaseRenderer):
         if 'h1' in stack:
             txt = '{\\fs28 ' + txt + '}'
         if 'th' in stack:
-            txt = '{\\cf0{\\chshdng10000\\chcbpat1\\chcfpat1\\cb1 ' + txt + '}}'
+            txt = '{\\cf1\\highlight2 ' + txt + '\\cf0\\highlight0}'
         if 'code' in stack:
-            txt = '{\\cf0{\\chshdng3000\\chcbpat1\\chcfpat1\\cb1 ' + txt + '}}'
+            txt = '{\\cf2\\highlight3 ' + txt + '\\cf0\\highlight0}'
         logger.write(txt)
 
 ################################################################################

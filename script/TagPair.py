@@ -37,16 +37,17 @@ class Tag:
 class TagPair:
     """Representation of a pair of HTML tags and their inner content"""
 
-    def __init__(self, tagIterator, html, unescape=True):
-        self.tags = tagIterator  # iterator for Tag objects
-        self.inhtml = html       # associated html
-        self.children = []       # children of tag pair
-        self.leftTag = None      # left tag in pair
-        self.opt = None          # options associated with left tag
-        self.tag = None          # type of tag pair
-        self.rightTag = None     # right tag in pair
-        self.end = None          # position of right side of tag in html
-        self.unescape = unescape # should escaped text be converted?
+    def __init__(self, tagIterator, html, unescape=True, skipWhitespace=False):
+        self.tags = tagIterator    # iterator for Tag objects
+        self.inhtml = html         # associated html
+        self.children = []         # children of tag pair
+        self.leftTag = None        # left tag in pair
+        self.opt = None            # options associated with left tag
+        self.tag = None            # type of tag pair
+        self.rightTag = None       # right tag in pair
+        self.end = None            # position of right side of tag in html
+        self.unescape = unescape   # should escaped text be converted?
+        self.noWS = skipWhitespace # should leading/trailing whitespace be ignored?
 
         # opening tag in pair is first tag in queue
         self.leftTag = self.tags.popleft()
@@ -76,11 +77,21 @@ class TagPair:
 
     def pushTag(self):
         """Add a tag pair to list of children"""
-        self.children.append(TagPair(self.tags, self.inhtml))
+        if self.tag == 'html' and self.tags[0].tag == 'head':
+            noWS = True
+        else:
+            noWS = self.noWS
+        self.children.append(TagPair(self.tags, self.inhtml, skipWhitespace=noWS))
 
     def pushText(self):
         """Add text to list of children"""
-        txt = self.inhtml[ self.position() : self.tags[0].start ].lstrip().rstrip()
+        # extract text up to next tag
+        txt = self.inhtml[ self.position() : self.tags[0].start ]
+        # collapse leading or trailing whitespace
+        if self.noWS or self.tag in {'html','div','ul'}:
+            txt = txt.rstrip().lstrip()
+        else:
+            txt = re.sub(r'^\s+', ' ', re.sub(r'\s+$', ' ', txt))
         if self.unescape:
             txt = txt\
                 .replace('&apos;' , "'" )\
