@@ -583,15 +583,18 @@ class RtfRenderer(BaseRenderer):
 
         # iterate over blocks
         for block in blocks:
-            logger.write('{\\pard \\widctlpar \\sa180')
+            logger.write('{\\pard \\widctlpar \\keep')
+
+            # only add 18 pt spacing below if this block won't be split
+            if len(block) < 6:
+                logger.write(' \\sa180')
 
             # special case for headings
-            if len(block) < 5:
-                logger.write(' \\keep')
             if len(block) > 0 and block[0][0][0][0] in {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}:
+                # keep headings with content below
                 logger.write(' \\keepn')
                 level = int(block[0][0][0][0][1])
-                if level > 1:
+                if level > 1: # number headings h2 and lower (skip title)
                     logger.write('\n') # end pard properties and start heading with numbering
                     for i in range(level-1,5):
                         headingCounter[i] = 0
@@ -603,15 +606,26 @@ class RtfRenderer(BaseRenderer):
             else:
                 logger.write('\n') # end pard properties for non-heading
 
+            # render a paragraph without trailing newline
+            def renderParagraph(lines):
+                buf = cStringIO.StringIO()
+                super(RtfRenderer, self).render(lines, cols=cols, logger=buf)
+                logger.write(re.sub(r'\\line\n$', '\n', buf.getvalue()))
+                logger.write('\\par}\n')
+
             # call renderer
-            buf = cStringIO.StringIO()
-            super(RtfRenderer,self).render(block, cols=cols, logger=buf)
-
-            # strip line break from last line
-            logger.write(re.sub(r'\\line\n$', '\n', buf.getvalue()))
-
-            # terminate paragraph
-            logger.write('\\par}\n')
+            if len(block) < 6:
+                renderParagraph(block)
+            else:
+                # keep top chunk together
+                renderParagraph(block[:3])
+                # center chunk can break (if it exists)
+                if len(block) > 6:
+                    logger.write('{\\pard\n')
+                    renderParagraph(block[3:-3])
+                # keep bottom chunk together
+                logger.write('{\\pard \\widctlpar \\keep \\sa180\n')
+                renderParagraph(block[-3:])
 
         # terminate RTF
         logger.write('}')
