@@ -88,7 +88,7 @@ class TagPair:
         # extract text up to next tag
         txt = self.inhtml[ self.position() : self.tags[0].start ]
         # collapse leading or trailing whitespace
-        if self.noWS or self.tag in {'html','div','ul'}:
+        if self.noWS or self.tag in {'html','div','ul','ol'}:
             txt = txt.rstrip().lstrip()
         else:
             txt = re.sub(r'^\s+', ' ', re.sub(r'\s+$', ' ', txt))

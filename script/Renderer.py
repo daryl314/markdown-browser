@@ -136,7 +136,7 @@ class Parser:
 
         for tr in thead+tbody:
             for col,(n,td) in enumerate(zip(maxLen,tr)):
-                padded = td.padTo(n, extendStyle=td.data[0][0][0][0] == 'th')
+                padded = td.padTo(n, extendStyle=(len(td.data[0]) > 0 and td.data[0][0][0][0] == 'th'))
                 assert len(padded.data) == 1
                 for tagStack,txt in padded.data[0]:
                     self.append(txt, tagStack)
