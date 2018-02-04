@@ -386,9 +386,10 @@ class WrappedNoteBrowser {
 
 class GuiControl {
 
-  constructor(cm, wns) {
+  constructor(cm, wns, ss) {
     this.cm = cm;
     this.server = wns;
+    this.ss = ss;
 
     // attach jQuery references to GUI elements
     Object.assign(this, GuiControl.getReferences());
@@ -814,7 +815,9 @@ class GuiControl {
     function navigationHandler(event){
       if (this !== _this.$toggleTOC[0]) {
         var $target = $( $(this).data('href') );
-        _this.$previewWindow.scrollTop(_this.$previewWindow.scrollTop() + $target.position().top);
+        var newTop = _this.$previewWindow.scrollTop() + $target.position().top;
+        _this.$previewWindow.scrollTop(newTop);
+        _this.ss.scrollFrom(newTop);
       }
     };
     this.$navMenu.off('click').on('click', 'a', navigationHandler);
@@ -1451,7 +1454,7 @@ class Application {
       // create GUI class
       .then(() => {
         this.WNC = this.wnc();
-        this.GUI = new GuiControl(this.cm, this.WNC);
+        this.GUI = new GuiControl(this.cm, this.WNC, this.scrollSync);
         if (!this.WNC) {
           this.GUI.persistentWarning('Invalid mode: '+this.queryOptions.mode);
           throw new Error("Invalid mode: "+this.queryOptions.mode);
