@@ -551,8 +551,9 @@ class VimRenderer(BaseRenderer):
 
 class RtfRenderer(BaseRenderer):
 
-    def __init__(self, colors):
+    def __init__(self, colors, title=None):
         self.colors = colors
+        self.title = title
 
     def render(self, lines, cols=80, logger=sys.stdout):
         """Render parsed HTML data"""
@@ -568,7 +569,13 @@ class RtfRenderer(BaseRenderer):
         # avoid dangling single lines in paragraphs
         logger.write('\\widowctrl ')
         # set margins to 0.5 inches
-        logger.write('\\margr720 \\margl720 \\margt720 \\margb720\n')
+        if self.title is None:
+            logger.write('\\margr720 \\margl720 \\margt720 \\margb720\n')
+        else:
+            logger.write('\\margr720 \\margl720 \\margt0 \\margb720\n')
+        # header
+        if self.title is not None:
+            logger.write('{\\header \\pard\\qc\\fs16\\sa180 %s\\par}\n' % self.title)
 
         # rearrange line data
         blocks = [[]]
@@ -648,9 +655,9 @@ class RtfRenderer(BaseRenderer):
         if 'h1' in stack:
             txt = '{\\fs28 ' + txt + '}'
         if 'th' in stack:
-            txt = '{\\cf1\\highlight2 ' + txt + '\\cf0\\highlight0}'
+            txt = '{\\cf1\\cb2\\highlight2 ' + txt + '\\cf0\\highlight0}'
         if 'code' in stack:
-            txt = '{\\cf2\\highlight3 ' + txt + '\\cf0\\highlight0}'
+            txt = '{\\cf2\\cb3\\highlight3 ' + txt + '\\cf0\\highlight0}'
         logger.write(txt)
 
 ################################################################################
@@ -708,6 +715,7 @@ if __name__ == '__main__':
     parser.add_argument('--vim-tree-style', help="Generate a style file for generated vim tree")
     parser.add_argument('--rtf', help="Generate output as an RTF", action="store_true")
     parser.add_argument('--test', help="Test parser on files in specified directory", action="store_true")
+    parser.add_argument('--rtf-title', help="Page title for RTF files")
     parser.add_argument('file', help="Input file name")
     args = parser.parse_args()
 
@@ -728,7 +736,7 @@ if __name__ == '__main__':
     if args.vim:
         renderer = VimRenderer(colors)
     elif args.rtf:
-        renderer = RtfRenderer(colors)
+        renderer = RtfRenderer(colors, title=args.rtf_title)
     else:
         renderer = ColoredRenderer(colors)
 
