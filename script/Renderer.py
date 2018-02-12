@@ -165,11 +165,15 @@ class Parser:
         for i,child in enumerate(el.children):
             assert isinstance(child,TagPair) and child.leftTag.tag == 'li'
 
+            # trim dead whitespace at end of <li>
+            if isinstance(child.children[-1], str) and re.match(r'^\s*$', child.children[-1]):
+                del child.children[-1]
+
             # start rendered <li> with bullet
             if el.leftTag.tag == 'ul':
-                leader = '  ' * indent + '* '
+                leader = '    ' * indent + '* '
             else:
-                leader = '  ' * indent + fmt%i
+                leader = '    ' * indent + fmt%i
             self.append(leader, ['li'])
 
             # iterate over <li> components
@@ -182,9 +186,13 @@ class Parser:
 
                 # otherwise...
                 else:
-                    for line in InlineData.fromChild(subChild, tagStack=['li']).data:
+                    lineData = InlineData.fromChild(subChild, tagStack=['li']).data
+                    for lineNumber,line in enumerate(lineData):
                         for styles,txt in line:
                             self.append(txt, styles, indent=len(leader))
+                        # add a newline if there are more lines to process
+                        if lineNumber + 1 < len(lineData):
+                            self.newline(indent=len(leader))
 
             # newline after list item.  indentation for next item is handled above.  if <li> ended with an
             # embedded <ul>, newline is handled by inner list's terminal <li>
