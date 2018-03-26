@@ -36,6 +36,8 @@ function render(data, depth=1) {
         }
     );
 
+    ///// START CHEERIO PROCESSING /////
+
     // wrap html in cheerio
     var $ = cheerio.load(h, {xmlMode: true});
 
@@ -66,18 +68,30 @@ function render(data, depth=1) {
     // fill TOC elements
     $('toc').html(toc.replace(/ul>/g, 'ol>'));
 
+    // extract html
+    var body = $('body').html();
+    var head = $('head').html();
+
+    ///// END CHEERIO PROCESSING /////
+
     // add CSS
-    $('head').append(`
+    head += `
         <link rel="stylesheet" href="${'../'.repeat(depth)}lib/bootswatch-cosmo.min.css" />
         <style type='text/css'>
             @media tty { /* CSS for terminal web browsers */
             }
             body {
-                padding: 5px 20px;
+                padding: 50px 20px 20px 5px;
             }
             #markdown-container {
                 overflow-y: scroll;
                 height: 100vh;
+            }
+
+            /* Navbar */
+
+            nav.navbar {
+                background-color: #2780e3;
             }
 
             /* Inline table of contents */
@@ -156,36 +170,58 @@ function render(data, depth=1) {
                 border-bottom: 1px solid #eeeeee;
             }
         </style>
-    `);
+    `;
 
     // add core post-processing libraries
-    $('body').append(`
+    body += `
         <!-- JAVASCRIPT LIBRARIES -->
         <script type="text/javascript" src="${'../'.repeat(depth)}lib/jquery.min.js"></script>
         <script type="text/javascript" src="${'../'.repeat(depth)}lib/lodash.min.js"></script>
         <script type="text/javascript" src="${'../'.repeat(depth)}markdown.js"></script>
-    `);
+        <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    `;
 
     // add syntax highlighting libraries if applicable
     if ($('pre code').length > 0) {
-        $('body').append(`
+        body += `
             <!-- SYNTAX HIGHLIGHTING -->
             <link rel="stylesheet" href="${'../'.repeat(depth)}lib/highlight-atelier-forest-light.min.css" />
             <script type="text/javascript" src="${'../'.repeat(depth)}lib/highlight-9.8.0.min.js"></script>
-        `)
+        `
     }
 
     // add latex rendering libraries if applicable
     if ($('latex').length > 0) {
-        $('body').append(`
+        body += `
             <!-- LATEX RENDERING -->
             <script src="${'../'.repeat(depth)}katex-0.5.1/katex.min.js"></script>
             <link rel="stylesheet" href="${'../'.repeat(depth)}katex-0.5.1/katex.min.css">
-        `)
+        `;
     }
 
+    // add navigation bar
+    body = `
+    <nav class="navbar navbar-default navbar-fixed-top">
+        <div class="container">
+            <div class="navbar-header">
+                <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                </button>
+                <span class='navbar-brand'>Project name</span>
+            </div>
+            <div id="navbar" class="navbar-collapse collapse">
+                <ul class="nav navbar-nav">
+                </ul>
+            </div><!--/.nav-collapse -->
+        </div>
+    </nav>
+    ` + body;
+
     // perform post-processing
-    $('body').append(`
+    body += `
         <!-- PROCESS RENDERED MARKDOWN -->
         <script type="text/javascript">
             jQuery(function(){ // wait for document to be ready
@@ -207,12 +243,45 @@ function render(data, depth=1) {
 
                 // set up scroll synchronization between rendering and table of contents
                 var scrollSync = new ScrollSync(null, $('#markdown-container'), $('#markdown-toc'));
+
+                // configure navigation bar
+                $('h2').each(function(){
+                    if ($('h1').length > 0) {
+                        $('nav span.navbar-brand').text($('h1').first().text());
+                    }
+                    let h2_txt = $(this).text();
+                    let $h3 = $(this).nextUntil('h2', 'h3');
+                    if ($h3.length > 0) {
+                        let $h3_li = $h3.map(function(){ 
+                            return \`<li><a href="#\${$(this).attr('id')\}">\${$(this).text()\}</a></li>\` 
+                        }).toArray().join('\\n');
+                        let $h3_dropdown = \`
+                            <li class="dropdown">
+                                <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
+                                    \${h2_txt\} <span class="caret"></span>
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a href="#\${$(this).attr('id')\}">\${$(this).text()\}</a></li>
+                                    <li role="separator" class="divider"></li>
+                                    \${\$h3_li\}
+                                </ul>
+                            </li>
+                        \`;
+                        $('div#navbar > ul').append($h3_dropdown)
+                    } else {
+                        $('div#navbar > ul').append($(\`<li><a href="#\${$(this).attr('id')\}">\${h2_txt\}</a></li>\`));
+                    }
+                });
             })
         </script>
-    `)
+    `;
 
     // return html
-    return $.html()
+    return `<!DOCTYPE html>
+    <html lang="en">
+      <head>${head}</head>
+      <body>${body}</body>
+    </html>`;
 }
 
 // function to process synchronization data and generate html
@@ -243,6 +312,7 @@ function syncToHtml(syncLoc) {
         fse.copySync(`${__dirname}/${name}`, `${syncLoc}/html/${name}`);
     }
     copyResource('lib/bootswatch-cosmo.min.css');
+    copyResource('lib/bootstrap-dropdown-3.3.4.js');
     copyResource('lib/jquery.min.js');
     copyResource('lib/lodash.min.js');
     copyResource('lib/highlight-atelier-forest-light.min.css');
