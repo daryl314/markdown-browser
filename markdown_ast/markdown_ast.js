@@ -166,13 +166,17 @@ class RuleSet {
   }
 
   addRules(def) {
-    Object.keys(def).forEach(key => {
-      var [re,sub_rules] = def[key];
-      if (this.regex) {
-        re = this.regex[re];
-      }
-      this.addRule(key, re, sub_rules);
-    })
+    if (Array.isArray(def)) {
+      this.addRules(def.reduce((obj,val) => ({ ...obj, [val[0]]: val[1]}), {}));
+    } else {
+      Object.keys(def).forEach(key => {
+        var [re,sub_rules] = def[key];
+        if (this.regex) {
+          re = this.regex[re];
+        }
+        this.addRule(key, re, sub_rules);
+      })
+    }
   }
 
   addDispatchRule(name, def) {
@@ -309,7 +313,7 @@ class Renderer {
 
       // error if template wasn't found
       } else {
-        throw new Error('Unrecognized rule: '+obj.rule.name)
+        throw new Error('No template defined for rule: '+obj.rule.name)
       }
 
     // otherwise pass through raw value
