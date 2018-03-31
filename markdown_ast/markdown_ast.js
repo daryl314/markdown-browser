@@ -5,6 +5,69 @@ if (typeof window !== 'undefined') {
   global.markdown_ast = {};
 }
 
+//////////////////////////////
+// SELF-REPORTING CONTAINER //
+//////////////////////////////
+
+class ObjectContainer {
+  constructor(name, data={}) {
+    this.__name__ = name;
+    Object.keys(data).forEach(key => {
+      this[key] = data[key];
+    })
+  }
+
+  toYAML(indent=4) {
+    return this._toYAML(indent).join('\n')    
+  }
+
+  _toYAML(indent) {
+    let out = [], attr = [], nested = [];
+    Object.keys(this).forEach(k => {
+      let v = this[k];
+      if (v instanceof ObjectContainer) {
+        let data = v._toYAML(indent);
+        nested = nested.concat([k+':'].concat(data.map(x => ' '.repeat(indent) + x)));
+      } else if (v instanceof ArrayContainer) {
+        let data = v._toYAML(indent, false);
+        nested = nested.concat([k+': !'+v[0]].concat(data.map(x => ' '.repeat(indent) + x)));
+      } else if (k !== '__name__') {
+        attr.push(`${k}: ${JSON.stringify(v)}`);
+      }
+    });
+    // collapse if all attr...
+    if (nested.length == 0) {
+      return [`!${this.__name__} { ${attr.join(', ')} }`]
+    } else {
+      return ['!'+this.__name__].concat(attr).concat(nested);
+    }
+  }
+}
+
+class ArrayContainer extends Array {
+  constructor(name) {
+    super();
+    this.push(name);
+  }
+
+  toYAML(indent=4) {
+    return this._toYAML(indent).join('\n')
+  }
+
+  _toYAML(indent, withType=true) {
+    let out = withType ? ['!'+this[0]] : [];
+    this.slice(1).forEach(x => {
+      if (x instanceof ObjectContainer || x instanceof ArrayContainer) {
+        let data = x._toYAML(indent);
+        out = out.concat([`- ${data[0]}`].concat(data.slice(1).map(x => ' '.repeat(indent) + x)));
+      } else {
+        out.push(`- ${JSON.stringify(x)}`);
+      }
+    });
+    return out
+  }
+}
+
 ////////////////////////////////////
 // CLASS TO DEFINE A GRAMMAR RULE //
 ////////////////////////////////////
@@ -13,24 +76,19 @@ if (typeof window !== 'undefined') {
 
 class ResultArray {
   constructor(name, arr, cap) {
-    this.leader = '  ';
     this.name = name;
     this.arr = arr;
     this.cap = cap;
   }
 
-  render() {
-    return this._render().join('\n')
+  toObject() {
+    let out = new ArrayContainer(this.name);
+    this.arr.forEach(x => {out.push(x.toObject())});
+    return out
   }
 
-  _render(depth=0) {
-    let out = [];
-    out.push(this.leader.repeat(depth) + `<${this.name}>`);
-    this.arr.forEach(x => {
-      out = out.concat(x._render(depth+1))
-    })
-    out.push(this.leader.repeat(depth) + `</${this.name}>`);
-    return out    
+  toJSON() {
+    return JSON.stringify(this.toObject());
   }
 }
 
@@ -43,7 +101,7 @@ class Result {
     this.finalPosition = pos + this.cap.length;
     this.n = this.cap.length;
     this.lines = (this.cap.match(/\n/g) || []).length;
-    this.leader = '  ';
+    this.leader = '|   ';
     this.attr = {};
 
     // assign tokenized results
@@ -55,6 +113,9 @@ class Result {
             let tokRule = this.rule.sub_rules[tok];
             if (this.rule.ruleset) {
               tokRule = this.rule.ruleset.rules[tokRule];
+              if (tokRule === undefined) {
+                throw new Error('Sub_rule not found: '+this.rule.sub_rules[tok]); 
+              }
             }
             this.attr[tok] = tokRule.parse(this.match[i]);
           } else {
@@ -65,55 +126,27 @@ class Result {
     }
   }
 
-  render() {
-    return this._render().join('\n')
-  }
-
-  _indent(depth, txt) {
-    if (typeof txt === 'string') {
-      return this.leader.repeat(depth) + txt
-    } else {
-      return txt.map(x => this.leader.repeat(depth) + x)
-    }
-  }
-
   _rawAttr() {
-    return Object.keys(this.attr).filter(k => typeof this.attr[k] === 'string')
+    return Object.keys(this.attr).filter(k => typeof this.attr[k] === 'string' || this.attr[k] === undefined)
   }
 
   _nestedAttr() {
-    return Object.keys(this.attr).filter(k => typeof this.attr[k] !== 'string')
+    return Object.keys(this.attr).filter(k => typeof this.attr[k] !== 'string' && this.attr[k] !== undefined)
   }
 
-  _attrString() {
-    let inner = this._rawAttr().map(k => 
-      `${k}="${this.attr[k].replace(/\n/g, '\\n')}"`
-    )
-    return [`${this.rule.name} lines=${this.lines}`].concat(inner).join(' ')
+  toObject() {
+    let out = new ObjectContainer(this.rule.name, {lines:this.lines});
+    this._rawAttr().forEach(key => {      
+      out[key] = this.attr[key] !== undefined ? this.attr[key] : null;
+    });
+    this._nestedAttr().forEach(key => {
+      out[key] = this.attr[key].toObject();
+    })
+    return out;
   }
 
-  _render(depth=0) {
-
-    // convert nested objects into text blocks
-    let nestedAttr = this._nestedAttr().map(k => this._indent(1,
-      [`<${k}>`]
-      .concat(this.attr[k]._render(1))
-      .concat([`</${k}>`])
-    ))
-
-    // special case for no nested objects
-    if (nestedAttr.length == 0) {
-      return this._indent(depth,`<${this._attrString()}/>`)
-    }
-
-    // generate output text
-    let out = [];
-    out.push(`<${this._attrString()}>`);
-    nestedAttr.forEach(x => {out = out.concat(x)});
-    out.push(`</${this.rule.name}>`);
-
-    // return indented text
-    return this._indent(depth, out)
+  toJSON() {
+    return JSON.stringify(this.toObject())
   }
 }
 

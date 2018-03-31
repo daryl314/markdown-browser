@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Markdown Editor</title>
     <link rel="stylesheet" href="../lib/bootswatch-cosmo.min.css" />
-    <script type="text/javascript" src="markdown_new.js"></script>
+    <script type="text/javascript" src="markdown_ast.js"></script>
     <script type="text/javascript" src="../lib/jquery.min.js"></script>
     <style>
         #container {
@@ -36,9 +36,18 @@
     <div id="container">
         <div id="editor">
             <textarea name="" id="" cols="80" rows="40">
+[foo][bar]
+[bar][baz]
+
+[bar]: www.google.com
+
 # First-level **bolded _and italicized_** heading
 
-Paragraph text `// with some code`
+Paragraph text with a <a href="#">**link**</a> and `// with some code`
+
+    for (int i = 0; i < 10; i++) {
+        // do stuff
+    }
   
 Blah...
             </textarea>
@@ -55,7 +64,9 @@ Blah...
     <script type="text/javascript">
         jQuery(function(){
             ast = Model.parse($('#editor textarea').val());
-            $('#ast').text(ast.render());
+            console.log(ast.toObject());
+            console.log(ast.toJSON());
+            $('#ast').text(ast.toObject().toYAML());
             html = renderer.render(ast)
             $('#rendered').text(html);
         })
