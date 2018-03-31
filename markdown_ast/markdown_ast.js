@@ -101,7 +101,6 @@ class Result {
     this.finalPosition = pos + this.cap.length;
     this.n = this.cap.length;
     this.lines = (this.cap.match(/\n/g) || []).length;
-    this.leader = '|   ';
     this.attr = {};
 
     // assign tokenized results
@@ -352,8 +351,63 @@ class Renderer {
   };
 
   // helper function to convert a template string to JavaScript code
-  static _templateToCode(src) {
+  static _templateToCode(src, pretty=false, debug=false) {
     
+    // subfunction to return the location of a matching ENDIF
+    function findEndIf(txt) {
+      let re = /{{IF ([\s\S]*?)}}|{{ENDIF}}|{{ELSE}}/;
+      let depth = 0, loc = 0, cap = null, ifCondition = null;
+      let ifBlock = [], elseBlock = [];
+      if (debug) console.log(`findEndIf(${txt})`);
+
+      while(loc < txt.length) {
+        cap = re.exec(txt.slice(loc));
+
+        if (cap) {
+          loc += cap.index + cap[0].length;
+          if (debug) console.log(`Captured text: "${cap[0]}"; Location to ${loc}.`);
+        } else {
+          if (debug) console.log('Nothing captured...');
+        }
+        
+        if (cap && cap[0].startsWith('{{IF')) {
+          depth += 1;
+          if (depth == 1) {
+            ifBlock.push(loc);
+            ifCondition = cap[1];
+          }
+
+        } else if (cap && cap[0] === '{{ENDIF}}') {
+          depth -= 1;
+          if (depth === 0) {
+            (elseBlock.length == 0 ? ifBlock : elseBlock).push(loc - cap[0].length);
+            return [
+              ifCondition,
+              txt.slice(ifBlock[0], ifBlock[1]),
+              elseBlock.length == 0 ? '""' : txt.slice(elseBlock[0],elseBlock[1]),
+              loc
+            ]
+          }
+
+        } else if (cap && cap[0] === '{{ELSE}}' && depth === 1) {
+          ifBlock.push(loc - cap[0].length);
+          elseBlock.push(loc);
+
+        } else {
+          throw new Error('Failed to find matching {{ENDIF}}')
+        }
+
+        if (debug) console.log(`Depth = ${depth}`);
+
+      }
+      throw new Error('Failed to find matching {{ENDIF}}')
+    }
+
+    // subfunction to indent pretty printed code
+    function indent(txt) {
+      return txt.split('\n').map(x => '    '+x).join('\n')
+    }
+
     // accumulated code
     var code = [];
 
@@ -365,19 +419,15 @@ class Renderer {
 
       // match an IF block
       if (cap2 = src.match(/^{{IF[\s\S]*?{{ENDIF}}/)) {
-
-        // process if-else
-        if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ELSE}}([\s\S]*?){{ENDIF}}/.exec(cap2)) {
-          code.push('(x.'+cap[1]+'?'+Renderer._templateToCode(cap[2])+':'+Renderer._templateToCode(cap[3])+')');
-
-        // process if
-        } else if (cap = /^{{IF ([\s\S]*?)}}([\s\S]*?){{ENDIF}}/.exec(cap2)) {
-          code.push('(x.'+cap[1]+'?'+Renderer._templateToCode(cap[2])+":'')");
-
-        // exception otherwise
+        let [condition, iTxt, eTxt, n] = findEndIf(src);
+        let iCode = Renderer._templateToCode(iTxt);
+        let eCode = Renderer._templateToCode(eTxt);
+        if (pretty) {
+          code.push(`(x.${condition}\n    ?(\n    ${indent(iCode)})\n    :(\n    ${indent(eCode)})\n    )`);
         } else {
-          throw new Error('Failed to process template: invalid {{IF}} expression');
+          code.push(`(x.${condition}?(${iCode}):(${eCode}))`);
         }
+        cap = [ src.slice(0,n) ];
       }
 
       // match other expressions 
@@ -404,7 +454,7 @@ class Renderer {
     } // end of string consumption
 
     // return code to concatenate the components together
-    return code.join('+');
+    return code.join(pretty ? '\n    + ' : '+');
   }
 
   // helper function to return the code associated with a function
@@ -418,7 +468,7 @@ class Renderer {
   }
 
   // convert a template to a processing function
-  static convertTemplate(src) {
+  static convertTemplate(src, pretty=false, debug=false) {
     var fx = 
       ( src.match(/{{\^/) // add escape function if there is any escaping in template
         ? 'function '+Renderer._functionToCode(Renderer.escape) 
@@ -426,7 +476,8 @@ class Renderer {
       ) + (src.match(/{{@/) // add mangle function if there is any mangling in the template
         ? 'function '+Renderer._functionToCode(Renderer.mangle)
         : ''
-      ) + 'return '+Renderer._templateToCode(src.replace(/'/g,"\\'"));
+      ) + 'return '+Renderer._templateToCode(src.replace(/'/g,"\\'"), pretty, debug);
+    if (debug) console.log(fx);
     return new Function('x', fx);
   }
 }
@@ -1228,18 +1279,38 @@ Object.keys(post_process).forEach(k => {
 ////////////////////////
 // CONFIGURE RENDERER //
 ////////////////////////
+// {{myField}} ..................... insert input.myField
+// {{^myField}} .................... insert escaped html input.myField
+// {{^^myField}} ................... insert escaped text input.myField
+// {{@myField}} .................... insert mangled text input.myField
+// {{IF expr}}A{{ENDIF}} ........... if expr is true, insert "A"
+// {{IF expr}}A{{ELSE}}B{{ENDIF}} .. if expr is true, insert "A", otherwise insert "B"
 
+let sourceLine = '{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}';
 renderer = new Renderer({
-   Heading    : '<h{{level}} id="{{id}}"{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</h{{level}}>\n',
-   Paragraph  : '<p{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</p>\n',
-   StrongUs   : '<strong{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</strong>',
-   StrongAs   : '<strong{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</strong>',
-   EmUs       : '<em{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</em>',
-   EmAs       : '<em{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</em>',
-   InlineCode : '<code{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{^^text}}</code>',
-   Break      : '<br{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}/>',
-   Del        : '<del{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}>{{text}}</del>',
-   InlineText : '{{text}}'
+   Heading      : `<h{{level}}${sourceLine} id="{{id}}">{{text}}</h{{level}}>\n`,
+   BlockCode    : `<pre${sourceLine}><code{{IF lang}} class="lang-{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>{{IF lang}}\n{{ENDIF}}`,
+   Paragraph    : `<p${sourceLine}>{{text}}</p>\n`,
+   AutoLinkLink : `<a${sourceLine} href="{{^href}}">{{^href}}</a>`, 
+   AutoLinkMail : `<a${sourceLine} href="mailto:{{^href}}">{{href}}</a>`,
+   URL          : `<a${sourceLine} href="{{^href}}">{{href}}</a>`, 
+   Hyperlink    : `<a${sourceLine} {{options}}>{{text}}</a>`,
+   ReferenceLink: `{{IF xhref}}<a${sourceLine} href="{{^xhref}}"{{IF title}} title="{{^title}}"{{ENDIF}}>{{text}}</a>{{ELSE}}[{{text}}][{{title}}]{{ENDIF}}`,
+   StrongUs     : `<strong${sourceLine}>{{text}}</strong>`,
+   StrongAs     : `<strong${sourceLine}>{{text}}</strong>`,
+   EmUs         : `<em${sourceLine}>{{text}}</em>`,
+   EmAs         : `<em${sourceLine}>{{text}}</em>`,
+   InlineCode   : `<code${sourceLine}>{{^^text}}</code>`,
+   Break        : `<br${sourceLine}/>`,
+   Del          : `<del${sourceLine}>{{text}}</del>`,
+   InlineText   : `{{^text}}`,
+   Escape       : `{{text}}`,
+   Definition   : ''
+});
+
+//
+inlineRulesLink.map(x => x[0]).filter(x => x !== 'URL' && x.endsWith('URL')).forEach(name => {
+  renderer.rules[name] = renderer.rules[name.slice(0,-3)];
 })
 
 // renderer = new Renderer({
