@@ -576,11 +576,19 @@ let regex_md = function(){
   */
 
   // regex for the entire list
-  regex.list = regex.Combine(
-    /^( *)/,              // capture the bullet indentation level ($1)
+  var list_bullet =
+      /(?:[*+-]|\d+\.)/;  // non-captured *, +, -, or xx. 
+  var list_hr = regex.Combine(
+      /\1?/,              // match previously captured indentation
+      /(?:[-*_] *){3,}/,  // 3 or more non-captured -, *, or _ w/ optional padding
+      /(?:\n+|$)/         // non-captured newlines or end of line
+  );
+  var list_contents = regex.Combine(
+    /( *)/,               // capture the bullet indentation level ($1)
     /(BULLET)/,           // capture a bullet ($2)
     / [\s\S]+?/,          // leading space and minimal multi-line wildcard
-    '(?:',                // followed by one of (non-captured)...
+  {BULLET:list_bullet});
+  var list_terminator = regex.Combine(
         /\n+/,            //   newlines
         /(?=HR)/,         //   followed by a horizontal rule (lookahead)
       /|/,                // OR
@@ -593,17 +601,27 @@ let regex_md = function(){
         /\n*/,            //   0 or more newlines
       /|/,                // OR
         /\s*$/,           //   trailing whitespace until the end of string
-    ')'
-  ,{ // Substitution definitions below
-    BULLET: /(?:[*+-]|\d+\.)/,  // non-captured *, +, -, or xx.
-    DEF: regex.def,             // def
-    HR: regex.Combine(
-        /\1?/,                  // match previously captured indentation
-        /(?:[-*_] *){3,}/,      // 3 or more non-captured -, *, or _ w/ optional padding
-        /(?:\n+|$)/             // non-captured newlines or end of line
-    )
+  { // substitution definitions
+    BULLET: list_bullet,
+    DEF: regex.def,
+    HR: list_hr
+  });
+  regex.list = regex.Combine(
+    /^CONTENTS/,          // list contents
+    '(?:TERM)',           // list terminators
+  { // Substitution definitions below
+    CONTENTS: list_contents,
+    TERM: list_terminator
   });
   regex.list.tokens = ['indent', 'bull'];
+
+  // patched list regex: capture list contents and shift captured indentation reference
+  regex.cap_list = regex.Combine(
+    /^(CONTENTS)(?:TERM)/,
+    {CONTENTS:list_contents, TERM:list_terminator}
+  );
+  regex.cap_list = new RegExp(regex.cap_list.source.replace(/\\1/g, '\\2'));
+  regex.cap_list.tokens = ['items','indent','bull'];
 
   // regex to capture all the individual list items in a captured list
   // g: global match
@@ -612,7 +630,7 @@ let regex_md = function(){
     /^( *)/,            // captured indentation level anchored at start of line
     /(BULLET) /,        // captured bullet and a space
     /[^\n]*/,           // everything up to the newline
-    '(?:',              // followed by zero or more (non-captured)...
+    '(?:',              // followed by zero or more (non-captured, but included)...
       /\n/,             //   newline
       /(?!\1BULLET )/,  //   not followed by a bullet with the captured indentation level
       /[^\n]*/,         //   everything up to the newline
@@ -621,7 +639,20 @@ let regex_md = function(){
     BULLET: /(?:[*+-]|\d+\.)/, // non-captured *, +, -, or xx.
   });
   regex.item = new RegExp(regex.item.source, 'gm');
-
+  regex.cap_item = regex.Combine(
+    /^( *)/,            // captured indentation level anchored at start of line
+    /(BULLET) /,        // captured bullet and a space
+    '(',                // captured content...
+      /.*\n?/,          //   line with bullet (including newline if it exists)
+      '(?:',            //   followed by zero or more (non-captured but included...)
+        /(?!\s*BULLET)/,   //     not followed by a bullet
+        /.*\n?/,        //     remainder of line (including newline if it exists)
+      ')*',             //   end group
+    ')',                // end captured content
+  { // Substitution definitions below
+    BULLET:    /[*+-]|\d+\./, // *, +, -, or xx.
+  });
+  regex.cap_item.tokens = ['indent', 'bullet', 'content'];
 
   ////////// BLOCKQUOTE REGEX //////////
 
@@ -808,15 +839,20 @@ let regex_md = function(){
 
   ////////// BLOCK CODE REGEX //////////
 
-  regex.b_code = regex.Combine(
-    /^/,        // anchor to start of string
-    '(',        // capture one or more ...
-      / {4}/,   //   4 spaces
-      /[^\n]+/, //   one or more non-newlines
-      /\n*/,    //   zero or more newlines
-    ')+'        // end capture
+  let b_code_inner = regex.Combine(
+    / {4}/,   //   4 spaces
+    /[^\n]+/, //   one or more non-newlines
+    /\n*/,    //   zero or more newlines
   );
-
+  regex.b_code = regex.Combine(
+    /^(LINE)+/, // one or more lines anchored to start of string
+    {LINE:b_code_inner}
+  );
+  regex.b_code_cap = regex.Combine(
+    /^((?:LINE)+)/, // capture all: one or more lines anchored to start of string
+    {LINE:b_code_inner}
+  );
+  regex.b_code_cap.tokens = ['code'];
 
   ////////// NEWLINE REGEX //////////
 
@@ -1034,17 +1070,28 @@ let regex_md = function(){
 
   ////////// AUTOLINK REGEX //////////
 
-  regex.autolink = regex.Combine(
+  let autolink_template = regex.Combine(
     /^</,         // < (anchored to start of string)
+    'LEADER',     // text at at start of regex (to capture optional mailto)
     '(',          // capture ...
       /[^ >]+/,   //   one or more characters that aren't a space or >
-      /(@|:\/)/,  //   captured @ or :/
+      /(SYMBOL)/, //   captured symbol (@ or :/)
       /[^ >]+/,   //   one or more characters that aren't a space or >
     ')',          // end capture
     />/           // >
   );
+
+  regex.autolink = regex.Combine(autolink_template, {
+    LEADER : '',      // no leader (to match marked.js)
+    SYMBOL : /@|:\//  // captured @ or :/
+  });
   regex.autolink.tokens = ['link','symbol'];
 
+  regex.autolink_mail = regex.Combine(autolink_template, {LEADER:/(?:mailto:)?/, SYMBOL:/@/});
+  regex.autolink_mail.tokens = ['href','symbol'];
+
+  regex.autolink_link = regex.Combine(autolink_template, {LEADER:'', SYMBOL:/:\//});
+  regex.autolink_link.tokens = ['href','symbol'];
 
   ////////// BREAK REGEX //////////
 
@@ -1114,9 +1161,20 @@ let regex_md = function(){
 
   ////////// TAG REGEX //////////
 
+  // tag options
+  let tagOptions = regex.Combine(
+    '(?:',          //   zero or more minimal non-captured ...
+        /"[^"]*"/,  //       "..."
+      /|/,          //     OR
+        /'[^']*'/,  //       '...'
+      /|/,          //     OR
+        /[^'">]/,   //       character other than ', ", or >
+    ')*?',          //   end non-capturing group
+  );
+
   // non-captured version to match marked.js
   regex.tag = regex.Combine(
-      /^/,            //   anchor to start of string
+    /^/,              //   anchor to start of string
       /<!--/,         //   <!--
         /[\s\S]*?/,   //     minimal multi-line wildcard
       /-->/,          //   -->
@@ -1125,19 +1183,24 @@ let regex_md = function(){
       /</,            //   <
       /\/?/,          //   optional /
       /\w+/,          //   one or more word characters
-      '(?:',          //   zero or more minimal non-captured ...
-          /"[^"]*"/,  //       "..."
-        /|/,          //     OR
-          /'[^']*'/,  //       '...'
-        /|/,          //     OR
-          /[^'">]/,   //       character other than ', ", or >
-      ')*?',          //   end non-capturing group
-      />/             //   >
+      /OPTIONS/,      //   tag options
+      />/,            //   >
+    {OPTIONS:tagOptions}
   );
 
   // version with captured text
   regex.tag1 = new RegExp(`^(${regex.tag.source.slice(1)})`);
   regex.tag1.tokens = ['text'];
+
+  // hyperlink
+  regex.hyperlink = regex.Combine(
+    /^/,                // anchor to start of string
+    /<[aA] (OPTIONS)>/, // <a ...> with captured options
+    /(.*?)/,            // captured minimal multi-line wildcard
+    /<\/[aA]>/,         // </a>
+    {OPTIONS:tagOptions}
+  );
+  regex.hyperlink.tokens = ['options','text'];
 
   ////////// INLINE TEXT REGEX //////////
 
