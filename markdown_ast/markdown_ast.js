@@ -1331,69 +1331,97 @@ let Model = new RuleSet(
   regex_md  // regex definition map
 );
 
-// base-level block rules
-//<Rule Name>      <Regex Name>   <Sub Rules>
-Model.addRules({
-  BlockCode      : ['b_code'    , {}             ],
-  Fences         : ['fences'    , {}             ],
-  Heading        : ['heading'   , {text:'Inline'}],
-  NoPipeTable    : ['nptable'   , {}             ],
-  LineHeading    : ['lheading'  , {text:'Inline'}],
-  HorizontalRule : ['hr'        , {}             ],
-  BlockQuote     : ['blockquote', {}             ],
-  List           : ['list'      , {}             ],
-  HTML           : ['html'      , {}             ],
-  Definition     : ['def'       , {}             ],
-  Table          : ['table'     , {}             ],
-  Paragraph      : ['paragraph' , {text:'Inline'}],
-  BlockText      : ['b_text'    , {text:'Inline'}]
-});
+////////// BASE BLOCK RULES //////////
+
+// define base-level block rules -- all block rules in markdown.js are listed in this table
+let blockRules = [
+// <Rule Name>         <Regex Name>  <Sub Rules>
+  ['BlockCode'      , ['b_code_cap', {}                   ]],
+  ['Fences'         , ['fences'    , {}                   ]],
+  ['Heading'        , ['heading'   , {text:'Inline'}      ]],
+  ['NoPipeTable'    , ['nptable'   , {}                   ]],
+  ['LineHeading'    , ['lheading'  , {text:'Inline'}      ]],
+  ['HorizontalRule' , ['hr'        , {}                   ]],
+  ['BlockQuote'     , ['blockquote', {}                   ]],
+  ['List'           , ['cap_list'  , {items:'ListItems'}  ]],
+  ['HTML'           , ['html'      , {}                   ]],
+  ['Definition'     , ['def'       , {}                   ]],
+  ['Table'          , ['table'     , {}                   ]],
+  ['Paragraph'      , ['paragraph' , {text:'Inline'}      ]],
+  ['BlockText'      , ['b_text'    , {text:'Inline'}      ]]
+];
+
+// add base-level block rules
+Model.addRules(blockRules);
 
 // 'Block' rule is repeated dispatch over block types
-Model.addDispatchRule('BlockElement', 
-  'BlockCode|Fences|Heading|NoPipeTable|LineHeading|HorizontalRule|BlockQuote|List|' +
-  'HTML|Definition|Table|Paragraph');
+Model.addDispatchRule('BlockElement', blockRules.map(x=>x[0]).join('|').replace('|BlockText','')); 
 Model.addRepeatingRule('Block', 'BlockElement');
 
 // 'ListBlock' rule is used in list processing (or when processing a list and a block quote)
-Model.addDispatchRule('ListBlockElement', 
-'BlockCode|Fences|Heading|LineHeading|HorizontalRule|BlockQuote|List|HTML|BlockText');
+Model.addDispatchRule('ListBlockElement', blockRules.map(x=>x[0]).join('|').replace('|NoPipeTable','').replace('|Definition','').replace('|Table','').replace('|Paragraph',''));
 Model.addRepeatingRule('ListBlock', 'ListBlockElement');
 
 // 'QuoteBlock' rule is used when processing block quotes (but not lists)
-Model.addDispatchRule('QuoteBlockElement', 
-  'BlockCode|Fences|Heading|NoPipeTable|LineHeading|HorizontalRule|BlockQuote|List|' +
-  'HTML|Table|Paragraph');
+Model.addDispatchRule('QuoteBlockElement', blockRules.map(x=>x[0]).join('|').replace('|Definition','').replace('|BlockText','')); 
 Model.addRepeatingRule('QuoteBlock', 'QuoteBlockElement');
 
+////////// BLOCK SUB-RULES //////////
+
+Model.addRule('ListItem', Model.regex.cap_item, {content:'Inline'});
+Model.addRepeatingRule('ListItems', 'ListItem');
+
+////////// BASE INLINE RULES //////////
+
+// define base-level inline rules -- all inline rules in markdown.js are listed in this table
+let inlineRules = [
+  ['InlineLatex'   , ['i_latex'       , {}                  ]], // OK
+  ['BlockLatex'    , ['b_latex'       , {}                  ]], // OK
+  ['Escape'        , ['escape'        , {}                  ]], // OK
+  ['AutoLinkMail'  , ['autolink_mail' , {}                  ]], // OK
+  ['AutoLinkLink'  , ['autolink_link' , {}                  ]], // OK
+  ['URL'           , ['url'           , {}                  ]], // OK
+  ['Hyperlink'     , ['hyperlink'     , {text:'InlineLink'} ]], // OK
+  ['Tag'           , ['tag1'          , {}                  ]], // OK
+  ['Link'          , ['link'          , {text:'Inline'}     ]],
+  ['ReferenceLink' , ['reflink'       , {text:'InlineLink'} ]],
+  ['NoTextRefLink' , ['nolink'        , {}                  ]],
+  ['StrongUs'      , ['strong_us'     , {text:'Inline'}     ]], // OK - in example
+  ['StrongAs'      , ['strong_as'     , {text:'Inline'}     ]], // OK - in example
+  ['EmUs'          , ['em_us'         , {text:'Inline'}     ]], // OK - in example
+  ['EmAs'          , ['em_as'         , {text:'Inline'}     ]], // OK - in example
+  ['InlineCode'    , ['i_code'        , {}                  ]], // OK - in example
+  ['Break'         , ['br'            , {}                  ]], // OK
+  ['Del'           , ['del'           , {text:'Inline'}     ]], // OK - in example
+  ['InlineText'    , ['i_text1'       , {}                  ]]  // OK
+];
 
 // base-level inline rules
-Model.addRules({
-  InlineLatex   : ['i_latex'  , {}             ],
-  BlockLatex    : ['b_latex'  , {}             ],
-  Escape        : ['escape'   , {}             ],
-  AutoLink      : ['autolink' , {}             ],
-  URL           : ['url'      , {}             ],
-  Tag           : ['tag1'     , {}             ],
-  Link          : ['link'     , {text:'Inline'}],
-  ReferenceLink : ['reflink'  , {}             ],
-  NoTextRefLink : ['nolink'   , {}             ],
-  StrongUs      : ['strong_us', {text:'Inline'}],
-  StrongAs      : ['strong_as', {text:'Inline'}],
-  EmUs          : ['em_us'    , {text:'Inline'}],
-  EmAs          : ['em_as'    , {text:'Inline'}],
-  InlineCode    : ['i_code'   , {}             ],
-  Break         : ['br'       , {}             ],
-  Del           : ['del'      , {text:'Inline'}],
-  InlineText    : ['i_text1'  , {}             ]
+Model.addRules(inlineRules);
+
+// build up parallel set of inline rules for processing a link
+let inlineRulesLink = [];
+inlineRules.forEach(rule => {
+  let [name, [regex, recurse]] = rule;
+  if (name !== 'URL') {
+    if (Object.keys(recurse).length == 0) {
+      inlineRulesLink.push(rule);
+    } else {
+      let newRule = [name+'URL', [regex, {text:'InlineLink'}]];
+      inlineRulesLink.push(newRule);
+      Model.addRule(name+'URL', regex, {text:'InlineLink'});
+    }
+  }
 });
+Model.addRules(inlineRulesLink);
 
 // 'Inline' rule is repeated dispatch over inline types
-Model.addDispatchRule('InlineElement', 
-  'InlineLatex|BlockLatex|Escape|AutoLink|URL|Tag|Link|ReferenceLink|NoTextRefLink|' +
-  'StrongUs|StrongAs|EmUs|EmAs|InlineCode|Break|Del|InlineText'
-);
+Model.addDispatchRule('InlineElement', inlineRules.map(x=>x[0]).join('|'));
 Model.addRepeatingRule('Inline', 'InlineElement');
+
+// 'InlineLink' rule is used recursively to process URL's
+Model.addDispatchRule('InlineLinkElement', inlineRulesLink.map(x=>x[0]).join('|')); 
+Model.addRepeatingRule('InlineLink', 'InlineLinkElement');
 
 ////////////////////////////////////
 // DEFINE POST-PROCESSING ACTIONS //
@@ -1426,6 +1454,8 @@ let sourceLine = '{{IF sourceLine}} data-source-line="{{sourceLine}}"{{ENDIF}}';
 renderer = new Renderer({
    Heading      : `<h{{level}}${sourceLine} id="{{id}}">{{text}}</h{{level}}>\n`,
    BlockCode    : `<pre${sourceLine}><code{{IF lang}} class="lang-{{lang}}"{{ENDIF}}>{{^^code}}\n</code></pre>{{IF lang}}\n{{ENDIF}}`,
+   List         : `<ul${sourceLine}>{{items}}</ul>\n`,
+   ListItem     : `<li${sourceLine}>{{content}}</li>\n`,
    Paragraph    : `<p${sourceLine}>{{text}}</p>\n`,
    AutoLinkLink : `<a${sourceLine} href="{{^href}}">{{^href}}</a>`, 
    AutoLinkMail : `<a${sourceLine} href="mailto:{{^href}}">{{href}}</a>`,
