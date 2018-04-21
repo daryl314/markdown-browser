@@ -222,7 +222,7 @@ class RepeatingRule {
   parse(txt, pos=0) {
     let out = [];
     let loc = pos;
-    while (loc + 1 < txt.length) {
+    while (loc < txt.length) {
       let res = this.rule.parse(txt,loc);
       if (res.n == 0) {
         throw new Error('Empty regex match')
@@ -444,8 +444,10 @@ class Renderer {
       }
 
       // if match length was zero, throw an exception
-      if (cap[0].length == 0) {
+      if (!(cap) || cap[0].length == 0) {
         throw new Error('Failed to consume a token');
+      } else {
+        if (debug) console.log("_templateToCode matched text: "+cap[0]);
       }
 
       // slice off matched text and continue processing
