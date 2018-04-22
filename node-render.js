@@ -223,57 +223,7 @@ function render(data, depth=1) {
     // perform post-processing
     body += `
         <!-- PROCESS RENDERED MARKDOWN -->
-        <script type="text/javascript">
-            jQuery(function(){ // wait for document to be ready
-
-                // perform rendered markdown post-processing
-                var renderer = new MarkdownRenderer();
-                var data = renderer.processRenderedMarkdown($('body'));
-
-                // add bootstrap compontents
-                $('#markdown-container').addClass("col-md-10").wrap('<div id="container" class="container-fluid"></div>');
-                $('#container').append('<div id="markdown-toc" class="col-md-2 hidden-print">');
-
-                // configure tables of contents
-                $('#markdown-toc').html(data.toc);
-                $('#markdown-toc > ul').addClass('col-md-2 affix toc-menu');
-                $('#markdown-toc a').add('toc a').each(function(){ 
-                    $(this).attr('href', $(this).data('href')) 
-                });
-
-                // set up scroll synchronization between rendering and table of contents
-                var scrollSync = new ScrollSync(null, $('#markdown-container'), $('#markdown-toc'));
-
-                // configure navigation bar
-                $('h2').each(function(){
-                    if ($('h1').length > 0) {
-                        $('nav span.navbar-brand').text($('h1').first().text());
-                    }
-                    let h2_txt = $(this).text();
-                    let $h3 = $(this).nextUntil('h2', 'h3');
-                    if ($h3.length > 0) {
-                        let $h3_li = $h3.map(function(){ 
-                            return \`<li><a href="#\${$(this).attr('id')\}">\${$(this).text()\}</a></li>\` 
-                        }).toArray().join('\\n');
-                        let $h3_dropdown = \`
-                            <li class="dropdown">
-                                <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
-                                    \${h2_txt\} <span class="caret"></span>
-                                </a>
-                                <ul class="dropdown-menu">
-                                    <li><a href="#\${$(this).attr('id')\}">\${$(this).text()\}</a></li>
-                                    <li role="separator" class="divider"></li>
-                                    \${\$h3_li\}
-                                </ul>
-                            </li>
-                        \`;
-                        $('div#navbar > ul').append($h3_dropdown)
-                    } else {
-                        $('div#navbar > ul').append($(\`<li><a href="#\${$(this).attr('id')\}">\${h2_txt\}</a></li>\`));
-                    }
-                });
-            })
-        </script>
+        <script type="text/javascript" src="${'../'.repeat(depth)}process-rendered.js"></script>
     `;
 
     // return html
@@ -319,6 +269,7 @@ function syncToHtml(syncLoc) {
     copyResource('lib/highlight-9.8.0.min.js');
     copyResource('markdown.js');
     copyResource('katex-0.5.1');
+    copyResource('process-rendered.js');
     copyResource('script/renderer.vim');
     copyResource('script/Renderer.py');
     copyResource('script/TagPair.py');
@@ -378,7 +329,7 @@ function syncToHtml(syncLoc) {
         p.then(() => {
             Object.keys(notesByNotebook).forEach(nb => {
                 notesByNotebook[nb].sort((a,b) => sorter(a.title,b.title));
-                var li = notesByNotebook[nb].map(n => `* [${n.title}](${sanitizeFileURL(n.title, true)}.html)`);
+                var li = notesByNotebook[nb].map(n => `* [${n.title}](${sanitizeFileURL(n.title, true)}.html)\n* [${n.title} (Map)](${sanitizeFileURL(n.title, true)}.html?map)`);
                 var md = '## Page Index ##\n\n'+li.join('\n');
                 fs.writeFileSync(`${syncLoc}/html/${sanitizeFileName(nb)}/index.html`, render(md));
             });
