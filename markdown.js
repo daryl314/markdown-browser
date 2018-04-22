@@ -1493,7 +1493,13 @@ class MarkdownRenderer {
 
     // perform syntax highlighting
     if (typeof hljs !== 'undefined') {
-      $el.find('pre code').each(function(i, block) { hljs.highlightBlock(block); });
+      $el.find('pre code').each(function(i, block) {
+        try {
+          hljs.highlightBlock(block); 
+        } catch (error) {
+          console.log('Caught highlight.js exception', error);
+        }
+      });
     }
 
     // create bootstrap alert boxes
