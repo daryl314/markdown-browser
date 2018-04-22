@@ -4,37 +4,74 @@ jQuery(function(){ // wait for document to be ready
     var renderer = new MarkdownRenderer();
     var data = renderer.processRenderedMarkdown($('body'));
 
+    ///// PROCESSING FOR MAP MODE /////
+
     if (window.location.href.endsWith('?map') || window.location.href.endsWith('?map#')) {
-        //$('body > nav').hide();
+        const ICON_BULL = '&#9679;';
+        const ICON_COLLAPSED = '&#9654;';
+        const ICON_EXPANDED = '&#9660;';
+        
+        // add TOC in a left pane
         $('#markdown-container').addClass("col-md-10").wrap('<div id="container" class="container-fluid"></div>');
         $('#container').prepend('<div id="markdown-toc" class="col-md-2 hidden-print">');
         $('#markdown-toc').html(data.toc);
+        
+        // TOC css
+        $('#markdown-toc').css({
+            'padding-left':'0px',
+            'padding-right':'0px',
+            'padding-bottom':'0px',
+            'padding-top':'20px'
+        })
         $('#markdown-toc ul').css({
             'list-style-type':'none'
         });
-        $('#markdown-toc>ul').css({
-            'padding-left':'0px'
+        $('#markdown-toc > ul').css({
+            'font-size':'0.8em'
         });
-        $('#markdown-toc ul ul').css({
-            'padding-left':'20px'
+        $('#markdown-toc ul').css({
+            'padding-left':'1.3em',
+            'text-indent':'-1.0em'
         });
-        $('#markdown-toc li').has('ul').children('a').each(function(){
-            $(this).parent().prepend('<span class="tree-toggle tree-toggle-collapsed">&#9654; </span>')
-        });
-        $('#markdown-toc > ul > li > ul').hide();
-        $('#markdown-toc').on('click', 'span.tree-toggle', function(){
+
+        // add bullets to TOC entries
+        $('#markdown-toc a').each(function(){
+            if ($(this).parent().has('ul').length > 0) {
+                $(this).parent().prepend(`<div style="float:left;width:1em;" class="tree-toggle tree-toggle-collapsed">${ICON_COLLAPSED}</div>`)    
+            } else {
+                $(this).parent().prepend(`<div style="float:left;width:1em;">${ICON_BULL}</div>`)
+            }
+        }) 
+
+        // hide nested items
+        $('#markdown-toc > ul > li ul').hide();
+
+        // click handler for toggles
+        $('#markdown-toc').on('click', 'div.tree-toggle', function(){
+
+            // expand a collapsed node
             if ($(this).hasClass('tree-toggle-collapsed')) {
                 $(this).parent().children().show();
-                $(this).parent().children('span.tree-toggle').each(function(){
-                    $(this).removeClass('tree-toggle-collapsed').html('&#9660; ');
+                $(this).parent().children('div.tree-toggle').each(function(){
+                    $(this).removeClass('tree-toggle-collapsed').html(ICON_EXPANDED);
                 });
+            
+            // collapse an expanded node
             } else {
                 $(this).parent().children('ul').hide();
-                $(this).parent().children('span.tree-toggle').each(function(){
-                    $(this).addClass('tree-toggle-collapsed').html('&#9654; ');
+                $(this).parent().children('div.tree-toggle').each(function(){
+                    $(this).addClass('tree-toggle-collapsed').html(ICON_COLLAPSED);
                 });
             }
         });
+
+        // double click expands entire tree
+        $('#markdown-toc').on('dblclick', 'div.tree-toggle', function(){
+            $(this).parent().find('ul').show();
+            $(this).parent().find('div.tree_toggle').html(ICON_EXPANDED);
+        }); 
+
+        // click handler for entries
         $('#markdown-toc').on('click', 'a', function(){
             let $h = $(`:header${$(this).data('href')}`);
             if ($h.length > 1) {
@@ -50,6 +87,9 @@ jQuery(function(){ // wait for document to be ready
                 $h.add(content).show();
             }
         });
+
+    ///// PROCESSING FOR NORMAL MODE /////
+
     } else {
 
         // add bootstrap compontents
