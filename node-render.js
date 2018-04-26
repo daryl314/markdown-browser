@@ -186,7 +186,7 @@ function render(data, depth=1) {
         body += `
             <!-- SYNTAX HIGHLIGHTING -->
             <link rel="stylesheet" href="${'../'.repeat(depth)}lib/highlight-atelier-forest-light.min.css" />
-            <script type="text/javascript" src="${'../'.repeat(depth)}lib/highlight-9.8.0.min.js"></script>
+            <script type="text/javascript" src="${'../'.repeat(depth)}lib/highlight.pack.js"></script>
         `
     }
 
@@ -247,10 +247,36 @@ function syncToHtml(syncLoc) {
         return encodeURIComponent(sanitizeFileName(x)).replace(/\(/g, '%28').replace(/\)/g, '%29');
     }
 
-    // create output folder if it doesn't exist
-    if (!(fs.existsSync(`${syncLoc}/html`))) {
-        fs.mkdirSync(`${syncLoc}/html`)
+    // subfunction to return a notebook's path
+    function notebookDirectory(nb) {
+        return path.join(syncLoc, 'html', sanitizeFileName(nb))
     }
+
+    // subfunction to return a note's file name
+    function noteFileName(n) {
+        return path.join(notebookDirectory(n.notebook), `${sanitizeFileName(n.title)}.html`)
+    }
+
+    // subfunction to recursively remove a directory
+    function rmrf(path) {
+        if (fs.existsSync(path)) {
+            fs.readdirSync(path).forEach(function(file, index){
+                var curPath = path + "/" + file;
+                if (fs.lstatSync(curPath).isDirectory()) { // recurse
+                    rmrf(curPath);
+                } else { // delete file
+                    fs.unlinkSync(curPath);
+                }
+            });
+            fs.rmdirSync(path);
+        }
+    }
+
+    // clear output folder if it exists; create otherwise
+    if (fs.existsSync(`${syncLoc}/html`)) {
+        rmrf(`${syncLoc}/html`);
+    }
+    fs.mkdirSync(`${syncLoc}/html`);
 
     // create resource folder if it doesn't exist
     if (!(fs.existsSync(`${syncLoc}/html/lib`))) {
@@ -261,20 +287,23 @@ function syncToHtml(syncLoc) {
     function copyResource(name) {
         fse.copySync(`${__dirname}/${name}`, `${syncLoc}/html/${name}`);
     }
-    copyResource('lib/bootswatch-cosmo.min.css');
-    copyResource('lib/bootstrap-dropdown-3.3.4.js');
-    copyResource('lib/jquery.min.js');
-    copyResource('lib/lodash.min.js');
-    copyResource('lib/highlight-atelier-forest-light.min.css');
-    copyResource('lib/highlight-9.8.0.min.js');
-    copyResource('markdown.js');
-    copyResource('katex-0.5.1');
-    copyResource('process-rendered.js');
-    copyResource('script/renderer.vim');
-    copyResource('script/Renderer.py');
-    copyResource('script/TagPair.py');
-    copyResource('script/TerminalColors256.py');
-    copyResource('script/browser.sh');
+    let resources = [
+        'lib/bootswatch-cosmo.min.css',
+        'lib/bootstrap-dropdown-3.3.4.js',
+        'lib/jquery.min.js',
+        'lib/lodash.min.js',
+        'lib/highlight-atelier-forest-light.min.css',
+        'lib/highlight.pack.js',
+        'markdown.js',
+        'katex-0.5.1',
+        'process-rendered.js',
+        'script/renderer.vim',
+        'script/Renderer.py',
+        'script/TagPair.py',
+        'script/TerminalColors256.py',
+        'script/browser.sh'
+    ];
+    resources.forEach(copyResource);
 
     // create connection to sync data
     var conn = new WrappedNoteCollectionSyncData(syncLoc, ioHandler=NodeIO);
@@ -304,11 +333,11 @@ function syncToHtml(syncLoc) {
         // generate a promise to generate a web page for each filtered note
         var p = mdNotes.map(n => n.getContent().then(c => {
             var html = render(EvernoteConnectionBase.stripFormatting(c.html()));
-            var loc = `${syncLoc}/html/${sanitizeFileName(n.notebook)}`;
-            if (!fs.existsSync(loc)) {
-                fs.mkdirSync(loc);
+            var outFile = noteFileName(n);
+            if (!fs.existsSync(path.dirname(outFile))) {
+                fs.mkdirSync(path.dirname(outFile));
             }
-            fs.writeFileSync(`${loc}/${sanitizeFileName(n.title)}.html`, html);
+            fs.writeFileSync(outFile, html);
         }));
 
         // execute promises
@@ -329,14 +358,14 @@ function syncToHtml(syncLoc) {
         p.then(() => {
             Object.keys(notesByNotebook).forEach(nb => {
                 notesByNotebook[nb].sort((a,b) => sorter(a.title,b.title));
-                var li = notesByNotebook[nb].map(n => `* [${n.title}](${sanitizeFileURL(n.title, true)}.html)\n* [${n.title} (Map)](${sanitizeFileURL(n.title, true)}.html?map)`);
+                var li = notesByNotebook[nb].map(n => `* [${n.title}](${path.basename(noteFileName(n))})\n* [${n.title} (Map)](${path.basename(noteFileName(n))}?map)`);
                 var md = '## Page Index ##\n\n'+li.join('\n');
-                fs.writeFileSync(`${syncLoc}/html/${sanitizeFileName(nb)}/index.html`, render(md));
+                fs.writeFileSync(path.join(notebookDirectory(nb), 'index.html'), render(md));
             });
         });
 
         // generate a cross-notebook index
-        var li = Object.keys(notesByNotebook).sort(sorter).map(nb => `* [${nb}](${sanitizeFileURL(nb, true)}/index.html)`);
+        var li = Object.keys(notesByNotebook).sort(sorter).map(nb => `* [${nb}](${path.basename(notebookDirectory(nb))}/index.html)`);
         var md = '## Page Index ##\n\n'+li.join('\n');
         fs.writeFileSync(`${syncLoc}/html/index.html`, render(md));
 
