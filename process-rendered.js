@@ -10,11 +10,29 @@ jQuery(function(){ // wait for document to be ready
         const ICON_BULL = '&#9679;';
         const ICON_COLLAPSED = '&#9654;';
         const ICON_EXPANDED = '&#9660;';
+
+        // set page title
+        $('.navbar-brand > span').text(
+            $('h1').length > 0
+                ? $('h1').first().text() 
+                : window.location.href.replace(/.*\//, '').replace(/\.html.*/,'')
+        );
         
         // add TOC in a left pane
-        $('#markdown-container').addClass("col-md-10").wrap('<div id="container" class="container-fluid"></div>');
-        $('#container').prepend('<div id="markdown-toc" class="col-md-2 hidden-print">');
+        $('#markdown-container').wrap('<div id="container"></div>');
+        $('#container').prepend('<div id="markdown-toc">');
         $('#markdown-toc').html(data.toc);
+
+        // configure slideout
+        let slideout = new Slideout({
+            panel       : $('#markdown-container')[0],
+            menu        : $('#markdown-toc')[0],
+            padding     : 256,
+            tolerance   : 70
+        });
+
+        // toggle slideout on hamburger menu click
+        $('.navbar-brand').on('click', function(){ slideout.toggle() });
         
         // TOC css
         $('#markdown-toc').css({
@@ -33,6 +51,53 @@ jQuery(function(){ // wait for document to be ready
             'padding-left':'1.3em',
             'text-indent':'-1.0em'
         });
+
+        // slideout css
+        let slideout_css = `
+            <style type="text/css">
+                body {
+                    width: 100%;
+                    height: 100%;
+                }
+
+                .slideout-menu {
+                    position: fixed;
+                    top: 0;
+                    bottom: 0;
+                    width: 256px;
+                    min-height: 100vh;
+                    overflow-y: scroll;
+                    -webkit-overflow-scrolling: touch;
+                    z-index: 0;
+                    display: none;
+                }
+
+                .slideout-menu-left {
+                    left: 0;
+                }
+
+                .slideout-menu-right {
+                    right: 0;
+                }
+
+                .slideout-panel {
+                    position: relative;
+                    z-index: 1;
+                    will-change: transform;
+                    background-color: #FFF; /* A background-color is required */
+                    min-height: 100vh;
+                }
+
+                .slideout-open, .slideout-open body, .slideout-open .slideout-panel {
+                    overflow: hidden;
+                }
+
+                .slideout-open .slideout-menu {
+                    display: block;
+                }
+            </style>
+        `;
+        $('html > head').append(slideout_css);
 
         // add bullets to TOC entries
         $('#markdown-toc a').each(function(){

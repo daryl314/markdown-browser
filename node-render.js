@@ -178,6 +178,7 @@ function render(data, depth=1) {
         <script type="text/javascript" src="${'../'.repeat(depth)}lib/jquery.min.js"></script>
         <script type="text/javascript" src="${'../'.repeat(depth)}lib/lodash.min.js"></script>
         <script type="text/javascript" src="${'../'.repeat(depth)}markdown.js"></script>
+        <script type="text/javascript" src="${'../'.repeat(depth)}lib/slideout.min.js"></script>
         <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
     `;
 
@@ -210,7 +211,7 @@ function render(data, depth=1) {
                     <span class="icon-bar"></span>
                     <span class="icon-bar"></span>
                 </button>
-                <span class='navbar-brand'>Project name</span>
+                <a class='navbar-brand' href='#'>&#9776; <span>Project name</span></a>
             </div>
             <div id="navbar" class="navbar-collapse collapse">
                 <ul class="nav navbar-nav">
@@ -294,6 +295,7 @@ function syncToHtml(syncLoc) {
         'lib/lodash.min.js',
         'lib/highlight-atelier-forest-light.min.css',
         'lib/highlight.pack.js',
+        'lib/slideout.min.js',
         'markdown.js',
         'katex-0.5.1',
         'process-rendered.js',
