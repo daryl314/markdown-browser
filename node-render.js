@@ -183,6 +183,10 @@ function render(data, depth=1) {
             #markdown-toc, #markdown-toc a {
                 color: #1d1e1f;
             }
+            #markdown-toc .tree-toggle {
+                float:left;
+                width:1em;
+            }
             #markdown-toc ul {
                 list-style-type: none;
             }
@@ -279,7 +283,7 @@ function render(data, depth=1) {
             </div>
             <div id="navbar" class="navbar-collapse collapse">
                 <ul class="nav navbar-nav">
-                    <li class="active"><a href="#">Map Mode <span class="sr-only">(current)</span></a></li>
+                    <li class="active"><a id="map-mode-toggle" href="#">Map Mode <span class="sr-only">(current)</span></a></li>
                     <li><a href="index.html">Page Index</a></li>
                 </ul>
             </div><!--/.nav-collapse -->

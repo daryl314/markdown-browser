@@ -1596,32 +1596,56 @@ class ScrollSync {
     // don't generate debugging data
     this.debug = false;
 
+    // initial state is disabled so that sync is configured on first call
+    this.enabled = true;
+
     // reference to this for callbacks
     var _this = this;
 
     // initialize scroll sync data
     this.refresh();
 
-    // bind to CodeMirror scroll event: scroll preview window to editor location
+    // set up event handlers
+    this.toggle();
+  }
+
+  // toggle state on/off
+  toggle() {
+
+    // clear any previous scroll handlers
     if (this.cm) {
       this.cm.off('scroll');
-      this.cm.on('scroll',
+    }
+    this.$el.off('scroll');
+   
+    // disable
+    if (this.enabled) {
+      this.enabled = false;
+
+    // enable
+    } else {
+      this.enabled = true;
+
+      // bind to CodeMirror scroll event: scroll preview window to editor location
+      if (this.cm) {
+        this.cm.on('scroll',
+          _.debounce(
+            function(){ _this.scrollTo(_this.visibleLines().top); },
+            100,
+            {maxWait:100}
+          )
+        );
+      }
+
+      // bind to rendered markdown scroll event: scroll editor window to preview location
+      this.$el.on('scroll',
         _.debounce(
-          function(){ _this.scrollTo(_this.visibleLines().top); },
+          function(){ _this.scrollFrom($(this).scrollTop()); },
           100,
           {maxWait:100}
         )
       );
     }
-
-    // bind to rendered markdown scroll event: scroll editor window to preview location
-    this.$el.off('scroll').on('scroll',
-      _.debounce(
-        function(){ _this.scrollFrom($(this).scrollTop()); },
-        100,
-        {maxWait:100}
-      )
-    );
   }
 
   // refresh scroll sync information
@@ -1769,7 +1793,6 @@ class ScrollSync {
     }
 
   }
-
 
   // average adjacent points
   collapseRepeated(x_vec, y_vec) {

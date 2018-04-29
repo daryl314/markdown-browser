@@ -35,6 +35,21 @@ jQuery(function(){ // wait for document to be ready
         }
     }
 
+    // add bullets to TOC entries
+    const ICON_BULL      = '&#9679;';
+    const ICON_COLLAPSED = '&#9654;';
+    const ICON_EXPANDED  = '&#9660;';
+    $('#markdown-toc a').each(function(){
+        if ($(this).parent().has('ul').length > 0) {
+            $(this).parent().prepend(`<div class="tree-toggle tree-toggle-collapsed">${ICON_COLLAPSED}</div>`)    
+        } else {
+            $(this).parent().prepend(`<div class="tree-toggle tree-toggle-bullet">${ICON_BULL}</div>`)
+        }
+    });
+
+    // hide bullets initially
+    $('#markdown-toc .tree-toggle').hide();
+
     // running on iphone
     if (navigator.platform.indexOf("iPhone") != -1) {
 
@@ -66,23 +81,20 @@ jQuery(function(){ // wait for document to be ready
         })
 
     }
-        
-    if (window.location.href.endsWith('?map') || window.location.href.endsWith('?map#')) {
-        const ICON_BULL      = '&#9679;';
-        const ICON_COLLAPSED = '&#9654;';
-        const ICON_EXPANDED  = '&#9660;';
+
+    ///// MAP MODE /////
+
+    function mapMode() {
 
         // add bullets to TOC entries
-        $('#markdown-toc a').each(function(){
-            if ($(this).parent().has('ul').length > 0) {
-                $(this).parent().prepend(`<div style="float:left;width:1em;" class="tree-toggle tree-toggle-collapsed">${ICON_COLLAPSED}</div>`)    
-            } else {
-                $(this).parent().prepend(`<div style="float:left;width:1em;">${ICON_BULL}</div>`)
-            }
-        }) 
+        $('#markdown-toc .tree-toggle').show();
 
         // hide nested items
+        $('#markdown-toc ul').show();
         $('#markdown-toc > ul > li ul').hide();
+
+        // clear any previous click handlers
+        $('#markdown-toc').off('click').off('dblclick');
 
         // click handler for toggles
         $('#markdown-toc').on('click', 'div.tree-toggle', function(){
@@ -122,9 +134,31 @@ jQuery(function(){ // wait for document to be ready
             $h.add(content).show();
         });
 
-    ///// PROCESSING FOR NORMAL MODE /////
+        ///// TURN OFF SYNC MODE /////
 
-    } else {
+        $('#markdown-toc > ul').removeClass('toc-menu');
+        $('#markdown-toc a').add('toc a').each(function(){ 
+            $(this).attr('href', '#')
+        });
+
+        // turn off scroll sync (if it has been configured)
+        if (window.scrollSync) {
+            window.scrollSync.toggle();
+        }
+
+        // toggle state
+        $('a#map-mode-toggle').parent().addClass('active');
+    }
+
+    ///// SYNC MODE /////
+
+    function syncMode() {
+
+        // clear any click handlers
+        $('#markdown-toc').off('click').off('dblclick');
+
+        // hide TOC bullets
+        $('#markdown-toc .tree-toggle').hide();
 
         // configure tables of contents
         $('#markdown-toc > ul').addClass('toc-menu');
@@ -133,8 +167,30 @@ jQuery(function(){ // wait for document to be ready
         });
 
         // set up scroll synchronization between rendering and table of contents
-        var scrollSync = new ScrollSync(null, $('#markdown-container'), $('#markdown-toc'));
+        if (!(window.scrollSync)) {
+            window.scrollSync = new ScrollSync(null, $('#markdown-container'), $('#markdown-toc'));
+        } else {
+            window.scrollSync.toggle();
+        }
+
+        // toggle state
+        $('a#map-mode-toggle').parent().removeClass('active');
     }
 
+    ///// MODE HANDLER /////
+        
+    if (window.location.href.endsWith('?map') || window.location.href.endsWith('?map#')) {
+        mapMode();
+    } else {
+        syncMode();
+    }
+
+    $('a#map-mode-toggle').on('click', function(){
+        if ($(this).parent().hasClass('active')) {
+            syncMode();
+        } else {
+            mapMode();
+        }
+    })
 
 });
