@@ -81,11 +81,11 @@ function render(data, depth=1) {
             @media tty { /* CSS for terminal web browsers */
             }
             body {
-                padding: 50px 20px 20px 5px;
+                padding: 50px 0px 20px 0px;
             }
             #markdown-container {
                 overflow-y: scroll;
-                height: 100vh;
+                height: calc(100vh - 50px);
             }
 
             /* Navbar */
@@ -169,6 +169,76 @@ function render(data, depth=1) {
                 border-right: 1px solid #eeeeee;
                 border-bottom: 1px solid #eeeeee;
             }
+
+            /* Map mode TOC */
+
+            #markdown-toc {
+                padding-left     : 10px;
+                padding-right    : 10px;
+                padding-bottom   : 0px;
+                padding-top      : 10px;
+                height           : calc(100vh - 50px);
+                background-color : #d7d8d8;
+            }
+            #markdown-toc, #markdown-toc a {
+                color: #1d1e1f;
+            }
+            #markdown-toc ul {
+                list-style-type: none;
+            }
+            #markdown-toc > ul {
+                font-size: 0.8em;
+            }
+            #markdown-toc ul {
+                padding-left : 1.3em;
+                text-indent  : -1.0em;
+            }
+            #markdown-toc div.tree-toggle {
+                cursor : pointer;
+            }
+
+            /* Slideout CSS */
+
+            body {
+                width: 100%;
+                height: 100%;
+            }
+
+            .slideout-menu {
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                width: 256px;
+                min-height: 100vh;
+                overflow-y: scroll;
+                -webkit-overflow-scrolling: touch;
+                z-index: 0;
+                display: none;
+            }
+
+            .slideout-menu-left {
+                left: 0;
+            }
+
+            .slideout-menu-right {
+                right: 0;
+            }
+
+            .slideout-panel {
+                position: relative;
+                z-index: 1;
+                will-change: transform;
+                background-color: #FFF; /* A background-color is required */
+                min-height: 100vh;
+            }
+
+            .slideout-open, .slideout-open body, .slideout-open .slideout-panel {
+                overflow: hidden;
+            }
+
+            .slideout-open .slideout-menu {
+                display: block;
+            }
         </style>
     `;
 
@@ -205,16 +275,12 @@ function render(data, depth=1) {
     <nav class="navbar navbar-default navbar-fixed-top">
         <div class="container">
             <div class="navbar-header">
-                <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
-                    <span class="sr-only">Toggle navigation</span>
-                    <span class="icon-bar"></span>
-                    <span class="icon-bar"></span>
-                    <span class="icon-bar"></span>
-                </button>
                 <a class='navbar-brand' href='#'>&#9776; <span>Project name</span></a>
             </div>
             <div id="navbar" class="navbar-collapse collapse">
                 <ul class="nav navbar-nav">
+                    <li class="active"><a href="#">Map Mode <span class="sr-only">(current)</span></a></li>
+                    <li><a href="index.html">Page Index</a></li>
                 </ul>
             </div><!--/.nav-collapse -->
         </div>
