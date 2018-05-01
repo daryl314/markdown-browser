@@ -59,7 +59,7 @@ jQuery(function(){ // wait for document to be ready
         let slideout = new Slideout({
             panel       : $('#markdown-container')[0],  // content container
             menu        : $('#markdown-toc')[0],        // menu container
-            padding     : 256,                          // menu width (px)
+            padding     : 700,                          // menu width (px)
             tolerance   : 70,                           // px needed to open menu completely
             touch       : true,                         // enable touch events
             side        : 'left'                        // open on the left side
@@ -67,6 +67,9 @@ jQuery(function(){ // wait for document to be ready
 
         // toggle slideout on hamburger menu click
         $('.navbar-brand').on('click', function(){ slideout.toggle() });
+
+        // increase menu font size
+        $('#markdown-toc > ul').css('font-size','1.2em');
 
     // not running on iphone
     } else {
