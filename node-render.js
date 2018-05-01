@@ -200,6 +200,12 @@ function render(data, depth=1) {
             #markdown-toc div.tree-toggle {
                 cursor : pointer;
             }
+            #markdown-toc li.visible > div.tree-toggle {
+                color: red;
+            }
+            #markdown-toc li.active > a {
+                font-weight: bold;
+            }
 
             /* Slideout CSS */
 
@@ -283,7 +289,8 @@ function render(data, depth=1) {
             </div>
             <div id="navbar" class="navbar-collapse collapse">
                 <ul class="nav navbar-nav">
-                    <li class="active"><a id="map-mode-toggle" href="#">Map Mode <span class="sr-only">(current)</span></a></li>
+                    <li><a id="map-mode-toggle" href="#">Map Mode <span class="sr-only">(current)</span></a></li>
+                    <li><a id="map-show-all" href="#">Show All</a></li>
                     <li><a href="index.html">Page Index</a></li>
                 </ul>
             </div><!--/.nav-collapse -->
@@ -430,7 +437,7 @@ function syncToHtml(syncLoc) {
         p.then(() => {
             Object.keys(notesByNotebook).forEach(nb => {
                 notesByNotebook[nb].sort((a,b) => sorter(a.title,b.title));
-                var li = notesByNotebook[nb].map(n => `* [${n.title}](${path.basename(noteFileName(n))})\n* [${n.title} (Map)](${path.basename(noteFileName(n))}?map)`);
+                var li = notesByNotebook[nb].map(n => `* [${n.title}](${path.basename(noteFileName(n))})`);
                 var md = '## Page Index ##\n\n'+li.join('\n');
                 fs.writeFileSync(path.join(notebookDirectory(nb), 'index.html'), render(md));
             });

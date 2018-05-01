@@ -18,7 +18,6 @@ jQuery(function(){ // wait for document to be ready
     $('#container').prepend('<div id="markdown-toc" class="hidden-print">');
     $('#markdown-toc').html(data.toc);
     $('body > nav > div.container').removeClass('container');
-    // $('#markdown-toc > ul').css({'padding-top':'20px'});
 
     // cross-reference headers in table of contents
     let $h = $('#markdown-container').children('h2,h3,h4,h5,h6');
@@ -51,7 +50,8 @@ jQuery(function(){ // wait for document to be ready
     $('#markdown-toc .tree-toggle').hide();
 
     // running on iphone
-    if (navigator.platform.indexOf("iPhone") != -1) {
+    let is_iPhone = navigator.platform.indexOf("iPhone") != -1;
+    if (is_iPhone) {
 
         // configure slideout (https://github.com/mango/slideout)
         // disable dragging on elements with data-slideout-ignore attribute:
@@ -81,6 +81,29 @@ jQuery(function(){ // wait for document to be ready
         })
 
     }
+
+    ///// SCROLL SYNC /////
+
+    // callback function
+    function scrollSync() {
+        let top = $('#markdown-container').scrollTop();
+        let htop = $h.map(function(){ return $(this).position().top }).toArray();
+        var i;
+        for (i = 0; htop[i] <= 0; i++) {}
+        $('#markdown-toc li').removeClass('active visible');
+        $($a[i-1]).parent('li').addClass('active');
+        $($a[i-1]).parentsUntil($('#markdown-toc'), 'li').addClass('visible')
+    }
+
+    // bind to scroll event with debouncing
+    $('#markdown-container').on('scroll', 
+        _.debounce(
+            scrollSync,         // call scrollSync
+            100,                // at 100 ms intervals
+            is_iPhone ? 
+                {} :            // ... no wait limit for iPhone
+                {maxWait:100}   // ... max wait of 100 ms otherwise
+    ));
 
     ///// MAP MODE /////
 
@@ -123,74 +146,46 @@ jQuery(function(){ // wait for document to be ready
 
         // click handler for entries
         $('#markdown-toc').on('click', 'a', function(){
-            let $h = $(this).data('heading');
-            let level = parseInt($h.get(0).tagName.slice(1));
-            let blockers = [];
-            for (let i = 1; i <= level; i++) {
-                blockers.push(`h${i}`);
+            if ($('a#map-mode-toggle').parent().hasClass('active')) {
+                let $h = $(this).data('heading');
+                let level = parseInt($h.get(0).tagName.slice(1));
+                let blockers = [];
+                for (let i = 1; i <= level; i++) {
+                    blockers.push(`h${i}`);
+                }
+                $('#markdown-container').children().hide();
+                let content = $h.nextUntil(blockers.join(','));
+                $h.add(content).show();
+            } else {
+                $(this).data('heading')[0].scrollIntoView();
             }
-            $('#markdown-container').children().hide();
-            let content = $h.nextUntil(blockers.join(','));
-            $h.add(content).show();
         });
 
-        ///// TURN OFF SYNC MODE /////
-
-        $('#markdown-toc > ul').removeClass('toc-menu');
-        $('#markdown-toc a').add('toc a').each(function(){ 
-            $(this).attr('href', '#')
-        });
-
-        // turn off scroll sync (if it has been configured)
-        if (window.scrollSync) {
-            window.scrollSync.toggle();
-        }
-
-        // toggle state
-        $('a#map-mode-toggle').parent().addClass('active');
-    }
-
-    ///// SYNC MODE /////
-
-    function syncMode() {
-
-        // clear any click handlers
-        $('#markdown-toc').off('click').off('dblclick');
-
-        // hide TOC bullets
-        $('#markdown-toc .tree-toggle').hide();
-
-        // configure tables of contents
-        $('#markdown-toc > ul').addClass('toc-menu');
-        $('#markdown-toc a').add('toc a').each(function(){ 
-            $(this).attr('href', $(this).data('href')) 
-        });
-
-        // set up scroll synchronization between rendering and table of contents
-        if (!(window.scrollSync)) {
-            window.scrollSync = new ScrollSync(null, $('#markdown-container'), $('#markdown-toc'));
-        } else {
-            window.scrollSync.toggle();
-        }
-
-        // toggle state
-        $('a#map-mode-toggle').parent().removeClass('active');
+        // click handler to show everything in map mode
+        $('a#map-show-all').on('click', function(){
+            $('#markdown-container').children().show(); 
+        })
     }
 
     ///// MODE HANDLER /////
-        
+
     if (window.location.href.endsWith('?map') || window.location.href.endsWith('?map#')) {
-        mapMode();
+        $('a#map-mode-toggle').parent().addClass('active');
     } else {
-        syncMode();
+        $('a#map-show-all').parent().hide();
     }
+    mapMode();
 
     $('a#map-mode-toggle').on('click', function(){
         if ($(this).parent().hasClass('active')) {
-            syncMode();
+            // enter outline mode
+            $('#markdown-container').children().show();
+            $(this).blur(); // un-select element
         } else {
-            mapMode();
+            // enter map mode
         }
+        $(this).parent().toggleClass('active');
+        $('a#map-show-all').parent().toggle();
     })
 
 });

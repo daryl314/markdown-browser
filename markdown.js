@@ -1567,6 +1567,10 @@ class MarkdownRenderer {
  * CodeMirror and a rendered markdown preview window.  It can also indicate
  * the preview window scroll location in the paired table of contents.  Either
  * the CodeMirror instance or the table of contents can be undefined.
+ * 
+ * When the table of contents scroll sync fires, the current li is given
+ * the classes 'active' and 'visible', and parent li's are given the class
+ * 'visible'
 */
 
 class ScrollSync {
@@ -1890,7 +1894,6 @@ class ScrollSync {
       this.$toc.find('li').removeClass('active visible');
       matchingToc.parent('li').addClass('active');
       matchingToc.parentsUntil(this.$toc, 'li').addClass('visible');
-
     }
 
     // if the update count is nonzero, this was a scroll triggered by an editor
