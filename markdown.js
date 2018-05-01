@@ -1597,10 +1597,7 @@ class ScrollSync {
     this.debug = false;
 
     // initial state is disabled so that sync is configured on first call
-    this.enabled = true;
-
-    // reference to this for callbacks
-    var _this = this;
+    this.enabled = false;
 
     // initialize scroll sync data
     this.refresh();
@@ -1611,6 +1608,7 @@ class ScrollSync {
 
   // toggle state on/off
   toggle() {
+    let _this = this;
 
     // clear any previous scroll handlers
     if (this.cm) {
@@ -1669,14 +1667,17 @@ class ScrollSync {
 
     // capture heading locations
     this.headingLookup = [];
-    this.$el.find(':header').each( function(){
-      var matchingToc = _this.$toc.find("a[data-href='#" + $(this).attr('id') + "']");
-      if (matchingToc.length > 0) {
-        _this.headingLookup.push([
-          $(this).position().top + _this.$el.scrollTop(),
-          matchingToc
-        ])
-      }
+    let $h = this.$el.find('h2,h3,h4,h5,h6');
+    let $t = _this.$toc.find('a');
+    if ($t.length != $h.length) {
+      throw new Error(`Heading length mismatch: ${$h.length} != ${$t.length}`);
+    }
+    $h.each(function(index){
+      let matchingToc = $($t[index]);
+      _this.headingLookup.push([
+        $(this).position().top + _this.$el.scrollTop(),
+        matchingToc
+      ])
     });
 
     // hide preview window if it was previously hidden
