@@ -218,7 +218,7 @@ function render(data, depth=1) {
                 position: fixed;
                 top: 0;
                 bottom: 0;
-                width: 256px;
+                width: 700px;
                 min-height: 100vh;
                 overflow-y: scroll;
                 -webkit-overflow-scrolling: touch;

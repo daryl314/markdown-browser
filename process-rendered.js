@@ -69,7 +69,7 @@ jQuery(function(){ // wait for document to be ready
         $('.navbar-brand').on('click', function(){ slideout.toggle() });
 
         // increase menu font size
-        $('#markdown-toc > ul').css('font-size','1.2em');
+        $('#markdown-toc > ul').css('font-size','2.0em');
 
     // not running on iphone
     } else {
