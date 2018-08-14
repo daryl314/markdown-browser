@@ -411,12 +411,14 @@ function syncToHtml(syncLoc) {
 
         // generate a promise to generate a web page for each filtered note
         var p = mdNotes.map(n => n.getContent().then(c => {
-            var html = render(EvernoteConnectionBase.stripFormatting(c.html()));
+            var noteData = EvernoteConnectionBase.stripFormatting(c.html());
+            var html = render(noteData);
             var outFile = noteFileName(n);
             if (!fs.existsSync(path.dirname(outFile))) {
                 fs.mkdirSync(path.dirname(outFile));
             }
             fs.writeFileSync(outFile, html);
+            fs.writeFileSync(outFile.replace(/\.html$/,'.md'), noteData);
         }));
 
         // execute promises
