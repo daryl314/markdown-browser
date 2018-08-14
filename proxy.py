@@ -66,8 +66,8 @@ class S(BaseHTTPRequestHandler):
 
     def _makeRequest(self, method, url, body=None, headers=None):
         """Make a request from another server"""
-        print(method+' to '+url+' on '+self._getServer())
         conn = self._getConnection()
+        print('  - Making proxied '+method+' to '+url+' on '+self._getServer()+' with '+conn.__class__.__name__)
         conn.request(method, url, body, headers)
         response = conn.getresponse()
 
@@ -90,6 +90,7 @@ class S(BaseHTTPRequestHandler):
         
         # remap proxied requests
         if self.isProxied():
+            print('  - GET proxied: '+self._getURL())
             self.request('GET', self._getURL())
             
         # remap directory listing requests
@@ -102,7 +103,7 @@ class S(BaseHTTPRequestHandler):
                 res = res + [ directory+'/'+f for f in files if f.endswith(extension) ]
             self._sendData(json.dumps(res), 'application/json')
 
-        # otherwise return a file
+        # otherwise return a local file
         else:
             try:
                 ext = path.splitext(self.path)[1]
@@ -112,7 +113,7 @@ class S(BaseHTTPRequestHandler):
                         mime = mimeMap[ext]
                     else:
                         mime = subprocess.check_output(["file",'--mime-type',fileName]).rstrip().split(' ')[-1]
-                        print('Detected mime type for '+self.path+': '+mime)
+                        print('  - Detected mime type for '+self.path+': '+mime)
                     f = open(fileName)
                     self._sendData(f.read(), mime)
                     f.close()
@@ -133,7 +134,7 @@ class S(BaseHTTPRequestHandler):
         data_repr = repr(data_string)
         if len(data_repr) > 1000:
             data_repr = data_repr[:1000] + '...'
-        print("POST data: " + data_repr)
+        print("  - POST data: " + data_repr)
         # post to URL @FILE exports to a local file
         if self._getURL().startswith('/@writer/'):
             outFile = self._getURL()[9:]
@@ -148,7 +149,7 @@ class S(BaseHTTPRequestHandler):
             else:
                 with open(outFile, 'w') as handle:
                     handle.write(data_string)
-                    print("Wrote to file: "+outFile)
+                    print("  - Wrote to file: "+outFile)
                     self.send_response(201, message="Created file: "+outFile)
         # otherwise pass on POST request
         else:
