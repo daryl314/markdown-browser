@@ -13,7 +13,6 @@ if (process.argv.length < 3) {
 // require node modules
 global.vm = require('vm');
 global.fs = require('fs');
-global.fse = require('fs-extra');
 global.path = require('path');
 global.cheerio = require('cheerio');
 
@@ -363,7 +362,10 @@ function syncToHtml(syncLoc) {
 
     // copy resources
     function copyResource(name) {
-        fse.copySync(`${__dirname}/${name}`, `${syncLoc}/html/${name}`);
+        let src = `${__dirname}/${name}`;
+        let tgt =`${syncLoc}/html/${name}`;
+        console.log(`linking ${src} -> ${tgt}`); 
+        fs.symlinkSync(src, tgt);
     }
     let resources = [
         'lib/bootswatch-cosmo.min.css',
@@ -376,11 +378,7 @@ function syncToHtml(syncLoc) {
         'markdown.js',
         'katex-0.5.1',
         'process-rendered.js',
-        'script/renderer.vim',
-        'script/Renderer.py',
-        'script/TagPair.py',
-        'script/TerminalColors256.py',
-        'script/browser.sh'
+        'script'
     ];
     resources.forEach(copyResource);
 

@@ -1445,7 +1445,7 @@ class Application {
         if (this.queryOptions.mode == 'evernote' || this.queryOptions.mode == 'syncReport') {
           if (localStorage.getItem('token') === null)
             this.updateToken();
-          return Application.loadJavascriptFile('/lib/evernote-sdk-minified.js')
+          return Application.loadJavascriptFile('evernote_browserify.js')
         } else {
           return null
         }

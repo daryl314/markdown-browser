@@ -2,6 +2,7 @@
 const express = require('express');
 const Evernote = require('evernote');
 const fs = require('fs');
+const util = require('util');
 
 // configuration
 const config = {
@@ -39,7 +40,9 @@ var app = express();
 ////////////
 
 app.get('/', function(req,res){
+  console.log("GET /");
   if (state.oauthAccessToken) {
+    console.log(state.oauthAccessToken);
     getClient(state.oauthAccessToken).getNoteStore().listNotebooks().then(function(notebooks) {
       res.send(`
         <h2>Access Token</h2>
@@ -50,7 +53,9 @@ app.get('/', function(req,res){
       fs.writeFileSync(token_file, JSON.stringify(state));
     }, function(error) {
       res.send(`
-        ERROR: ${JSON.stringify(error)}<br/>
+        <h2>Access Token</h2>
+        <ul><li>${state.oauthAccessToken}</li></ul>
+        ERROR: ${util.inspect(error)}<br/>
         <a href="/oauth">Click here</a> to connect Evernote
       `)
     });
@@ -68,12 +73,17 @@ app.get('/', function(req,res){
 });
 
 app.get('/oauth', function(req,res){
+  console.log("GET /oauth");
   var client = getClient();
   client.getRequestToken(callbackUrl, function(error, oauthToken, oauthTokenSecret, results) {
     if (error) {
+      console.log("  - ERROR: " + JSON.stringify(error));
       state.error = JSON.stringify(error);
       res.redirect('/');
     } else {
+      console.log("  - oauthToken: " + oauthToken);
+      console.log("  - oauthTokenSecret: " + oauthTokenSecret);
+      console.log(results);
       state.oauthToken = oauthToken;
       state.oauthTokenSecret = oauthTokenSecret;
       res.redirect(client.getAuthorizeUrl(oauthToken)); // redirect to authorize token
@@ -82,6 +92,7 @@ app.get('/oauth', function(req,res){
 });
 
 app.get('/oauth_callback', function(req,res){
+  console.log("GET /oauth_callback");
   getClient().getAccessToken(
     state.oauthToken, 
     state.oauthTokenSecret, 
@@ -92,6 +103,9 @@ app.get('/oauth_callback', function(req,res){
         console.log(error);
         res.redirect('/');
       } else {
+        console.log("  - oauthAccessToken: " + oauthAccessToken);
+        console.log("  - oauthAccessTokenSecret: " + oauthAccessTokenSecret);
+        console.log(results);
         state.oauthAccessToken = oauthAccessToken;
         state.oauthAccessTokenSecret = oauthAccessTokenSecret;
         state.results = results;

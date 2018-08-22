@@ -2,7 +2,9 @@ jQuery(function(){ // wait for document to be ready
 
     // perform rendered markdown post-processing
     var renderer = new MarkdownRenderer();
+    var toc_html = $('toc').html();
     var data = renderer.processRenderedMarkdown($('body'));
+    if (toc_html !== undefined) $('toc').html(toc_html);
 
     ///// PROCESSING FOR MAP MODE /////
 

@@ -81,15 +81,15 @@ class EvernoteConnectionBase {
         var client = new Evernote.Client({token: token, sandbox:false});
         this._noteStore = client.getNoteStore();
       } else { // running in browser
-        var noteStoreTransport = new Thrift.BinaryHttpTransport(url);
-        var noteStoreProtocol = new Thrift.BinaryProtocol(noteStoreTransport);
-        this._noteStore = new NoteStoreClient(noteStoreProtocol);
+        var client = new Evernote.Client({token: token, sandbox:false, serviceHost:'@proxy-https/www.evernote.com'});
+        client.getEndpoint = (path) => '@proxy-https/www.evernote.com' + (path ? '/'+path : '');
+        this._noteStore = client.getNoteStore("@proxy-https/www.evernote.com/shard/s2/notestore");
       }
     }
   }
 
   static defaultNoteResultSpec() {
-    return new NoteResultSpec({
+    return new Evernote.NoteStore.NoteResultSpec({
       includeContent	              : true,  // include note content
       includeResourcesData	        : false, // exnclude resource binary data
       includeResourcesRecognition	  : false, // exclude resource recognition data
@@ -102,7 +102,7 @@ class EvernoteConnectionBase {
   }
 
   static defaultNotesMetadataResultSpec() {
-    return new NotesMetadataResultSpec({
+    return new Evernote.NoteStore.NotesMetadataResultSpec({
       includeTitle: true,             // include the note title
       includeUpdated: true,           // include the update time
       includeUpdateSequenceNum: true, // include the update sequence number
@@ -112,9 +112,9 @@ class EvernoteConnectionBase {
   }
 
   static defaultNoteFilter(tagGuids=null) {
-    return new NoteFilter({
-      order : NoteSortOrder.TITLE,  // default is to sort by title
-      tagGuids : tagGuids           // search for specified tags
+    return new Evernote.NoteStore.NoteFilter({
+      order : Evernote.Types.NoteSortOrder.TITLE,  // default is to sort by title
+      tagGuids : tagGuids                          // search for specified tags
     })
   }
 
@@ -154,9 +154,7 @@ class EvernoteConnectionBase {
     if (isNodeJs()) {
       return this._noteStore[fn].call(this._noteStore, ...args)
     } else {
-      return new Promise((resolve,reject) => {
-        this._noteStore[fn].call(this._noteStore, this.token, ...args, resolve, reject)
-      })
+      return this._noteStore[fn].call(this._noteStore, ...args)
     }
   }
 
@@ -457,7 +455,7 @@ class EvernoteConnectionCached extends EvernoteConnectionBase {
     return this.findNotesMetadata(EvernoteConnectionBase.defaultNoteFilter(tagGuids), start)
       .then( (metaList) => {
         this.messageLogger(`Fetched Evernote note data starting from ${start}`);
-        metaList.notes.forEach( (n) => { this.noteMap.set(n.guid, n) } );
+        metaList.notes.forEach( (n) => { this.noteMap.set(n.guid, new NoteMetadata(n)) } );
         if (start + metaList.notes.length < metaList.totalNotes) {
           return this._fetchNoteMetaData(start + metaList.notes.length)
         }
@@ -616,9 +614,9 @@ class WrappedNoteEvernote extends WrappedNoteRW {
   constructor(conn, note) {
     super();
     if (!(conn instanceof EvernoteConnectionBase))
-      EvernoteConnection.errorHandler('EvernoteConnection required as first argument!');
+      throw new TypeError('EvernoteConnection required as first argument!');
     if (!(note instanceof Note) && !(note instanceof NoteMetadata))
-      EvernoteConnection.errorHandler('Note or NoteMetadata required as second argument!');
+      throw new TypeError('Note or NoteMetadata required as second argument!');
     if (note instanceof Note) {
       this._note = new NoteMetadata(note);
       this._conn = conn;
@@ -631,9 +629,9 @@ class WrappedNoteEvernote extends WrappedNoteRW {
   // static method to generate a WrappedNote from note version data
   static fromVersion(note, version) {
     if (!(note instanceof WrappedNoteEvernote))
-      EvernoteConnection.errorHandler('WrappedNote required as first argument!');
-    if (!(version instanceof NoteVersionId))
-      EvernoteConnection.errorHandler('NoteVersionId required as second argument!');
+      throw new TypeError('WrappedNote required as first argument!');
+    if (!(version instanceof Evernote.NoteStore.NoteVersionId))
+      throw new TypeError('NoteVersionId required as second argument!');
     var newNote = new NoteMetadata(note);
     newNote.updateSequenceNum = version.updateSequenceNum;
     newNote.updated = version.updated;
@@ -1191,7 +1189,7 @@ class Synchronizer {
     if (isNodeJs()) { // running in node.js
       this._syncFilter = new Evernote.NoteStore.SyncChunkFilter(this._syncOptions());
     } else { // running in browser
-      this._syncFilter = new SyncChunkFilter(this._syncOptions());
+      this._syncFilter = new Evernote.NoteStore.SyncChunkFilter(this._syncOptions());
     }
   }
 
@@ -1663,9 +1661,7 @@ class Synchronizer {
     p = p.catch(err => {
 
       // EDAMSystemException class
-      var errorClass = isNodeJs()
-        ? Evernote.Errors.EDAMSystemException
-        : EDAMSystemException;
+      var errorClass = Evernote.Errors.EDAMSystemException;
 
       // recurse if error was a rate limit
       if (err instanceof errorClass && err.errorCode == 19) {
@@ -1684,3 +1680,48 @@ class Synchronizer {
   }
 
 }
+
+/////////////////////////
+// EVERNOTE DATA TYPES //
+/////////////////////////
+
+/* Extracted from evernote-sdk-minified.js */
+
+NoteMetadata = function(a) {
+  this.largestResourceSize = this.largestResourceMime = this.attributes = this.tagGuids = this.notebookGuid = this.updateSequenceNum = this.deleted = this.updated = this.created = this.contentLength = this.title = this.guid = null;
+  a && (void 0 !== a.guid && (this.guid = a.guid),
+  void 0 !== a.title && (this.title = a.title),
+  void 0 !== a.contentLength && (this.contentLength = a.contentLength),
+  void 0 !== a.created && (this.created = a.created),
+  void 0 !== a.updated && (this.updated = a.updated),
+  void 0 !== a.deleted && (this.deleted = a.deleted),
+  void 0 !== a.updateSequenceNum && (this.updateSequenceNum = a.updateSequenceNum),
+  void 0 !== a.notebookGuid && (this.notebookGuid = a.notebookGuid),
+  void 0 !== a.tagGuids && (this.tagGuids = a.tagGuids),
+  void 0 !== a.attributes && (this.attributes = a.attributes),
+  void 0 !== a.largestResourceMime && (this.largestResourceMime = a.largestResourceMime),
+  void 0 !== a.largestResourceSize && (this.largestResourceSize = a.largestResourceSize))
+}
+;
+NoteMetadata.prototype = {};
+
+Note = function(a) {
+  this.tagNames = this.attributes = this.resources = this.tagGuids = this.notebookGuid = this.updateSequenceNum = this.active = this.deleted = this.updated = this.created = this.contentLength = this.contentHash = this.content = this.title = this.guid = null;
+  a && (void 0 !== a.guid && (this.guid = a.guid),
+  void 0 !== a.title && (this.title = a.title),
+  void 0 !== a.content && (this.content = a.content),
+  void 0 !== a.contentHash && (this.contentHash = a.contentHash),
+  void 0 !== a.contentLength && (this.contentLength = a.contentLength),
+  void 0 !== a.created && (this.created = a.created),
+  void 0 !== a.updated && (this.updated = a.updated),
+  void 0 !== a.deleted && (this.deleted = a.deleted),
+  void 0 !== a.active && (this.active = a.active),
+  void 0 !== a.updateSequenceNum && (this.updateSequenceNum = a.updateSequenceNum),
+  void 0 !== a.notebookGuid && (this.notebookGuid = a.notebookGuid),
+  void 0 !== a.tagGuids && (this.tagGuids = a.tagGuids),
+  void 0 !== a.resources && (this.resources = a.resources),
+  void 0 !== a.attributes && (this.attributes = a.attributes),
+  void 0 !== a.tagNames && (this.tagNames = a.tagNames))
+}
+;
+Note.prototype = {};
