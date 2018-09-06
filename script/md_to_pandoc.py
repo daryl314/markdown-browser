@@ -14,5 +14,12 @@ txt = re.sub(r'\\\\\(\s*([\s\S]*?)\s*\\\\\)', r'$$\1$$', txt)
 # remove TOC entries
 txt = re.sub(r'\[TOC\]\s*', '', txt)
 
+# dump a header
+print '''---
+header-includes: |
+    \\usepackage{fancyhdr}
+    \\pagestyle{fancy}
+---'''
+
 # dump data back to stdout
 sys.stdout.write(txt)
