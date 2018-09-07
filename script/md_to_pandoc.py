@@ -16,6 +16,7 @@ txt = re.sub(r'\[TOC\]\s*', '', txt)
 
 # dump a header
 print '''---
+geometry: "top=0.5in, bottom=0.5in, left=0.3in, right=0.3in"
 header-includes: |
     \\usepackage{fancyhdr}
     \\pagestyle{fancy}
