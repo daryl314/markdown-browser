@@ -20,7 +20,7 @@ if [[ -f $1 ]]; then
   fi
   echo "$(basename "$1") --> $(basename "$OUT_FILE")"
   cat "$1" | $LOC/md_to_pandoc.py \
-    | pandoc -f markdown -o "$OUT_FILE" -V geometry:margin=0.5in
+    | pandoc -f markdown -o "$OUT_FILE"
 
 # process a directory
 elif [[ -d $1 ]]; then
