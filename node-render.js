@@ -10,6 +10,10 @@ if (process.argv.length < 3) {
   process.exit(1);
 }
 
+// process input arguments
+var argv = require('minimist')(process.argv.slice(2), {boolean:['--link']});
+console.log("Executing with options:",argv);
+
 // require node modules
 global.vm = require('vm');
 global.fs = require('fs');
@@ -364,8 +368,20 @@ function syncToHtml(syncLoc) {
     function copyResource(name) {
         let src = `${__dirname}/${name}`;
         let tgt =`${syncLoc}/html/${name}`;
-        console.log(`linking ${src} -> ${tgt}`); 
-        fs.symlinkSync(src, tgt);
+        if (argv.link) {
+            console.log(`linking ${src} -> ${tgt}`); 
+            fs.symlinkSync(src, tgt);
+        } else {
+            if (fs.statSync(src).isDirectory()) {
+                fs.mkdirSync(tgt);
+                fs.readdirSync(src).filter(f => !f.startsWith('.')).forEach(f => {
+                    copyResource(`${name}/${f}`)
+                })
+            } else {
+                console.log(`copying ${src} -> ${tgt}`); 
+                fs.copyFileSync(src, tgt);
+            }
+        }
     }
     let resources = [
         'lib/bootswatch-cosmo.min.css',
@@ -452,8 +468,8 @@ function syncToHtml(syncLoc) {
 }
 
 // handle input
-if (process.argv[2].endsWith('.md')) {
-    console.log(render(fs.readFileSync(process.argv[2])));
+if (argv._[0].endsWith('.md')) {
+    console.log(render(fs.readFileSync(argv._[0])));
 } else {
-    syncToHtml(process.argv[2])
+    syncToHtml(argv._[0])
 }

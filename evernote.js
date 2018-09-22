@@ -1148,9 +1148,13 @@ class NodeIO {
 
   static walkSync(dir, filelist = []) {
     fs.readdirSync(dir).map(file => path.join(dir,file)).forEach(file => {
-      filelist = fs.statSync(file).isDirectory()
-        ? NodeIO.walkSync(file, filelist)
-        : filelist.concat(file);
+      try {
+        filelist = fs.statSync(file).isDirectory()
+          ? NodeIO.walkSync(file, filelist)
+          : filelist.concat(file);
+      } catch(err) {
+        console.warn(`walkSync fail on fs.StatSync(${file})`);
+      }
     });
     return filelist
   }
