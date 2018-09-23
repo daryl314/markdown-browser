@@ -36,8 +36,10 @@ if [[ $# -lt 3 ]]; then
       -v $SYNC_LOCATION:/root/app/syncData:rw \
       -w /root/app \
       $TAG \
-      node node-sync.js $EVERNOTE_TOKEN /root/app/syncData
-else
+      ./node-sync.js $EVERNOTE_TOKEN syncData \
+          && ./node-render.js syncData \
+          && ./script/gen_pdf.sh syncData
+else # debug with ./docker_sync.sh xxx yyy /bin/bash
   docker run -it --rm \
       -v "$PWD":/root/app:ro \
       -v $SYNC_LOCATION:/root/app/syncData:rw \
