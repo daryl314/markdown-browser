@@ -21,8 +21,8 @@ global.path = require('path');
 global.cheerio = require('cheerio');
 
 // load dependencies
-vm.runInThisContext(fs.readFileSync('markdown.js'));
-vm.runInThisContext(fs.readFileSync('evernote.js'));
+vm.runInThisContext(fs.readFileSync(`${__dirname}/../markdown.js`));
+vm.runInThisContext(fs.readFileSync(`${__dirname}/../evernote.js`));
 
 // give info on promise rejections
 process.on('unhandledRejection', r => console.log(r));
@@ -373,7 +373,7 @@ function syncToHtml(syncLoc) {
             fs.symlinkSync(src, tgt);
         } else {
             if (fs.statSync(src).isDirectory()) {
-                fs.mkdirSync(tgt);
+                // fs.mkdirSync(tgt);
                 fs.readdirSync(src).filter(f => !f.startsWith('.')).forEach(f => {
                     copyResource(`${name}/${f}`)
                 })
@@ -384,17 +384,17 @@ function syncToHtml(syncLoc) {
         }
     }
     let resources = [
-        'lib/bootswatch-cosmo.min.css',
-        'lib/bootstrap-dropdown-3.3.4.js',
-        'lib/jquery.min.js',
-        'lib/lodash.min.js',
-        'lib/highlight-atelier-forest-light.min.css',
-        'lib/highlight.pack.js',
-        'lib/slideout.min.js',
-        'markdown.js',
-        'katex-0.5.1',
-        'process-rendered.js',
-        'script'
+        '../lib/bootswatch-cosmo.min.css',
+        '../lib/bootstrap-dropdown-3.3.4.js',
+        '../lib/jquery.min.js',
+        '../lib/lodash.min.js',
+        '../lib/highlight-atelier-forest-light.min.css',
+        '../lib/highlight.pack.js',
+        '../lib/slideout.min.js',
+        '../markdown.js',
+        '../katex-0.5.1',
+        '../process-rendered.js',
+        '../script'
     ];
     resources.forEach(copyResource);
 
