@@ -359,11 +359,6 @@ function syncToHtml(syncLoc) {
     }
     fs.mkdirSync(`${syncLoc}/html`);
 
-    // create resource folder if it doesn't exist
-    if (!(fs.existsSync(`${syncLoc}/html/lib`))) {
-        fs.mkdirSync(`${syncLoc}/html/lib`)
-    }
-
     // copy resources
     function copyResource(name) {
         let src = `${__dirname}/${name}`;
@@ -373,7 +368,9 @@ function syncToHtml(syncLoc) {
             fs.symlinkSync(src, tgt);
         } else {
             if (fs.statSync(src).isDirectory()) {
-                // fs.mkdirSync(tgt);
+                if (!fs.existsSync(tgt)) {
+                    fs.mkdirSync(tgt);
+                }
                 fs.readdirSync(src).filter(f => !f.startsWith('.')).forEach(f => {
                     copyResource(`${name}/${f}`)
                 })
