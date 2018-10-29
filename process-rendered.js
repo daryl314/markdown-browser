@@ -149,7 +149,7 @@ jQuery(function(){ // wait for document to be ready
             $(this).parent().find('div.tree_toggle').html(ICON_EXPANDED);
         }); 
 
-        // click handler for entries
+        // click handler for sidebar entries
         $('#markdown-toc').on('click', 'a', function(){
             if ($('a#map-mode-toggle').parent().hasClass('active')) {
                 let $h = $(this).data('heading');
