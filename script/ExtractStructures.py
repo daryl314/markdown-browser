@@ -244,11 +244,14 @@ class DwarfInfo(object):
     def ctypesFields(self, node, indent=0, tabstop=4):
         """Return contents of _fields_ property for a ctypes structure"""
         assert isinstance(node, AstNode.Structure) or isinstance(node, AstNode.Union)
-        fieldData = [self.toCtypes(field, indent + 1) for field in node.children]
-        if len(fieldData) >= 1:
-            return '[\n' + ',\n'.join(fieldData) + '\n' + ' ' * tabstop * indent + ']'
-        else:
+        if len(node.children) == 0:
             return '[]'
+        fieldData = []
+        for field in node.children:
+            if isinstance(field.type, AstNode.Pointer) and isinstance(field.type.type, AstNode.Subroutine):
+                field = AstNode.Member(name=field.name, type=field.type.type)
+            fieldData.append(self.toCtypes(field, indent+1))
+        return '[\n' + ',\n'.join(fieldData) + '\n' + ' ' * tabstop * indent + ']'
 
     def toCtypes(self, node, indent=0, tabstop=4):
         """Convert an AST node to ctypes"""
