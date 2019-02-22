@@ -1,6 +1,7 @@
-import ctypes, ctypes.util, warnings, yaml
+import ctypes, ctypes.util, warnings
 import libcmark_gfm as cmark, libcmark_gfm_extensions as cmark_ext
-import ObjectDumper
+from ..util.TypedTree import TypedTree
+from ..util.CtypesWalker import CtypesWalker
 
 ################################################################################
 
@@ -58,7 +59,13 @@ class CmarkWrapper(object):
         super(CmarkWrapper, self).__setattr__('obj', obj)
 
     def __repr__(self):
-        return yaml.dump({self.PREFIX : ObjectDumper.toObject(self.obj, pointers=2)}, indent=4)
+        def suHandler(obj, x, state):
+            state_ = state._replace(in_union=state.in_union or isinstance(x,ctypes.Union))
+            out = dict([(f,obj._recurse(getattr(x,f),state_)) for f,_ in x._fields_])
+            return TypedTree.Build(x.__class__.__name__, **out)
+        def ptrHandler(obj, p, pc, state):
+            return TypedTree.Build(p.__class__.__name__ + '_ptr', contents=pc)
+        return CtypesWalker(struct=suHandler, union=suHandler, pointer=ptrHandler).walk(self.obj, pointers=2).__repr__()
 
     def __getattr__(self, item):
         if self.PREFIX + item in self.CMARK_FN:
@@ -90,7 +97,56 @@ class CmarkNode(CmarkWrapper):
         out = [self.first_child()]
         while out[-1]: # iterate until a null pointer
             out.append(CmarkNode(out[-1]).next())
-        return [CmarkNode(x) for x in out[:-1]]
+        return [self.__class__(x) for x in out[:-1]]
+
+    ##### AST GENERATION #####
+
+    NODE_ATTR = {
+        'heading'    : {'Level' : 'get_heading_level'},
+        'code_block' : {'Info' : 'get_fence_info'},
+        'link'       : {'Destination' : 'get_url', 'Title' : 'get_title'},
+        'image'      : {'Destination' : 'get_url', 'Title' : 'get_title'},
+    }
+    TEXT_NODES = {'text', 'code_block', 'code', 'html_block', 'html_inline'}
+
+    def toAST(self):
+        tag = self.get_type_string()
+        if tag == 'table':
+            return self._tableToAST()
+        elif tag == 'list':
+            return self._listToAST()
+        attr = {'Text':self.get_literal()} if tag in self.TEXT_NODES else {}
+        for k,v in self.NODE_ATTR.get(tag, {}).items():
+            attr[k] = self.__getattr__(v)()
+        return self._toAST(self, **attr)
+
+    @staticmethod
+    def _toAST(n, children=None, **attr):
+        if children is None:
+            children = [c.toAST() for c in n.children()]
+        pos = TypedTree.Build('position', r1=n.get_start_line(), c1=n.get_start_column(),
+                                           r2=n.get_end_line(), c2=n.get_end_column())
+        return TypedTree.Build(n.get_type_string(), position=pos, children=children, **attr)
+
+    def _listToAST(self):
+        attr = {
+            'Type': ['None', 'Bullet', 'Ordered'][self.get_list_type()],
+            'Tight': self.get_list_tight() != 0
+        }
+        if attr['Type'] == 'Ordered':
+            attr['Start'] = self.get_list_start()
+            attr['Delim'] = ["None", "Period", "Paren"][self.get_list_delim()]
+        return self._toAST(self, **attr)
+
+    def _tableToAST(self):
+        align = self.get_table_alignments()
+        rows = []
+        for tr in self.children():
+            cols = []
+            for td,a in zip(tr.children(), align):
+                cols.append(self._toAST(td, Alignment={'l': "Left", 'c': "Center", 'r': "Right"}.get(a,'Left')))
+            rows.append(self._toAST(tr, children=cols))
+        return self._toAST(self, children=rows)
 
 ################################################################################
 
@@ -190,6 +246,9 @@ class Document(object):
         self.parser.free()
         cmark.cmark_node_free(self.doc)
 
+    def children(self):
+        return CmarkNode(self.doc).children()
+
     def toXML(self):
         return self._render(cmark.cmark_render_xml, self.OPTS)
 
@@ -208,6 +267,9 @@ class Document(object):
         libc.free(buf)
         return txt
 
+    def toAST(self):
+        return TypedTree.Build('Document', nodes=[child.toAST() for child in self.children()])
+
 ################################################################################
 
 class CmarkSyntaxExtension(CmarkWrapper):
@@ -225,15 +287,12 @@ class CmarkSyntaxExtension(CmarkWrapper):
             char_list = cmark.cmark_llist_append(mem, char_list, ord(c))
         self.set_special_inline_chars(char_list)
         self.set_emphasis(1)
-        self.set_match_inline_func   (object.__getattribute__(self, 'matchFn'    ))
-        self.set_get_type_string_func(object.__getattribute__(self, 'typeFn'     ))
-        self.set_latex_render_func   (object.__getattribute__(self, 'renderLatex'))
+        self.set_match_inline_func    (object.__getattribute__(self, 'matchFn'     ))
+        self.set_get_type_string_func (object.__getattribute__(self, 'typeFn'      ))
+        if hasattr(self, 'renderLatex'):
+            self.set_latex_render_func(object.__getattribute__(self, '_renderLatex'))
         if hasattr(self, 'renderHTML'):
-            self.set_html_render_func(object.__getattribute__(self, 'renderHTML' ))
-
-    def matchFn(self, ext, parser, parent, character, inline_parser):
-        """Attempt to match"""
-        raise NotImplementedError("Implement in subclass")
+            self.set_html_render_func (object.__getattribute__(self, '_renderHTML' ))
 
     def typeFn(self, ext, node):
         """Return the type name of a node"""
@@ -242,118 +301,14 @@ class CmarkSyntaxExtension(CmarkWrapper):
         else:
             return '<unknown>'
 
-    def renderLatex(self, extension, renderer, node, ev_type, options):
-        """Render node in latex"""
+    def matchFn(self, ext, parser, parent, character, inline_parser):
+        """Attempt to match"""
         raise NotImplementedError("Implement in subclass")
 
-################################################################################
+    def _renderLatex(self, extension, renderer, node, ev_type, options):
+        txt = self.renderLatex(CmarkNode(node))
+        renderer.contents.out(renderer, node, txt, False, cmark.LITERAL)
 
-class InlineLatexExtension(CmarkSyntaxExtension):
-    NAME = 'latex_inline'
-    SPECIAL_CHARS = ('$',)
-    ID = cmark.CMARK_NODE_CODE
-
-    def matchFn(self, ext, parser, parent, character, inline_parser):
-        """Attempt to match"""
-        if character == '$':
-            ip = CmarkInlineParser(inline_parser)
-            if ip.lookahead(2) == '$$':
-                ip.advance(2)
-                n = ip.extractTo('$$', self.ID, parser.contents.mem, ext)
-                if n is not None:
-                    return ctypes.cast(n.obj, ctypes.c_void_p).value
-                else:
-                    ip.advance(-2)
-
-    def renderLatex(self, extension, renderer, node, ev_type, options):
-        """Render node in latex"""
-        renderer.contents.out(renderer, node, '${}$'.format(CmarkNode(node).get_literal()), False, cmark.LITERAL)
-
-    def renderHTML(self, extension, renderer, node, ev_type, options):
-        """Render node in HTML"""
-        cmark.cmark_strbuf_puts(renderer.contents.html, '<latex class="inline">{}</latex>'.format(CmarkNode(node).get_literal()))
-
-class BlockLatexExtension(CmarkSyntaxExtension):
-    NAME = 'latex_block'
-    ID = cmark.CMARK_NODE_CODE
-
-    def matchFn(self, ext, parser, parent, character, inline_parser):
-        """Attempt to match"""
-        if character == '(':
-            ip = CmarkInlineParser(inline_parser)
-            o = ip.get_offset()
-            if o >= 2 and ip[o-2:o+1] == '\\\\(':
-                CmarkInlineParser.rewind(parent, 1)  # remove leading backslash from parent
-                ip.advance(1)
-                n = ip.extractTo('\\\\)', self.ID, parser.contents.mem, ext)
-                if n is not None:
-                    return ctypes.cast(n.obj, ctypes.c_void_p).value
-                else:
-                    ip.advance(-1)
-
-    def renderLatex(self, extension, renderer, node, ev_type, options):
-        """Render node in latex"""
-        renderer.contents.out(renderer, node, '$${}$$'.format(CmarkNode(node).get_literal()), False, cmark.LITERAL)
-
-    def renderHTML(self, extension, renderer, node, ev_type, options):
-        """Render node in HTML"""
-        cmark.cmark_strbuf_puts(renderer.contents.html, '<latex class="block">{}</latex>'.format(CmarkNode(node).get_literal()))
-
-################################################################################
-
-class LatexDocument(Document):
-    def __init__(self, text):
-        super(LatexDocument,self).__init__(text, user_extensions=(
-            InlineLatexExtension().obj,
-            BlockLatexExtension().obj,
-        ))
-
-################################################################################
-
-TEST_TEXT = '''# `This` is ~Testing~ text
-
-This is $$a * b * c$$ or \\\\(d * e * f\\\\) ...
-
-* This is $$ a test of \\\\( non-terminated latex...
-
-Hello ~world~
-
-foo | bar | baz
-----|:---:|----
-abc | def | ghi
-jkl | mno | pqr
-
-1. Foo
-2. Bar
-3. Baz
-
-[ ] Task 1
-[x] Task 2
-    [ ] Task 2.1
-    [x] Task 2.2
-    [ ] Task 2.3
-
-
-```python
-arr = [1,2,3]
-y = [2*x for x in arr]
-```
-
-> this is
-> some quoted
->
-> silly
-> text
-
-    And this is some
-    preformatted
-    text
-
-'''
-
-if __name__ == '__main__':
-
-    doc = LatexDocument(TEST_TEXT)
-    print doc.toXML()
-    print doc.toHTML()
-    print doc.toLatex()
+    def _renderHTML(self, extension, renderer, node, ev_type, options):
+        txt = self.renderHTML(CmarkNode(node))
+        cmark.cmark_strbuf_puts(renderer.contents.html, txt)
