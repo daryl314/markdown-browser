@@ -26,7 +26,13 @@ if __name__ == '__main__':
     # perform action
     if args.action == 'RenderTerminal':
         doc = TaggedTextDocument.fromMarkdown(txt, width=args.width)
-        doc.render(TerminalRenderer.render)
+        doc.render(TerminalRenderer().render)
+    elif args.action == 'HTML':
+        doc = CmarkLatex.LatexDocument(txt)
+        print doc.toHTML()
+    elif args.action == 'Latex':
+        doc = CmarkLatex.LatexDocument(txt)
+        print doc.toLatex()
     elif args.action == 'AST':
         doc = CmarkLatex.LatexDocument(txt)
         print doc.toAST()
