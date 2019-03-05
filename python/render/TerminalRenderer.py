@@ -1,15 +1,10 @@
-from VCDarkScheme import VCDarkScheme
+from .Renderer import Renderer
 
-class TerminalRenderer(object):
-
-    def __init__(self, scheme=VCDarkScheme):
-        self.CONFIG = scheme.CONFIG
+class TerminalRenderer(Renderer):
 
     def render(self, tt):
         tag = tt.simplifyStack()
         if tag in self.CONFIG:
-            opt = self.CONFIG['default'].copy()
-            opt.update(**self.CONFIG[tag])
-            return tt.render24(tt.text, **opt)
+            return tt.render24(tt.text, **self.getStyle(tag))
         else:
             raise RuntimeError("Unrecognized style tag: {}".format(tag))

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # location of script directory
-SCRIPT=`dirname $0`
+SCRIPT=$(cd "$(dirname "$0")"; pwd)
 
 # if a file was passed, open it
 if [[ $# -ge 1 ]]; then

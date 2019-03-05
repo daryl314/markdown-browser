@@ -1,6 +1,6 @@
 import ctypes, ctypes.util
 from ..util.TypedTree import TypedTree
-from CmarkBase import CmarkSyntaxExtension, CmarkInlineParser, CmarkNode, Document, cmark
+from .CmarkBase import CmarkSyntaxExtension, CmarkInlineParser, CmarkNode, Document, cmark
 
 ################################################################################
 
@@ -120,8 +120,8 @@ y = [2*x for x in arr]
 if __name__ == '__main__':
 
     doc = LatexDocument(TEST_TEXT)
-    print doc.toXML()
-    print doc.toAST()
-    print doc.toAST() == TypedTree._fromjson(doc.toAST()._tojson())
-    print doc.toHTML()
-    print doc.toLatex()
+    print(doc.toXML())
+    print(doc.toAST())
+    print(doc.toAST() == TypedTree._fromjson(doc.toAST()._tojson()))
+    print(doc.toHTML())
+    print(doc.toLatex())

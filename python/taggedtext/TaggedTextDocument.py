@@ -91,7 +91,10 @@ class TaggedTextList(object):
 
     @classmethod
     def join(cls, ttl_list, txt, TT, tagStack=[]):
-        return reduce(lambda a,b: a + cls(TT).push(txt,tagStack[:]) + b, ttl_list[1:], ttl_list[0].copy())
+        out = ttl_list[0].copy()
+        for t in ttl_list[1:]:
+            out += cls(TT).push(txt,tagStack[:]) + t
+        return out
 
     def copy(self):
         return self.__class__(self.TT, [tt.copy() for tt in self.tt_list])

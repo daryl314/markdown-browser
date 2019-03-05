@@ -1,5 +1,5 @@
 import ctypes, ctypes.util, warnings
-import libcmark_gfm as cmark, libcmark_gfm_extensions as cmark_ext
+from . import libcmark_gfm as cmark, libcmark_gfm_extensions as cmark_ext
 from ..util.TypedTree import TypedTree
 from ..util.CtypesWalker import CtypesWalker
 

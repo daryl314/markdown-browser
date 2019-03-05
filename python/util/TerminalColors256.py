@@ -178,7 +178,7 @@ class BaseColor(object):
     @staticmethod
     def resolveIndices(r, g, b, boundaries):
         """Identify the boundaries associated with rgb values"""
-        return [BaseColor.resolveIndex(c,boundaries) for c in r,g,b]
+        return [BaseColor.resolveIndex(c,boundaries) for c in (r,g,b)]
 
     @staticmethod
     def resolveIndex(color, boundaries):
@@ -376,7 +376,7 @@ class Color16(BaseColor):
 class Color256(BaseColor):
 
     cubeBoundaries = [0, 95, 135, 175, 215, 255]
-    grayBoundaries = range(8,248,10) + [255] # 232 --> 255, 231
+    grayBoundaries = list(range(8,248,10)) + [255] # 232 --> 255, 231
 
     def __init__(self,color):
         super(Color256,self).__init__(color)
@@ -397,7 +397,7 @@ class Color256(BaseColor):
 
         # rgb values and color index for best match in color cube
         r,g,b = self.resolveIndices(self.r, self.g, self.b, self.cubeBoundaries)
-        rgbCube = [self.cubeBoundaries[i] for i in r,g,b]
+        rgbCube = [self.cubeBoundaries[i] for i in (r,g,b)]
         idxCube = 16 + r*6*6 + g*6 + b
 
         # distances to each model
@@ -444,11 +444,11 @@ class Color256(BaseColor):
             sys.stdout.write(" %03d " % i)
             sys.stdout.write(Color256.setBG(0))
             sys.stdout.write(Color256.setFG(i))
-            print " %03d "%(i),
+            sys.stdout.write(" %03d "%(i))
             if i < 16 and i % 8 == 7:
-                print "\033[0m"
+                print("\033[0m")
             elif i > 16 and (i-16) % 6 == 5:
-                print "\033[0m"
+                print("\033[0m")
             if i in range(15,255,36):
                 print
 
@@ -501,19 +501,19 @@ if __name__ == '__main__':
     # css color names sorted by hue
     def cssHue(name):
         return Color256.getHue(*BaseColor.toRGB(name))
-    names = cssnames.keys()
+    names = list(cssnames.keys())
     names.sort(key=cssHue)
 
     # display renderings of css colors
     if args.colornames:
         fmt = '%-{}s'.format(max(map(len, names)))
-        print BaseColor.underline() + fmt%'24-bit' , fmt%'256-Color' , fmt%'16-Color'
+        print(BaseColor.underline() + fmt%'24-bit' , fmt%'256-Color' , fmt%'16-Color')
         for k in names:
             Color24Bit(k).render(fmt % k)
             Color256(k)  .render(fmt % k)
             Color16(k)   .render(fmt % k)
-            print
+            print('')
 
     # look up a 256-color equivalent to a color name or hex code
     if args.lookup256 is not None:
-        print "Index for %s => %d" % (args.lookup256.__repr__(), Color256(args.lookup256).index)
+        print("Index for %s => %d" % (args.lookup256.__repr__(), Color256(args.lookup256).index))

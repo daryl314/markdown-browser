@@ -63,7 +63,7 @@ class CtypesWalker(object):
     def structHandler(self, x, state):
         out = {}
         for f,_ in x._fields_:
-            if self.debug: print ' '*state.depth*4, ' -', f
+            if self.debug: print(' '*state.depth*4, ' -', f)
             out[f] = self._recurse(getattr(x,f), state, in_union=state.in_union or isinstance(x,ctypes.Union))
         return out
 

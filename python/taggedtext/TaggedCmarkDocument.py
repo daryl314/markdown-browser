@@ -1,5 +1,4 @@
-import TaggedTextDocument as TTD
-from ..cmarkgfm import CmarkLatex
+from . import TaggedTextDocument as TTD
 
 
 class TaggedTextDocument(TTD.TaggedTextDocument):
@@ -8,10 +7,10 @@ class TaggedTextDocument(TTD.TaggedTextDocument):
     """
 
     @classmethod
-    def fromMarkdown(cls, text, width=80, ttclass=None):
-        """Parse a markdown document into a TaggedTextDocument"""
+    def fromAST(cls, ast, width=80, ttclass=None):
+        """Parse an AST representation of a markdown document into a TaggedTextDocuent"""
         doc = cls()
-        for block in CmarkLatex.LatexDocument(text).toAST().nodes:
+        for block in ast.nodes:
             if block._tag == 'block_quote':
                 for qb in block.children:
                     doc.append(TaggedTextBlock(ttclass=ttclass, width=width).fromBlock(qb).prependTag('block_quote'))

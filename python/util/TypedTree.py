@@ -1,5 +1,10 @@
 from collections import namedtuple
-import json, keyword
+import sys, json, keyword
+
+if sys.version_info[0] == 2:
+    PRIMITIVES = {str, unicode, int, long, float, bool}
+else:
+    PRIMITIVES = {str, int, float, bool}
 
 class TypedTree(object):
     _constructors = {}
@@ -44,24 +49,21 @@ class TypedTree(object):
     @classmethod
     def _fromjson(cls, x):
         def fromObject(o):
-            return cls.Build(o['t'], **dict(zip(map(str,o['k']), o['v'])))
+            return cls.Build(str(o['t']), **dict(zip(map(str,o['k']), o['v'])))
         return json.loads(x, object_hook=fromObject)
 
     @classmethod
     def _convertArg(T, a):
-        if hasattr(a, '__iter__') and not isinstance(a, T.TT):
-            return tuple([T._convertArg(x) for x in a])
-        elif isinstance(a, unicode):
-            return str(a)
-        elif T._isPrimitive(a) or isinstance(a, T.TT):
+        if T._isPrimitive(a) or isinstance(a, T.TT):
             return a
+        elif hasattr(a, '__iter__'):
+            return tuple([T._convertArg(x) for x in a])
         else:
             raise RuntimeError("Invalid value type: {}".format(a))
 
     @staticmethod
     def _isPrimitive(x):
-        return isinstance(x, str) or isinstance(x, int) or isinstance(x, long) or isinstance(x, float) or \
-               isinstance(x, bool) or x is None
+        return x is None or any([isinstance(x,t) for t in PRIMITIVES])
 
     @staticmethod
     def _sanitize(x):
