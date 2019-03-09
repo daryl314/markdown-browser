@@ -1,7 +1,7 @@
 import sys
 from .Renderer import Renderer
-from ..util.TerminalColors256 import Color256
-from ..ast.DocumentTree import DocumentTree
+from ...util.TerminalColors256 import Color256
+from ...ast.DocumentTree import DocumentTree
 
 class VimRenderer(Renderer):
 
@@ -44,7 +44,7 @@ class VimRenderer(Renderer):
         logger.write('setlocal concealcursor=nc\n')
 
     @staticmethod
-    def getTOC(doc):
+    def getTOC(doc, offset=0):
         """Extract a table of contents tree view from a document AST"""
 
         TEE = u'\u251c' + u'\u2500' * 2
@@ -54,7 +54,6 @@ class VimRenderer(Renderer):
 
         # source data
         tree = DocumentTree.fromAst(doc)
-        source_lines = [node.src for node in tree.walk()[1:]]
 
         # container for tree representation
         tree_repr = []
@@ -66,7 +65,7 @@ class VimRenderer(Renderer):
             else:
                 tree_repr.append(leader + TEE + node.title)
             for i, child in enumerate(node.Children):
-                dump(child, SPACE if lastchild else PIPE, i + 1 == len(node.Children))
+                dump(child, leader + (SPACE if lastchild else PIPE), i + 1 == len(node.Children))
 
         # build up tree representation
         for i, node in enumerate(tree.Children):
@@ -79,4 +78,4 @@ class VimRenderer(Renderer):
                 folds.append((i, i + n))
 
         # return results
-        return tree_repr, folds, source_lines
+        return tree_repr, folds, [(a+offset, b+offset) for a,b in folds]

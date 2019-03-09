@@ -13,11 +13,11 @@ endif
 
 " application imports
 if has("python3")
-    python3 from pycmark.render.VimRenderer import VimRenderer
+    python3 from pycmark.taggedtext.render.VimRenderer import VimRenderer
     python3 from pycmark.util.TypedTree import TypedTree
     python3 from pycmark.taggedtext.TaggedCmarkDocument import TaggedTextDocument
 else
-    python  from pycmark.render.VimRenderer import VimRenderer
+    python  from pycmark.taggedtext.render.VimRenderer import VimRenderer
     python  from pycmark.util.TypedTree import TypedTree
     python  from pycmark.taggedtext.TaggedCmarkDocument import TaggedTextDocument
 endif
@@ -52,24 +52,28 @@ else
     python  styleCommands = buf.getvalue().split('\n')
 endif
 
-" table of contents help text
+" table of contents header
 if has("python3")
-    python3 tocHelp = [
+    python3 tocHeader = [
         \'{TAB: switch windows',
         \'{ENTER: follow link',
         \'{Ctrl-]: follow links',
         \'{Ctrl-R: resize',
         \'{Ctrl-T: toggle TOC',
-        \''
+        \'{za: toggle TOC fold',
+        \'',
+        \'Contents'
       \]
 else
-    python  tocHelp = [
+    python  tocHeader = [
         \'{TAB: switch windows',
         \'{ENTER: follow link',
         \'{Ctrl-]: follow links',
         \'{Ctrl-R: resize',
         \'{Ctrl-T: toggle TOC',
-        \''
+        \'{za: toggle TOC fold',
+        \'',
+        \'Contents'
       \]
 endif
 
@@ -184,16 +188,15 @@ function! ParseJSON()
     " fill out table of contents window
     wincmd h
     if has("python3")
-        python3 tree,folds,src_lines = VimRenderer.getTOC(tt)
-        python3 vim.current.buffer[:] = tocHelp + ['Contents'] + tree
-        python3 for f in folds: vim.command('%d,%dfold' % (f[0]+2,f[1]+2))
+        python3 tree,rawfolds,folds = VimRenderer.getTOC(tt, offset=1+len(tocHeader))
+        python3 vim.current.buffer[:] = tocHeader + tree
+        python3 for f in folds: vim.command('%d,%dfold | normal zR' % f)
     else
-        python  tree,folds,src_lines = VimRenderer.getTOC(tt)
-        python  vim.current.buffer[:] = tocHelp + ['Contents'] + tree
-        python  for f in folds: vim.command('%d,%dfold' % (f[0]+2,f[1]+2))
+        python  tree,rawfolds,folds = VimRenderer.getTOC(tt, offset=1+len(tocHeader))
+        python  vim.current.buffer[:] = tocHeader + tree
+        python  for f in folds: vim.command('%d,%dfold | normal zR' % f)
     endif
     hi Folded NONE
-    normal zR
     setlocal buftype=nofile
     setlocal nomodifiable
 
@@ -224,6 +227,21 @@ function! ParseJSON()
         autocmd BufHidden * :call RenderText()
     endif
 
+    " generate folds in content window
+    wincmd l
+    if has("python3")
+        python3 contentIndices = [ i for i,b in enumerate(vim.current.buffer) if b.startswith('<heading>') and '</heading>' in b ] + [len(vim.current.buffer)]
+        python3 for a,b in [(i,dict(rawfolds).get(i,i)) for i in range(len(tree))]: vim.command('%d,%dfold | normal zR' % (contentIndices[a]+1, contentIndices[b+1]))
+    else
+        python  contentIndices = [ i for i,b in enumerate(vim.current.buffer) if b.startswith('<heading>') and '</heading>' in b ] + [len(vim.current.buffer)]
+        python  for a,b in [(i,dict(rawfolds).get(i,i)) for i in range(len(tree))]: vim.command('%d,%dfold | normal zR' % (contentIndices[a]+1, contentIndices[b+1]))
+    endif
+    set foldtext=ContextFold()
+
+endfunction
+
+function! ContextFold()
+  return v:folddashes . substitute(substitute(substitute(getline(v:foldstart), '<heading>', '', 'g'), '<body>', '', 'g'), '</heading>', '', 'g')
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -261,15 +279,21 @@ endfunction
 " scroll rendered text when <ENTER> is pressed in TOC
 function! ScrollToTOC()
     if has("python3")
-        python3 vim.command('let g:toline = %d' % (src_lines[vim.current.window.cursor[0]-2-len(tocHelp)]+1))
+        python3 vim.command('call ScrollToHeading(%d)' % (vim.current.window.cursor[0]-len(tocHeader)))
     else
-        python  vim.command('let g:toline = %d' % (src_lines[vim.current.window.cursor[0]-2-len(tocHelp)]+1))
+        python  vim.command('call ScrollToHeading(%d)' % (vim.current.window.cursor[0]-len(tocHeader)))
     endif
-    wincmd l
-    execute(g:toline)
-    normal zt
 endfunction
 
+" scroll to the nth heading
+function! ScrollToHeading(n)
+    wincmd l
+    /<heading>.*<\/heading>
+    normal gg
+    execute "normal ".a:n."n"
+    nohlsearch
+    normal zt
+endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
