@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import collections
+import re, collections
 from pycmark.taggedtext.TaggedCmarkDocument import TaggedTextBlock
 from pycmark.util.TypedTree import TypedTree
 
@@ -26,7 +26,7 @@ class Section(TypedTree.GenerateConstructor('Section', ['Level', 'Data'])):
 
 ################################################################################
 
-class DocumentTree(TypedTree.GenerateConstructor('DocumentTree', ['Section', 'Children'])):
+class DocumentTree(TypedTree.GenerateConstructor('DocumentTree', ['ID', 'Section', 'Children'])):
     """Data container for a document section with sub-sections"""
 
     def walk(self):
@@ -52,16 +52,25 @@ class DocumentTree(TypedTree.GenerateConstructor('DocumentTree', ['Section', 'Ch
         assert isinstance(tt, TypedTree.TT) and tt._tag == 'Document'
 
         # split document on headings
-        sections = collections.deque([Section.fromBlocks(c)
-            for c in cls.splitWhere(tt.nodes, lambda n: n._tag == 'heading' and n.Level > 1)])
+        assigned_ids = set()
+        sections = collections.deque()
+        for i,c in enumerate(cls.splitWhere(tt.nodes, lambda n: n._tag == 'heading' and n.Level > 1)):
+            if i > 1 or c[0]._tag == 'heading':
+                a = re.sub('-$', '', re.sub(r'\W+', '-', TaggedTextBlock().fromBlock(c[0]).__repr__().lower()))
+            else:
+                a = 'root'
+            if a in assigned_ids:
+                a += '--%d' % len(assigned_ids)
+            assigned_ids.add(a)
+            sections.append((a, Section.fromBlocks(c)))
 
         # build up a tree
-        def buildTree(root):
+        def buildTree(id, root):
             children = []
-            while len(sections) > 0 and sections[0].Level > root.Level:
-                children.append(buildTree(sections.popleft()))
-            return DocumentTree(Section=root, Children=children)
-        return buildTree(sections.popleft())
+            while len(sections) > 0 and sections[0][1].Level > root.Level:
+                children.append(buildTree(*sections.popleft()))
+            return DocumentTree(ID=id, Section=root, Children=children)
+        return buildTree(*sections.popleft())
 
     @staticmethod
     def splitWhere(arr, fn):

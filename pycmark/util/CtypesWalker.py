@@ -31,6 +31,8 @@ class CtypesWalker(object):
             return '{} -> {}'.format(x.argtypes, x.restype)
         elif isinstance(x, ctypes._SimpleCData):
             return x.value
+        elif isinstance(x, ctypes.Array):
+            return [y for y in x].__repr__()
         elif isinstance(x, int) or isinstance(x, long) or isinstance(x, float):
             return x
         elif isinstance(x, str):

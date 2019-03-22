@@ -1,10 +1,60 @@
-jQuery(function(){ // wait for document to be ready
+// wait until specified time (in ms) has elapsed without a call to the
+// debounced function prior to calling inner function
+function debounce(fn, time) {
+    let timeout;
+    return function() {
+        clearTimeout(timeout);
+        timeout = setTimeout(fn, time);
+    }
+}
 
-    // perform rendered markdown post-processing
-    var renderer = new MarkdownRenderer();
-    var toc_html = $('toc').html();
-    var data = renderer.processRenderedMarkdown($('body'));
-    if (toc_html !== undefined) $('toc').html(toc_html);
+// limit function call frequency to specified time (in ms)
+function impatientDebounce(fn, time) {
+    let timeout;
+    return function() {
+        if (!timeout) {
+            setTimeout(function(){ fn(); timeout=null; }, time)
+        }
+    }
+}
+
+jQuery(function(){ // wait for document to be ready
+    
+    // base container for rendered markdown
+    let $el = $('#markdown-container');
+
+    // process <latex> tags
+    if (typeof katex !== 'undefined') {
+        $('latex').each(function(){
+            try {
+                $(this).html(katex.renderToString($(this).text(), {displayMode: $(this).hasClass('block'), throwOnError: false}));
+            } catch (err) {
+                $(this).html(`<span style="color:red">${err}</span>`);
+            }
+        })        
+    }
+
+    // style tables
+    $el.find('table').addClass('table table-striped table-hover table-condensed');
+    $el.find('thead').addClass('btn-primary');
+
+    // perform syntax highlighting
+    if (typeof hljs !== 'undefined') {
+    $el.find('pre code').each(function(i, block) {
+        try {
+            hljs.highlightBlock(block); 
+        } catch (error) {
+            console.log('Caught highlight.js exception', error);
+        }
+    })
+    }
+
+    // create bootstrap alert boxes
+    $el.find('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
+    $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
+
+    // open hyperlinks in a new tab
+    $el.find('a').filter(function(){ return $(this).attr('href') && $(this).attr('href')[0] != '#' }).attr({target: '_blank'});
 
     ///// PROCESSING FOR MAP MODE /////
 
@@ -14,12 +64,6 @@ jQuery(function(){ // wait for document to be ready
             ? $('h1').first().text() 
             : unescape(window.location.href.replace(/.*\//, '').replace(/\.html.*/,''))
     );
-
-    // populate table of contents
-    $('#markdown-container').wrap('<div id="container"></div>');
-    $('#container').prepend('<div id="markdown-toc" class="hidden-print">');
-    $('#markdown-toc').html(data.toc);
-    $('body > nav > div.container').removeClass('container');
 
     // cross-reference headers in table of contents
     let $h = $('#markdown-container').children('h2,h3,h4,h5,h6');
@@ -76,9 +120,6 @@ jQuery(function(){ // wait for document to be ready
     // not running on iphone
     } else {
 
-        $('#markdown-toc').addClass('col-md-2');
-        $('#markdown-toc > ul').addClass('col-md-2 affix');
-        $('#markdown-container').addClass('col-md-10');
 
         $('.navbar-brand').on('click', function() {
             $('#markdown-toc').toggleClass('col-md-2').toggle();
@@ -101,14 +142,11 @@ jQuery(function(){ // wait for document to be ready
     }
 
     // bind to scroll event with debouncing
-    $('#markdown-container').on('scroll', 
-        _.debounce(
-            scrollSync,         // call scrollSync
-            100,                // at 100 ms intervals
-            is_iPhone ? 
-                {} :            // ... no wait limit for iPhone
-                {maxWait:100}   // ... max wait of 100 ms otherwise
-    ));
+    if (is_iPhone) {
+        $('#markdown-container').on('scroll', debounce(scrollSync, 100))
+    } else {
+        $('#markdown-container').on('scroll', impatientDebounce(scrollSync, 100))
+    }
 
     ///// MAP MODE /////
 

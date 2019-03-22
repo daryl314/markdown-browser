@@ -4,8 +4,8 @@ from .CmarkBase import CmarkSyntaxExtension, CmarkInlineParser, CmarkNode, Docum
 
 ################################################################################
 
-class InlineLatexExtension(CmarkSyntaxExtension):
-    NAME = 'latex_inline'
+class BlockLatexExtension(CmarkSyntaxExtension):
+    NAME = 'latex_block'
     SPECIAL_CHARS = ('$',)
     ID = cmark.CMARK_NODE_CODE
 
@@ -27,10 +27,10 @@ class InlineLatexExtension(CmarkSyntaxExtension):
 
     def renderHTML(self, node):
         """Render node in HTML"""
-        return '<latex class="inline">{}</latex>'.format(node.get_literal())
+        return '<latex class="block">{}</latex>'.format(node.get_literal())
 
-class BlockLatexExtension(CmarkSyntaxExtension):
-    NAME = 'latex_block'
+class InlineLatexExtension(CmarkSyntaxExtension):
+    NAME = 'latex_inline'
     ID = cmark.CMARK_NODE_CODE
 
     def matchFn(self, ext, parser, parent, character, inline_parser):
@@ -53,7 +53,7 @@ class BlockLatexExtension(CmarkSyntaxExtension):
 
     def renderHTML(self, node):
         """Render node in HTML"""
-        return '<latex class="block">{}</latex>'.format(node.get_literal())
+        return '<latex class="inline">{}</latex>'.format(node.get_literal())
 
 ################################################################################
 

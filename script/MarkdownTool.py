@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
-import argparse, glob
+import argparse, os, glob
 from pycmark.cmarkgfm import CmarkLatex
 from pycmark.taggedtext.TaggedCmarkDocument import TaggedTextDocument
-from pycmark.render.TerminalRenderer import TerminalRenderer
+from pycmark.taggedtext.render.TerminalRenderer import TerminalRenderer
+from pycmark.util.TypedTree import TypedTree
+from pycmark.html.HTML_Generator import toStyledHTML
 
 ################################################################################
 
@@ -27,9 +29,11 @@ if __name__ == '__main__':
     if args.action == 'RenderTerminal':
         doc = TaggedTextDocument.fromAST(CmarkLatex.LatexDocument(txt).toAST(), width=args.width)
         doc.render(TerminalRenderer().render)
-    elif args.action == 'HTML':
+    elif args.action == 'SimpleHTML':
         doc = CmarkLatex.LatexDocument(txt)
         print(doc.toHTML())
+    elif args.action == 'HTML':
+        print(toStyledHTML(txt, root=os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))))
     elif args.action == 'Latex':
         doc = CmarkLatex.LatexDocument(txt)
         print(doc.toLatex())

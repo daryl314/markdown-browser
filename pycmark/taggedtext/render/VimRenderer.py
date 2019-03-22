@@ -44,13 +44,18 @@ class VimRenderer(Renderer):
         logger.write('setlocal concealcursor=nc\n')
 
     @staticmethod
-    def getTOC(doc, offset=0):
+    def getTOC(doc, offset=0, withUnicode=True, tabstop=3):
         """Extract a table of contents tree view from a document AST"""
 
-        TEE = u'\u251c' + u'\u2500' * 2
-        ELBOW = u'\u2514' + u'\u2500' * 2
-        PIPE = u'\u2502' + ' ' * 2
-        SPACE = ' ' * 3
+        if withUnicode:
+            TEE = u'\u251c' + u'\u2500' * (tabstop - 1)
+            ELBOW = u'\u2514' + u'\u2500' * (tabstop - 1)
+            PIPE = u'\u2502' + ' ' * (tabstop - 1)
+        else:
+            TEE = '|' + '-' * (tabstop - 1)
+            ELBOW = '`' + '-' * (tabstop - 1)
+            PIPE = '|' + ' ' * (tabstop - 1)
+        SPACE = ' ' * tabstop
 
         # source data
         tree = DocumentTree.fromAst(doc)
