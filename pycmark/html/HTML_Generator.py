@@ -4,9 +4,12 @@ from ..ast.DocumentTree import DocumentTree
 
 ################################################################################
 
-def loadAsset(asset, indent=8):
+def loadAsset(asset, indent=8, escape=True):
     with open(os.path.join(os.path.dirname(__file__), asset), 'rt') as F:
-        return F.read().replace('{', '{{').replace('}', '}}').replace('\n', '\n' + ' ' * indent)
+        if escape:
+            return F.read().replace('{', '{{').replace('}', '}}').replace('\n', '\n' + ' ' * indent)
+        else:
+            return F.read().replace('\n', '\n' + ' ' * indent)
 
 ################################################################################
 
@@ -45,8 +48,8 @@ def toStyledHTML(txt, root='.', withIndex=False):
     # add any content-specific libraries
     jslib = []
     if any(['<pre><code' in h for h in body]):
-        jslib.append('<link rel="stylesheet" href="{root}/lib/highlight-atelier-forest-light.min.css" />'.format(root=root))
-        jslib.append('<script type="text/javascript" src="{root}/lib/highlight.pack.js"></script>'.format(root=root))
+        jslib.append("<style type='text/css'>%s</style>" % loadAsset('highlight-9.12.0/styles/atelier-forest-light.css', escape=False))
+        jslib.append("<script type='text/javascript'>%s</script>" % loadAsset('highlight-9.12.0/highlight.pack.js', escape=False))
     if any(['<latex' in h for h in body]):
         jslib.append('<script src="{root}/katex-0.5.1/katex.min.js"></script>'.format(root=root))
         jslib.append('<link rel="stylesheet" href="{root}/katex-0.5.1/katex.min.css">'.format(root=root))
