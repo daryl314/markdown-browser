@@ -45,6 +45,13 @@ toc li:before {
 
 /* Floating/Navigation table of contents */
 
+details.toc {
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: aliceblue;
+    display: inline-block;
+}
+
 .toc-menu, .toc-menu ul {
     list-style-type:none;
 }

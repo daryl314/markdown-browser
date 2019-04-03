@@ -59,7 +59,7 @@ jQuery(function(){ // wait for document to be ready
     ///// PROCESSING FOR MAP MODE /////
 
     // set page title
-    $('.navbar-brand > span').text(
+    $('a#navbar-title > span').text(
         $('h1').length > 0
             ? $('h1').first().text() 
             : unescape(window.location.href.replace(/.*\//, '').replace(/\.html.*/,''))
@@ -112,20 +112,16 @@ jQuery(function(){ // wait for document to be ready
         });
 
         // toggle slideout on hamburger menu click
-        $('.navbar-brand').on('click', function(){ slideout.toggle() });
+        $('a#navbar-title').on('click', function(){ slideout.toggle() });
 
         // increase menu font size
         $('#markdown-toc > ul').css('font-size','2.0em');
 
     // not running on iphone
     } else {
-
-
-        $('.navbar-brand').on('click', function() {
-            $('#markdown-toc').toggleClass('col-md-2').toggle();
-            $('#markdown-container').toggleClass('col-md-10').toggleClass('col-md-12');
+        $('a#navbar-title').on('click', function() {
+            $('#markdown-toc').toggle();
         })
-
     }
 
     ///// SCROLL SYNC /////
