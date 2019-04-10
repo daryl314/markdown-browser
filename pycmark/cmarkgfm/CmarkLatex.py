@@ -1,4 +1,4 @@
-import ctypes, ctypes.util
+import ctypes, ctypes.util, xml.sax.saxutils
 from ..util.TypedTree import TypedTree
 from .CmarkBase import CmarkSyntaxExtension, CmarkInlineParser, CmarkNode, Document, cmark
 
@@ -27,7 +27,7 @@ class BlockLatexExtension(CmarkSyntaxExtension):
 
     def renderHTML(self, node):
         """Render node in HTML"""
-        return '<latex class="block">{}</latex>'.format(node.get_literal())
+        return '<latex class="block">{}</latex>'.format(xml.sax.saxutils.escape(node.get_literal()))
 
 class InlineLatexExtension(CmarkSyntaxExtension):
     NAME = 'latex_inline'
@@ -53,7 +53,7 @@ class InlineLatexExtension(CmarkSyntaxExtension):
 
     def renderHTML(self, node):
         """Render node in HTML"""
-        return '<latex class="inline">{}</latex>'.format(node.get_literal())
+        return '<latex class="inline">{}</latex>'.format(xml.sax.saxutils.escape(node.get_literal()))
 
 ################################################################################
 

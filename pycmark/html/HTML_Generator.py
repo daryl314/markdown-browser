@@ -1,6 +1,8 @@
-import os, re
+import os, cStringIO, base64, xml.dom.minidom
 from ..cmarkgfm import CmarkLatex
 from ..ast.DocumentTree import DocumentTree
+from pycmark.html.CodeHighlighter import highlight, HIGHLIGHT_LANGUAGES
+from pycmark.html.Katex import processLatex, escapeUnicode
 
 ################################################################################
 
@@ -13,7 +15,7 @@ def loadAsset(asset, indent=8, escape=True):
 
 ################################################################################
 
-def toStyledHTML(txt, root='.', withIndex=False):
+def toStyledHTML(txt, withIndex=False):
 
     # generate a LatexDocument with [toc] entries converted to something that won't get wrapped
     doc = CmarkLatex.LatexDocument(txt.replace('[TOC]', '<toc/>').replace('[toc]', '<toc/>'))
@@ -21,8 +23,25 @@ def toStyledHTML(txt, root='.', withIndex=False):
     # hierarchical document tree
     dt = DocumentTree.fromAst(doc.toAST())
 
-    # base html representation of document
-    body = doc.toHTML().strip().split('\n')
+    # generate html and wrap in a dom object
+    dom = xml.dom.minidom.parseString('<body>' + doc.toHTML() + '</body>')
+
+    # identify <pre><code> elements
+    pre_code = []
+    for pre in dom.getElementsByTagName('pre'):
+        if pre.hasChildNodes() and pre.firstChild.tagName == 'code':
+            if 'class' in pre.firstChild.attributes.keys():
+                language = pre.firstChild.attributes['class'].value.replace('language-', '').lower()
+                assert language in HIGHLIGHT_LANGUAGES
+            else:
+                language = None
+            pre_code.append((pre, language, pre.firstChild.firstChild.nodeValue))
+
+    # perform syntax highlighting on <pre><code> elements
+    syn = highlight([(lang, src) for _, lang, src in pre_code])
+    for (pre, lang, _), src in zip(pre_code, syn):
+        code = xml.dom.minidom.parseString('<code class="hljs language-{}">{}</code>'.format(lang, src)).firstChild
+        pre.replaceChild(code, pre.firstChild)
 
     # generate a table of contents
     def toOL(entries, ordered=True):
@@ -33,33 +52,96 @@ def toStyledHTML(txt, root='.', withIndex=False):
             else:
                 out += ['<li><a href="#%s">%s</a>' % (entry.ID, entry.title)] + toOL(entry.Children, ordered) + ['</li>']
         return out + ['</ol>' if ordered else '</ul>']
-    toc = '\n'.join(toOL(dt.Children))
+    toc_list = xml.dom.minidom.parseString(TOC.format(toc='\n'.join(toOL(dt.Children)))).firstChild
 
     # replace <toc/> entries with generated table of contents
-    for i,h in enumerate(body):
-        if h == '<toc/>':
-            body[i] = TOC.format(toc=toc)
+    for t in dom.getElementsByTagName('toc'):
+        t.parentNode.replaceChild(toc_list, t)
 
     # add anchors to headings
-    headings = [i for i,txt in enumerate(body) if re.match('<h[2-6]>', txt)]
-    for h,e in zip(headings, dt.walk()[1:]):
-        body[h] = body[h][:3] + ' id="%s"' % e.ID + body[h][3:]
+    headings = [el for el in dom.firstChild.childNodes
+                if isinstance(el, xml.dom.minidom.Element) and el.tagName in {'h2', 'h3', 'h4', 'h5', 'h6'}]
+    for h, e in zip(headings, dt.walk()[1:]):
+        h.attributes['id'] = e.ID
 
-    # add any content-specific libraries
+    # style tables
+    for t in dom.getElementsByTagName('table'):
+        t.attributes['class'] = 'table table-striped table-hover table-condensed'
+    for t in dom.getElementsByTagName('thead'):
+        t.attributes['class'] = 'btn-primary'
+
+    # open hyperlinks in a new tab
+    for a in dom.getElementsByTagName('a'):
+        if 'href' in a.attributes.keys() and not a.attributes['href'].value.startswith('#'):
+            a.attributes['target'] = '_blank'
+
+    # create bootstrap alert boxes
+    for p in dom.getElementsByTagName('p'):
+        if isinstance(p.firstChild, xml.dom.minidom.Text):
+            if p.firstChild.nodeValue.startswith('NOTE:'):
+                p.attributes['class'] = 'alert alert-info'
+            elif p.firstChild.nodeValue.startswith('WARNING:'):
+                p.attributes['class'] = 'alert alert-warning'
+
+    # identify <latex> elements
+    latex = [(el, el.firstChild.nodeValue, el.attributes['class'].nodeValue == 'block')
+             for el in dom.getElementsByTagName('latex')]
+
+    # render latex equations
+    latexMap = {}
+    if len(latex) > 0:
+        rendered = processLatex([(src, blk) for _, src, blk in latex])
+        for (el, oldsrc, _), newsrc in zip(latex, rendered):
+            key = 'latex_{}'.format(len(latexMap))
+            el.replaceChild(dom.createTextNode(key), el.firstChild)
+            latexMap[key] = newsrc
+
+    # convert DOM back into text.  escape unicode characters.
+    body = escapeUnicode(dom.firstChild.toxml().replace('<body>', '').replace('</body>', ''))
+
+    # replace any latex placeholders with rendered latex
+    if '<latex' in body:
+        buf = cStringIO.StringIO()             # output buffer
+        a = 0                                  # initialize processed data pointer
+        b = body.find('<latex')                # find next latex tag
+        while b >= 0:                          # while there is a latex tag to process...
+            b = body.find('>', b) + 1          # jump ahead to end of latex tag
+            buf.write(body[a:b])               # write unprocessed data up to current location
+            a = b                              # advance processed data pointer
+            b = body.find('</latex', b)        # look ahead for closing tag
+            key = body[a:b]                    # <latex...>key</latex>
+            a = b                              # advance processed data pointer
+            buf.write(latexMap.get(key, key))  # write latex data in lookup table corresponding to key
+            b = body.find('<latex', b)         # find next latex tag
+        buf.write(body[a:])                    # write remaining html
+        body = buf.getvalue()                  # extract data from buffer
+        buf.close()                            # close buffer
+
+    # add any content-specific assets
     jslib = []
-    if any(['<pre><code' in h for h in body]):
-        jslib.append("<style type='text/css'>%s</style>" % loadAsset('highlight-9.12.0/styles/atelier-forest-light.css', escape=False))
-        jslib.append("<script type='text/javascript'>%s</script>" % loadAsset('highlight-9.12.0/highlight.pack.js', escape=False))
-    if any(['<latex' in h for h in body]):
-        jslib.append('<script src="{root}/katex-0.5.1/katex.min.js"></script>'.format(root=root))
-        jslib.append('<link rel="stylesheet" href="{root}/katex-0.5.1/katex.min.css">'.format(root=root))
+    if len(pre_code) > 0:  # highlighted code needs stylesheet
+        jslib.append("<style type='text/css'>%s</style>" %
+                     loadAsset('node_modules/highlight.js/styles/atelier-forest-light.css', escape=False))
+    if len(latex) > 0:  # rendered latex needs stylesheet and fonts
+        jslib.append("<style type='text/css'>")
+        for line in loadAsset('node_modules/katex/dist/katex.css', escape=False, indent=4).rstrip().split('\n'):
+            if 'src: url' in line:
+                line = line.split(',')[0].strip()
+                a = line.find('(') + 1
+                b = line.find(')', a)
+                with open(os.path.join(os.path.dirname(__file__), 'node_modules', 'katex', 'dist', line[a:b]), 'rb') as F:
+                    font = F.read()
+                encoded = base64.b64encode(font)
+                jslib.append(' '*6 + "src: url(data:font/woff2;base64,%s) format('woff2');" % encoded)
+            else:
+                jslib.append(line)
+        jslib.append("</style>")
 
     # assemble html
     return HTML.format(
-        root=root,
         navlinks='<li class="nav-item"><a class="nav-link" href="index.html">Page Index</a></li>' if withIndex else '',
         toc='\n'.join(toOL(dt.Children, ordered=False)).replace('href="', 'href="#" data-href="'),
-        content='\n'.join(body),
+        content=body,
         jslib='    \n'.join(jslib)
     )
 

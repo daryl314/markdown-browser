@@ -19,42 +19,6 @@ function impatientDebounce(fn, time) {
 }
 
 jQuery(function(){ // wait for document to be ready
-    
-    // base container for rendered markdown
-    let $el = $('#markdown-container');
-
-    // process <latex> tags
-    if (typeof katex !== 'undefined') {
-        $('latex').each(function(){
-            try {
-                $(this).html(katex.renderToString($(this).text(), {displayMode: $(this).hasClass('block'), throwOnError: false}));
-            } catch (err) {
-                $(this).html(`<span style="color:red">${err}</span>`);
-            }
-        })        
-    }
-
-    // style tables
-    $el.find('table').addClass('table table-striped table-hover table-condensed');
-    $el.find('thead').addClass('btn-primary');
-
-    // perform syntax highlighting
-    if (typeof hljs !== 'undefined') {
-    $el.find('pre code').each(function(i, block) {
-        try {
-            hljs.highlightBlock(block); 
-        } catch (error) {
-            console.log('Caught highlight.js exception', error);
-        }
-    })
-    }
-
-    // create bootstrap alert boxes
-    $el.find('p').filter( function(){ return $(this).html().match(/^NOTE:/i   ) } ).addClass('alert alert-info'   )
-    $el.find('p').filter( function(){ return $(this).html().match(/^WARNING:/i) } ).addClass('alert alert-warning')
-
-    // open hyperlinks in a new tab
-    $el.find('a').filter(function(){ return $(this).attr('href') && $(this).attr('href')[0] != '#' }).attr({target: '_blank'});
 
     ///// PROCESSING FOR MAP MODE /////
 

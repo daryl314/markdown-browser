@@ -33,7 +33,7 @@ if __name__ == '__main__':
         doc = CmarkLatex.LatexDocument(txt)
         print(doc.toHTML())
     elif args.action == 'HTML':
-        print(toStyledHTML(txt, root=os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))))
+        print(toStyledHTML(txt))
     elif args.action == 'Latex':
         doc = CmarkLatex.LatexDocument(txt)
         print(doc.toLatex())
