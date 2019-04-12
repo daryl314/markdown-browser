@@ -73,12 +73,14 @@ class DocumentTree(TypedTree.GenerateConstructor('DocumentTree', ['ID', 'Section
         return buildTree(*sections.popleft())
 
     @staticmethod
-    def splitWhere(arr, fn):
+    def splitWhere(arr, fn, dropEmptyHead=True):
         out = [[]]
         for x in arr:
             if fn(x):
                 out.append([x])
             else:
                 out[-1].append(x)
+        if dropEmptyHead and len(out[0]) == 0:
+            out = out[1:]
         return out
 

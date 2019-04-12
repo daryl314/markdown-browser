@@ -6,8 +6,9 @@ from pycmark.html.Katex import processLatex, escapeUnicode
 
 ################################################################################
 
+ROOT = os.path.dirname(__file__)
 def loadAsset(asset, indent=8, escape=True):
-    with open(os.path.join(os.path.dirname(__file__), asset), 'rt') as F:
+    with open(os.path.join(ROOT, asset), 'rt') as F:
         if escape:
             return F.read().replace('{', '{{').replace('}', '}}').replace('\n', '\n' + ' ' * indent)
         else:
@@ -32,6 +33,9 @@ def toStyledHTML(txt, withIndex=False):
         if pre.hasChildNodes() and pre.firstChild.tagName == 'code':
             if 'class' in pre.firstChild.attributes.keys():
                 language = pre.firstChild.attributes['class'].value.replace('language-', '').lower()
+                if language == 'text':
+                    continue
+                language = {'cpp': 'c++', 'docker': 'dockerfile'}.get(language, language)
                 assert language in HIGHLIGHT_LANGUAGES
             else:
                 language = None
@@ -40,17 +44,22 @@ def toStyledHTML(txt, withIndex=False):
     # perform syntax highlighting on <pre><code> elements
     syn = highlight([(lang, src) for _, lang, src in pre_code])
     for (pre, lang, _), src in zip(pre_code, syn):
-        code = xml.dom.minidom.parseString('<code class="hljs language-{}">{}</code>'.format(lang, src)).firstChild
-        pre.replaceChild(code, pre.firstChild)
+        code = xml.dom.minidom.parseString('<code class="hljs language-{}">{}</code>'.format(lang, escapeUnicode(src)))
+        pre.replaceChild(code.firstChild, pre.firstChild)
+
+    # escape special characters in html
+    def escapeHTML(txt):
+        return txt.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
     # generate a table of contents
     def toOL(entries, ordered=True):
         out = ['<ol>' if ordered else '<ul>']
         for entry in entries:
             if len(entry.Children) == 0:
-                out.append('<li><a href="#%s">%s</a></li>' % (entry.ID, entry.title))
+                out.append('<li><a href="#%s">%s</a></li>' % (entry.ID, escapeHTML(entry.title)))
             else:
-                out += ['<li><a href="#%s">%s</a>' % (entry.ID, entry.title)] + toOL(entry.Children, ordered) + ['</li>']
+                out += ['<li><a href="#%s">%s</a>' % (entry.ID, escapeHTML(entry.title))] \
+                       + toOL(entry.Children, ordered) + ['</li>']
         return out + ['</ol>' if ordered else '</ul>']
     toc_list = xml.dom.minidom.parseString(TOC.format(toc='\n'.join(toOL(dt.Children)))).firstChild
 
@@ -129,7 +138,7 @@ def toStyledHTML(txt, withIndex=False):
                 line = line.split(',')[0].strip()
                 a = line.find('(') + 1
                 b = line.find(')', a)
-                with open(os.path.join(os.path.dirname(__file__), 'node_modules', 'katex', 'dist', line[a:b]), 'rb') as F:
+                with open(os.path.join(ROOT, 'node_modules', 'katex', 'dist', line[a:b]), 'rb') as F:
                     font = F.read()
                 encoded = base64.b64encode(font)
                 jslib.append(' '*6 + "src: url(data:font/woff2;base64,%s) format('woff2');" % encoded)
