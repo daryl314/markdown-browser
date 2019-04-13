@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-import sys, os
+import sys, os, subprocess, datetime
 from pyevernote.EvernoteMetadata import EvernoteMetadata
 from pycmark.html.HTML_Generator import toStyledHTML
 import pycmark.cmarkgfm.CmarkLatex as CmarkLatex
@@ -20,9 +20,30 @@ for note in [n for n in meta.notes.values() if 'markdown' in n.tags and not n.de
     if not os.path.isdir(nbdir):
         os.mkdir(nbdir)
     note_md = note.textContent()
-    with open(os.path.join(nbdir, note.escapedtitle + '.md'), 'wt') as F:
+    basefile = os.path.join(nbdir, note.escapedtitle)
+    with open(basefile + '.md', 'wt') as F:
         F.write(note_md)
-    with open(os.path.join(nbdir, note.escapedtitle + '.html'), 'wt') as F:
+    with open(basefile + '.html', 'wt') as F:
         F.write(toStyledHTML(note_md))
-    with open(os.path.join(nbdir, note.escapedtitle + '.json'), 'wt') as F:
-        F.write(CmarkLatex.LatexDocument(note_md).toAST()._tojson())
+    doc = CmarkLatex.LatexDocument(note_md.replace('[TOC]', ''))
+    with open(basefile + '.json', 'wt') as F:
+        F.write(doc.toAST()._tojson())
+    with open(basefile + '.latex', 'wt') as F:
+        F.write(doc.toLatex())
+    # https://pandoc.org/MANUAL.html#variables-for-latex
+    pandoc_args = ['pandoc',
+                   basefile+'.latex',
+                   '-o', basefile+'.pdf',
+                   '--toc',
+                   '--template', os.path.join(os.path.dirname(__file__), 'latex-template.tex'),
+                   '-V' 'geometry:top=0.5in,bottom=0.5in, left=0.3in, right=0.3in',
+                   '-V', 'title={}'.format(note.title),
+                   '-V', 'author=Daryl St Laurent',
+                   '-V', 'date={}'.format(str(datetime.date.today())),
+    ]
+    if max([ord(x) for x in note_md]) > 127:
+        pandoc_args += [
+            '--pdf-engine=xelatex',
+            '-V', 'monofont=Menlo'
+        ]
+    subprocess.check_call(pandoc_args)
