@@ -23,7 +23,7 @@ class BlockLatexExtension(CmarkSyntaxExtension):
 
     def renderLatex(self, node):
         """Render node in latex"""
-        return '${}$'.format(node.get_literal())
+        return '\\[{}\\]'.format(node.get_literal())
 
     def renderHTML(self, node):
         """Render node in HTML"""
@@ -49,7 +49,7 @@ class InlineLatexExtension(CmarkSyntaxExtension):
 
     def renderLatex(self, node):
         """Render node in latex"""
-        return '$${}$$'.format(node.get_literal())
+        return '\\({}\\)'.format(node.get_literal())
 
     def renderHTML(self, node):
         """Render node in HTML"""
