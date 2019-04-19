@@ -7,11 +7,19 @@ from pycmark.util.TypedTree import TypedTree
 ################################################################################
 
 class Section(TypedTree.GenerateConstructor('Section', ['Level', 'Data'])):
-    """Data container for a section in a document"""
+    """Data container for a section in a Document (list of Document nodes)
+
+    A Section represents an AST heading and its associated content as a list
+    of AST nodes.  A heading may not exist for the first chunk of a document
+    if content exists before the first heading.  Otherwise a heading will be
+    the first entry in the list
+        - Level : Section indentation level (heading depth)
+        - Data  : List of AST nodes
+    """
 
     @classmethod
-    def fromBlocks(cls, blocks):
-        if blocks[0]._tag == 'heading':
+    def fromBlocks(cls, blocks, firstBlock=False):
+        if blocks[0]._tag == 'heading' and not firstBlock:
             return Section(Level=blocks[0].Level, Data=blocks)
         else:
             return Section(Level=1, Data=blocks)
@@ -26,14 +34,27 @@ class Section(TypedTree.GenerateConstructor('Section', ['Level', 'Data'])):
 
 ################################################################################
 
-class DocumentTree(TypedTree.GenerateConstructor('DocumentTree', ['ID', 'Section', 'Children'])):
-    """Data container for a document section with sub-sections"""
+class DocumentTree(TypedTree.GenerateConstructor('DocumentTree', ['ID', 'Number', 'Section', 'Children'])):
+    """Data container for a document section with sub-sections
+
+    A DocumentTree is a recursive tree data structure containing sections in a
+    markdown document and their nested sub-sections.
+        - ID       : unique section id based on section heading
+        - Number   : section number (tuple of ints: (x,y,z) --> x.y.z)
+        - Section  : Section content associated with root node
+        - Children : DocumentTree list for children of root node
+    """
 
     def walk(self):
         out = [self]
         for child in self.Children:
             out += child.walk()
         return out
+
+    def dumpHeadingTree(self, indent=0):
+        print(' '*indent + '.'.join(map(str, self.Number)), self.ID)
+        for child in self.Children:
+            child.dumpHeadingTree(indent=indent+4)
 
     @property
     def n_children(self):
@@ -51,10 +72,12 @@ class DocumentTree(TypedTree.GenerateConstructor('DocumentTree', ['ID', 'Section
     def fromAst(cls, tt):
         assert isinstance(tt, TypedTree.TT) and tt._tag == 'Document'
 
-        # split document on headings
+        # split document on headings and build up a list of sections
         assigned_ids = set()
         sections = collections.deque()
         for i,c in enumerate(cls.splitWhere(tt.nodes, lambda n: n._tag == 'heading' and n.Level > 1)):
+            
+            # determine section id
             if i > 1 or c[0]._tag == 'heading':
                 a = re.sub('-$', '', re.sub(r'\W+', '-', TaggedTextBlock().fromBlock(c[0]).__repr__().lower()))
             else:
@@ -62,15 +85,29 @@ class DocumentTree(TypedTree.GenerateConstructor('DocumentTree', ['ID', 'Section
             if a in assigned_ids:
                 a += '--%d' % len(assigned_ids)
             assigned_ids.add(a)
-            sections.append((a, Section.fromBlocks(c)))
 
-        # build up a tree
-        def buildTree(id, root):
-            children = []
+            # section list entry is a tuple of (ID, Section)
+            sections.append((a, Section.fromBlocks(c, firstBlock=i == 0)))
+
+        # helper function to recursively build up a tree
+        def buildTree(id, root, num=()):
+            children = []  # children of current root node
+
+            # while there are sections indented under the current root in the queue...
+            # generate a tree from the first section in the queue and append it to the list of children
+            counter = 1
             while len(sections) > 0 and sections[0][1].Level > root.Level:
-                children.append(buildTree(*sections.popleft()))
-            return DocumentTree(ID=id, Section=root, Children=children)
-        return buildTree(*sections.popleft())
+                children.append(buildTree(*sections.popleft(), num=num+(counter,)))
+                counter += 1
+
+            # concretize and return the sub-tree
+            return DocumentTree(ID=id, Number=num, Section=root, Children=children)
+
+        # first entry in the section list is the root node and everything else should be nested below it
+        # assemble a DocumentTree from the root node
+        doctree = buildTree(*sections.popleft())
+        assert len(sections) == 0  # confirm that everything was slurped up
+        return doctree
 
     @staticmethod
     def splitWhere(arr, fn, dropEmptyHead=True):

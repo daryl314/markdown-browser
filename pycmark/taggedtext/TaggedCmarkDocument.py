@@ -7,20 +7,26 @@ class TaggedTextDocument(TTD.TaggedTextDocument):
     """
 
     @classmethod
-    def fromAST(cls, ast, width=80, ttclass=None):
+    def fromAST(cls, ast, width=80, **kwargs):
         """Parse an AST representation of a markdown document into a TaggedTextDocuent"""
         doc = cls()
-        for block in ast.nodes:
-            if block._tag == 'block_quote':
-                for qb in block.children:
-                    doc.append(TaggedTextBlock(ttclass=ttclass, width=width).fromBlock(qb).prependTag('block_quote'))
-            else:
-                doc.append(TaggedTextBlock(ttclass=ttclass, width=width).fromBlock(block))
-        for block in doc.blocks:
-            for row in block.rows:
-                row.padTo(width)
-        return doc
+        for node in ast.nodes:
+            for block in cls.wrapAstNode(node, width=width, **kwargs):
+                doc.append(block)
+        return block
 
+    @classmethod
+    def wrapAstNode(cls, node, width=80, **kwargs):
+        def wrap(n):
+            return TaggedTextBlock(width=width, **kwargs).fromBlock(n)
+        if node._tag == 'block_quote':
+            wrapped = [wrap(qb).prependTag('block_quote') for qb in node.children]
+        else:
+            wrapped = [wrap(node)]
+        for wblock in wrapped:
+            for row in wblock.rows:
+                row.padTo(width)
+        return wrapped
 
 class TaggedTextBlock(TTD.TaggedTextBlock):
     """
@@ -54,7 +60,7 @@ class TaggedTextBlock(TTD.TaggedTextBlock):
         ##### block-level leaf nodes ####
 
         elif block._tag in {'code_block', 'html_block'}:
-            for row in block.Text.split('\n'):
+            for row in block.Text.rstrip().split('\n'):
                 self.rows.append(self.TTL.fromText(row, self.TT, [block._tag]))
 
         elif block._tag == 'thematic_break':
@@ -84,7 +90,9 @@ class TaggedTextBlock(TTD.TaggedTextBlock):
             else:
                 raise RuntimeError("Unrecognized list type: " + block.Type)
             for i,li in enumerate(block.children):
-                subBlock = self.__class__(width=self.width-2, ttclass=self.TT, ttlclass=self.TTL).fromBlocks(li.children)
+                subBlock = self.__class__(
+                    width=self.width-2, ttclass=self.TT, ttlclass=self.TTL, withUnicode=self.withUnicode
+                ).fromBlocks(li.children)
                 self.rows.append(subBlock.rows[0].pushLeft(listHeader(i),['list']))
                 self.rows += [row.pushLeft(' '*len(listHeader(i)),['list']) for row in subBlock.rows[1:]]
 
