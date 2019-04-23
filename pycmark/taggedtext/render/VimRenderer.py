@@ -1,7 +1,14 @@
 import sys
-from .Renderer import Renderer
-from ...util.TerminalColors256 import Color256
-from ...ast.DocumentTree import DocumentTree
+from pycmark.taggedtext.render.Renderer import Renderer
+from pycmark.util.TerminalColors256 import Color256
+from pycmark.ast.DocumentTree import DocumentTree
+from pycmark.util.TypedTree import TypedTree
+from pycmark.taggedtext.TaggedCmarkDocument import TaggedTextDocument
+
+if sys.version_info[0] == 2:
+    from StringIO import StringIO  # cStringIO won't work with unicode
+else:
+    from io import StringIO
 
 class VimRenderer(Renderer):
 
@@ -9,7 +16,7 @@ class VimRenderer(Renderer):
         """Render text with style tags"""
         tag = tt.simplifyStack()
         if tag in self.CONFIG:
-            return '<{0}>{1}</{0}>'.format(tag, tt.text)
+            return '<' + tag + '>' + tt.text + '</' + tag + '>'
         else:
             raise RuntimeError("Unrecognized style tag: {}".format(tag))
 
@@ -22,8 +29,9 @@ class VimRenderer(Renderer):
             prop.append('gui={0} cterm={0}'.format(','.join(attr)))
         return 'hi %s %s\n' % (name, ' '.join(prop))
 
-    def genStyle(self, logger=sys.stdout):
+    def genStyle(self):
         """Generate style commands for main vim window"""
+        logger = StringIO()
         logger.write('setlocal conceallevel=2\n')
         logger.write('setlocal concealcursor=nc\n\n')
         logger.write(self.vimStyle('Normal', **self.getStyle('default')))
@@ -32,9 +40,11 @@ class VimRenderer(Renderer):
         logger.write('\n')
         for k in set(self.CONFIG.keys()) - {'default','treeline'}:
             logger.write(self.vimStyle('in'+k, **self.getStyle(k)))
+        return logger.getvalue()
 
-    def genTreeStyle(self, logger=sys.stdout):
+    def genTreeStyle(self):
         """Generate style commands for TOC vim window"""
+        logger = StringIO()
         logger.write('syn match treeLine "\\%u2500\\|\\%u2502\\|\\%u2514\\|\\%u251c"\n')
         logger.write('syn region tocHeader concealends matchgroup=tocHeader start="{" end="$"\n')
         logger.write(self.vimStyle('tocHeader', **self.getStyle('treeline')))
@@ -42,6 +52,7 @@ class VimRenderer(Renderer):
         logger.write(self.vimStyle('Normal', **self.getStyle('strong')))
         logger.write('setlocal conceallevel=2\n')
         logger.write('setlocal concealcursor=nc\n')
+        return logger.getvalue()
 
     @staticmethod
     def getTOC(doc, offset=0, withUnicode=True, tabstop=3):

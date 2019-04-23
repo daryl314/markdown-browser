@@ -1,129 +1,35 @@
 if has("python3") || has("python")
 
-" python imports
-if has("python3")
-    python3 import vim
-    python3 from io import StringIO
-    python3 import re
-else
-    python  import vim
-    python  from cStringIO import StringIO
-    python  import re
-endif
-
 " application imports
 if has("python3")
-    python3 from pycmark.taggedtext.render.VimRenderer import VimRenderer
-    python3 from pycmark.util.TypedTree import TypedTree
-    python3 from pycmark.taggedtext.TaggedCmarkDocument import TaggedTextDocument
+    python3 import vim
+    python3 from pycmark.vim.VimHandler import VimHandler
 else
-    python  from pycmark.taggedtext.render.VimRenderer import VimRenderer
-    python  from pycmark.util.TypedTree import TypedTree
-    python  from pycmark.taggedtext.TaggedCmarkDocument import TaggedTextDocument
+    python  import vim
+    python  from pycmark.vim.VimHandler import VimHandler
 endif
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-" initialize content window variables
-if has("python3")
-    python3 tocBuffer = None      # buffer number for table of contents
-    python3 contentBuffer = None  # buffer number for rendered markdown
-else
-    python  tocBuffer = None      # buffer number for table of contents
-    python  contentBuffer = None  # buffer number for rendered markdown
-endif
-let g:hasdata = 0        " has an initial data load happened?
+" initial data load hasn't happened yet
+let g:hasdata = 0
 
-" initialize renderer
+" initialize VimHandler
 if has("python3")
-    python3 renderer = VimRenderer()
+    python3 vh = VimHandler(vim)
 else
-    python  renderer = VimRenderer()
-endif
-
-" generate vim syntax highlighting
-if has("python3")
-    python3 buf = StringIO()
-    python3 renderer.genStyle(logger=buf)
-    python3 styleCommands = buf.getvalue().split('\n')
-else
-    python  buf = StringIO()
-    python  renderer.genStyle(logger=buf)
-    python  styleCommands = buf.getvalue().split('\n')
-endif
-
-" table of contents header
-if has("python3")
-    python3 tocHeader = [
-        \'{TAB: switch windows',
-        \'{ENTER: follow link',
-        \'{Ctrl-]: follow links',
-        \'{Ctrl-R: resize',
-        \'{Ctrl-T: toggle TOC',
-        \'{za: toggle TOC fold',
-        \'',
-        \'Contents'
-      \]
-else
-    python  tocHeader = [
-        \'{TAB: switch windows',
-        \'{ENTER: follow link',
-        \'{Ctrl-]: follow links',
-        \'{Ctrl-R: resize',
-        \'{Ctrl-T: toggle TOC',
-        \'{za: toggle TOC fold',
-        \'',
-        \'Contents'
-      \]
+    python  vh = VimHandler(vim)
 endif
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 " function to render text
 function! RenderText()
-
-    " identify content window
     if has("python3")
-        python3 contentWindow = [w for w in vim.windows if w.buffer.number == contentBuffer][0]
-        python3 nCols = int(contentWindow.width) - int(contentWindow.options['numberwidth'])
+        python3 vh.RenderText()
     else
-        python  contentWindow = [w for w in vim.windows if w.buffer.number == contentBuffer][0]
-        python  nCols = int(contentWindow.width) - int(contentWindow.options['numberwidth'])
+        python  vh.RenderText()
     endif
-
-    " parse input html file
-    if has("python3")
-        python3 tt = TypedTree._fromjson(inData)
-    else
-        python  tt = TypedTree._fromjson(inData)
-    endif
-
-    " render parsed html into vim input lines
-    if has("python3")
-        python3 buf = StringIO()
-        python3 doc = TaggedTextDocument.fromAST(tt, width=nCols)
-        python3 doc.render(VimRenderer().render, writer=buf)
-        python3 renderedLines = buf.getvalue().split('\n')
-    else
-        python  buf = StringIO()
-        python  doc = TaggedTextDocument.fromAST(tt, width=nCols)
-        python  doc.render(VimRenderer().render, writer=buf)
-        python  renderedLines = buf.getvalue().split('\n')
-    endif
-
-    " display rendered text
-    if has("python3")
-        python3 vim.buffers[contentBuffer].options['modifiable'] = True
-        python3 vim.buffers[contentBuffer][:] = renderedLines
-        python3 vim.buffers[contentBuffer].options['buftype'] = 'nofile'
-        python3 vim.buffers[contentBuffer].options['modifiable'] = False
-    else
-        python  vim.buffers[contentBuffer].options['modifiable'] = True
-        python  vim.buffers[contentBuffer][:] = renderedLines
-        python  vim.buffers[contentBuffer].options['buftype'] = 'nofile'
-        python  vim.buffers[contentBuffer].options['modifiable'] = False
-    endif
-
 endfunction
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -136,16 +42,9 @@ function! ParseJSON()
 
     " grab input html and clear input buffer
     if has("python3")
-        python3 inData = '\n'.join(vim.current.buffer)
+        python3 vh.parseJSON()
     else
-        python  inData = '\n'.join(vim.current.buffer)
-    endif
-    only
-    bd
-    if has("python3")
-        python3 contentBuffer = vim.current.buffer.number
-    else
-        python  contentBuffer = vim.current.buffer.number
+        python  vh.parseJSON()
     endif
 
     " content window settings
@@ -153,11 +52,6 @@ function! ParseJSON()
     setlocal colorcolumn=0
     setlocal nonumber
     setlocal nowrap
-    if has("python3")
-        python3 for line in styleCommands: vim.command(line)
-    else
-        python  for line in styleCommands: vim.command(line)
-    endif
     silent execute "file" '"'+g:fname+'"'
 
     " create a window for table of contents
@@ -168,9 +62,9 @@ function! ParseJSON()
     hi CursorLine term=bold cterm=bold guibg=Grey40
     silent file TOC
     if has("python3")
-        python3 tocBuffer = vim.current.buffer.number
+        python3 vh.tocBuffer = vim.current.buffer.number
     else
-        python  tocBuffer = vim.current.buffer.number
+        python  vh.tocBuffer = vim.current.buffer.number
     endif
 
     " configure folding for TOC
@@ -188,30 +82,13 @@ function! ParseJSON()
     " fill out table of contents window
     wincmd h
     if has("python3")
-        python3 tree,rawfolds,folds = VimRenderer.getTOC(tt, offset=1+len(tocHeader))
-        python3 vim.current.buffer[:] = tocHeader + tree
-        python3 for f in folds: vim.command('%d,%dfold | normal zR' % f)
+        python3 vh.RenderTOC()
     else
-        python  tree,rawfolds,folds = VimRenderer.getTOC(tt, offset=1+len(tocHeader))
-        python  vim.current.buffer[:] = tocHeader + tree
-        python  for f in folds: vim.command('%d,%dfold | normal zR' % f)
+        python  vh.RenderTOC()
     endif
     hi Folded NONE
     setlocal buftype=nofile
     setlocal nomodifiable
-
-    " colorize table of contents
-    if has("python3")
-        python3 buf = StringIO()
-        python3 renderer.genTreeStyle(logger=buf)
-        python3 tocStyleCommands = buf.getvalue().split('\n')
-        python3 for line in tocStyleCommands: vim.command(line)
-    else
-        python  buf = StringIO()
-        python  renderer.genTreeStyle(logger=buf)
-        python  tocStyleCommands = buf.getvalue().split('\n')
-        python  for line in tocStyleCommands: vim.command(line)
-    endif
 
     " jump to rendered text when <ENTER> is pressed in TOC
     " TOC key bindings
@@ -230,11 +107,9 @@ function! ParseJSON()
     " generate folds in content window
     wincmd l
     if has("python3")
-        python3 contentIndices = [ i for i,b in enumerate(vim.current.buffer) if b.startswith('<heading>') and '</heading>' in b ] + [len(vim.current.buffer)]
-        python3 for a,b in [(i,dict(rawfolds).get(i,i)) for i in range(len(tree))]: vim.command('%d,%dfold | normal zR' % (contentIndices[a]+1, contentIndices[b+1]))
+        python3 vh.GenerateFolds()
     else
-        python  contentIndices = [ i for i,b in enumerate(vim.current.buffer) if b.startswith('<heading>') and '</heading>' in b ] + [len(vim.current.buffer)]
-        python  for a,b in [(i,dict(rawfolds).get(i,i)) for i in range(len(tree))]: vim.command('%d,%dfold | normal zR' % (contentIndices[a]+1, contentIndices[b+1]))
+        python  vh.GenerateFolds()
     endif
     set foldtext=ContextFold()
 
@@ -268,9 +143,9 @@ endfunction
 " close buffers
 function! CloseBuffers()
     if has("python3")
-        python3 if tocBuffer is not None and contentBuffer is not None: vim.command('bdelete %d %d' % (tocBuffer,contentBuffer))
+        python3 if vh.tocBuffer is not None and vh.contentBuffer is not None: vim.command('bdelete %d %d' % (vh.tocBuffer,vh.contentBuffer))
     else
-        python  if tocBuffer is not None and contentBuffer is not None: vim.command('bdelete %d %d' % (tocBuffer,contentBuffer))
+        python  if vh.tocBuffer is not None and vh.contentBuffer is not None: vim.command('bdelete %d %d' % (vh.tocBuffer,vh.contentBuffer))
     endif
 endfunction
 
@@ -279,9 +154,9 @@ endfunction
 " scroll rendered text when <ENTER> is pressed in TOC
 function! ScrollToTOC()
     if has("python3")
-        python3 vim.command('call ScrollToHeading(%d)' % (vim.current.window.cursor[0]-len(tocHeader)))
+        python3 vim.command('call ScrollToHeading(%d)' % (vim.current.window.cursor[0]-len(vh.TOCHEADER)))
     else
-        python  vim.command('call ScrollToHeading(%d)' % (vim.current.window.cursor[0]-len(tocHeader)))
+        python  vim.command('call ScrollToHeading(%d)' % (vim.current.window.cursor[0]-len(vh.TOCHEADER)))
     endif
 endfunction
 

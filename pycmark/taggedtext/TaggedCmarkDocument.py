@@ -13,7 +13,7 @@ class TaggedTextDocument(TTD.TaggedTextDocument):
         for node in ast.nodes:
             for block in cls.wrapAstNode(node, width=width, **kwargs):
                 doc.append(block)
-        return block
+        return doc
 
     @classmethod
     def wrapAstNode(cls, node, width=80, **kwargs):
