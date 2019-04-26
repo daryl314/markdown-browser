@@ -44,6 +44,12 @@ jQuery(function(){ // wait for document to be ready
         }
     }
 
+    // hide side bar and bail out if there are no headings
+    if ($a.length == 0) {
+        $('#markdown-toc').hide();
+        return
+    }
+
     // add bullets to TOC entries
     const ICON_BULL      = '&#9679;';
     const ICON_COLLAPSED = '&#9654;';
