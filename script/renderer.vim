@@ -1,5 +1,11 @@
 if has("python3") || has("python")
 
+" Don't load twice
+if exists("g:loaded_md_renderer")
+  finish
+endif
+let g:loaded_md_renderer = 1
+
 " application imports
 if has("python3")
     python3 import vim
@@ -37,7 +43,7 @@ endfunction
 " function to process a JSON file
 function! ParseJSON()
 
-    " save name of loaded file
+    " save name of loaded file (without path or extension)
     let g:fname=expand('%:t:r')
 
     " grab input html and clear input buffer
@@ -170,7 +176,17 @@ function! ScrollToHeading(n)
     normal zt
 endfunction
 
+" scroll to specified heading text
+function! ScrollToHeadingText(txt)
+    wincmd l
+    execute "/<heading>".a:txt
+endfunction
+
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+" clear any autocommands associated with script
+" not sure why this is needed if there is a guard at the top, but it is...
+autocmd!
 
 " call processing fuction when a new file is loaded
 autocmd BufRead *.json call ParseJSON()
@@ -179,6 +195,6 @@ autocmd BufRead *.json call ParseJSON()
 autocmd BufReadPre *.json :call CloseBuffers()
 
 " NERDTree configuration
-:let NERDTreeIgnore=['\.md$', '\.html$', '\.md\.pdf$']
+let NERDTreeIgnore=['\.md$', '\.html$', '\.md\.pdf$']
 
 endif
