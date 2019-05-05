@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-import sys, os, subprocess, re, datetime
+import sys, os, subprocess, re, datetime, json
 from pyevernote.EvernoteMetadata import EvernoteMetadata
 from pycmark.html.HTML_Generator import toStyledHTML
 from pycmark.ast.DocumentTree import DocumentTree
@@ -23,17 +23,25 @@ nb_notes = {}
 for note in active_notes:
     nb_notes.setdefault(note.notebook, set()).add(note)
 
+# notebook metadata
+nb_meta = {}
+for nb, nbn in nb_notes.items():
+    nb_meta[nb] = [
+        {'title': n.title, 'notebook': n.notebook.replace(' ', '%20'), 'etitle': n.escapedtitle.replace(' ', '%20')}
+        for n in sorted(nbn, key=lambda nn: nn.title)
+    ]
+
 # generate table of contents index pages
 nb_index = []
-for nb in sorted(nb_notes.keys()):
+for nb in sorted(nb_meta.keys()):
     nb_index.append('## {} ##\n'.format(nb))
-    for n in sorted(nb_notes[nb], key=lambda nn: nn.title):
-        nb_index.append('* [{title}](../{notebook}/{etitle}.html)'.format(
-            title=n.title,
-            notebook=n.notebook.replace(' ', '%20'),
-            etitle=n.escapedtitle.replace(' ', '%20')))
+    nb_index += ['* [{title}](../{notebook}/{etitle}.html)'.format(**n) for n in nb_meta[nb]]
     nb_index.append('')
 nb_index = toStyledHTML('\n'.join(nb_index))
+
+# generate index json
+with open(os.path.join(syncdata, 'markdown', 'index.json'), 'wt') as F:
+    json.dump(nb_meta, F)
 
 # generate table of contents index pages
 for nb in nb_notes.keys():
