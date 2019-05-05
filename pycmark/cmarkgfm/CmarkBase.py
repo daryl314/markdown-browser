@@ -14,7 +14,8 @@ class CharP(ctypes.c_char_p):
     pass
 
 # Options for the GFM rendering call
-OPTS = 0  # defaults
+OPTS = 0          # defaults
+OPTS |= (1 << 1)  # label block source positions
 
 # The GFM extensions that we want to use
 EXTENSIONS = (
