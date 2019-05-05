@@ -24,13 +24,19 @@ class VimHandler(object):
         self.renderer = VimRenderer()  # rendering object
 
     def parseJSON(self):
-        self.inData = '\n'.join(self.vim.current.buffer)
+        inData = '\n'.join(self.vim.current.buffer)
+        try:
+            self.tt = TypedTree._fromjson(inData)
+        except:
+            self.vim.command('let g:json_load_ok = 0')
+            return
+        self.inData = inData
         self.vim.command('only')  # ???
         self.vim.command('bd')    # ???
         self.contentBuffer = self.vim.current.buffer.number
         for line in self.renderer.genStyle().split('\n'):
             self.vim.command(line)
-        self.tt = TypedTree._fromjson(self.inData)
+        self.vim.command('let g:json_load_ok = 1')
 
     def RenderText(self):
         contentWindow = [w for w in self.vim.windows if w.buffer.number == self.contentBuffer][0]

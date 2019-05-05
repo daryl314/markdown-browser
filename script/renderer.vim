@@ -53,6 +53,11 @@ function! ParseJSON()
         python  vh.parseJSON()
     endif
 
+    " break out if parsing failed
+    if g:json_load_ok == 0
+        return
+    endif
+
     " content window settings
     setlocal nocursorline
     setlocal colorcolumn=0
