@@ -1,6 +1,6 @@
 import ctypes, ctypes.util, xml.sax.saxutils
-from ..util.TypedTree import TypedTree
-from .CmarkBase import CmarkSyntaxExtension, CmarkInlineParser, CmarkNode, Document, cmark
+from pycmark.util.TypedTree import TypedTree
+from pycmark.cmarkgfm.CmarkBase import CmarkSyntaxExtension, CmarkInlineParser, CmarkNode, Document, cmark
 
 ################################################################################
 
@@ -60,6 +60,13 @@ class InlineLatexExtension(CmarkSyntaxExtension):
 class LatexNode(CmarkNode):
     TEXT_NODES = CmarkNode.TEXT_NODES | {'latex_inline', 'latex_block'}
 
+    # avoid memory leak from typeFn
+    def get_type_string(self):
+        if self.obj.contents.extension and self.obj.contents.extension.contents.name in {'latex_inline', 'latex_block'}:
+            return self.obj.contents.extension.contents.name
+        else:
+            return super(LatexNode, self).__getattr__('get_type_string')()
+
 
 class LatexDocument(Document):
 
@@ -92,6 +99,9 @@ jkl | mno | pqr
 1. Foo
 2. Bar
 3. Baz
+    1. Nested Baz.1
+        1. Nested Baz.1.1
+    2. Nested Baz.2
 
 [ ] Task 1
 [x] Task 2
@@ -121,7 +131,8 @@ if __name__ == '__main__':
 
     doc = LatexDocument(TEST_TEXT)
     print(doc.toXML())
-    print(doc.toAST())
-    print(doc.toAST() == TypedTree._fromjson(doc.toAST()._tojson()))
+    ast = doc.toAST()
+    print(ast)
+    print(ast == TypedTree._fromjson(doc.toAST()._tojson()))
     print(doc.toHTML())
     print(doc.toLatex())
