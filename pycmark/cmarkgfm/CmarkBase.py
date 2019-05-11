@@ -1,4 +1,4 @@
-import ctypes, ctypes.util, warnings
+import sys, ctypes, ctypes.util, warnings
 from . import libcmark_gfm as cmark, libcmark_gfm_extensions as cmark_ext
 from ..util.TypedTree import TypedTree
 from ..util.CtypesWalker import CtypesWalker
@@ -238,9 +238,9 @@ class Document(object):
         for ext in user_extensions:
             assert self.parser.attach_syntax_extension(ext)
         for name in extension_names:
-            assert self.parser.attach_syntax_extension(cmark.cmark_find_syntax_extension(name))
+            assert self.parser.attach_syntax_extension(cmark.cmark_find_syntax_extension(name.encode()))
         self.exts = self.parser.get_syntax_extensions()
-        self.parser.feed(text, len(text))
+        self.parser.feed(text.encode(), len(text))
         self.doc = self.parser.finish()
 
     def __del__(self):
@@ -281,7 +281,7 @@ class CmarkSyntaxExtension(CmarkWrapper):
     SPECIAL_CHARS = ()
 
     def __init__(self):
-        super(CmarkSyntaxExtension, self).__init__(cmark.cmark_syntax_extension_new(self.NAME))
+        super(CmarkSyntaxExtension, self).__init__(cmark.cmark_syntax_extension_new(self.NAME.encode()))
         char_list = ctypes.cast(ctypes.c_void_p(), ctypes.POINTER(cmark._cmark_llist))
         mem = cmark.cmark_get_default_mem_allocator()
         for c in self.SPECIAL_CHARS:

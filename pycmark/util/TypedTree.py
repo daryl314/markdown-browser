@@ -22,7 +22,7 @@ class TypedTree(object):
                 if isinstance(x, TypedTree.TT):
                     return {'t':x._tag, 'k':convert(tuple(x._fields)), 'v':convert(tuple(x))}
                 elif isinstance(x, tuple):
-                    return map(convert, x)
+                    return [convert(el) for el in x]
                 else:
                     return x
             return convert(self)
@@ -67,6 +67,8 @@ class TypedTree(object):
 
     @staticmethod
     def _sanitize(x):
+        if isinstance(x, bytes) and not isinstance(x, str):
+            x = x.decode()
         if keyword.iskeyword(x) or x == 'None':
             return x + '_'
         else:
