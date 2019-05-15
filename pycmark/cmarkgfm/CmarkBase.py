@@ -238,9 +238,11 @@ class Document(object):
         for ext in user_extensions:
             assert self.parser.attach_syntax_extension(ext)
         for name in extension_names:
-            assert self.parser.attach_syntax_extension(cmark.cmark_find_syntax_extension(name.encode()))
+            if not isinstance(name, bytes):
+                name = name.encode()
+            assert self.parser.attach_syntax_extension(cmark.cmark_find_syntax_extension(name))
         self.exts = self.parser.get_syntax_extensions()
-        self.parser.feed(text.encode(), len(text))
+        self.parser.feed(text if isinstance(text, bytes) else text.encode(), len(text))
         self.doc = self.parser.finish()
 
     def __del__(self):
@@ -281,7 +283,7 @@ class CmarkSyntaxExtension(CmarkWrapper):
     SPECIAL_CHARS = ()
 
     def __init__(self):
-        super(CmarkSyntaxExtension, self).__init__(cmark.cmark_syntax_extension_new(self.NAME.encode()))
+        super(CmarkSyntaxExtension, self).__init__(cmark.cmark_syntax_extension_new(self.NAME if isinstance(self.NAME, bytes) else self.NAME.encode()))
         char_list = ctypes.cast(ctypes.c_void_p(), ctypes.POINTER(cmark._cmark_llist))
         mem = cmark.cmark_get_default_mem_allocator()
         for c in self.SPECIAL_CHARS:
