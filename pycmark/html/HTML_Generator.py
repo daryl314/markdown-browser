@@ -70,7 +70,9 @@ def toStyledHTML(txt, withIndex=False):
     # add anchors to headings
     headings = [el for el in dom.firstChild.childNodes
                 if isinstance(el, xml.dom.minidom.Element) and el.tagName in {'h2', 'h3', 'h4', 'h5', 'h6'}]
-    for h, e in zip(headings, dt.walk()[1:]):
+    elements = [el for el in dt.walk() if el.isHeading()]
+    assert len(headings) == len(elements)
+    for h, e in zip(headings, elements):
         h.attributes['id'] = e.ID
 
     # style tables
