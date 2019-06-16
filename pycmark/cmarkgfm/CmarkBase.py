@@ -310,7 +310,7 @@ class CmarkSyntaxExtension(CmarkWrapper):
 
     def _renderLatex(self, extension, renderer, node, ev_type, options):
         txt = self.renderLatex(CmarkNode(node))
-        renderer.contents.out(renderer, node, txt, False, cmark.LITERAL)
+        renderer.contents.out(renderer, node, txt, False, cmark.cmark_escaping.LITERAL)
 
     def _renderHTML(self, extension, renderer, node, ev_type, options):
         txt = self.renderHTML(CmarkNode(node))

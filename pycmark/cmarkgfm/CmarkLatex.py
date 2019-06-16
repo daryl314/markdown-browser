@@ -7,7 +7,7 @@ from pycmark.cmarkgfm.CmarkBase import CmarkSyntaxExtension, CmarkInlineParser, 
 class BlockLatexExtension(CmarkSyntaxExtension):
     NAME = 'latex_block'
     SPECIAL_CHARS = ('$',)
-    ID = cmark.CMARK_NODE_CODE
+    ID = cmark.cmark_node_type.CMARK_NODE_CODE
 
     def matchFn(self, ext, parser, parent, character, inline_parser):
         """Attempt to match"""
@@ -31,7 +31,7 @@ class BlockLatexExtension(CmarkSyntaxExtension):
 
 class InlineLatexExtension(CmarkSyntaxExtension):
     NAME = 'latex_inline'
-    ID = cmark.CMARK_NODE_CODE
+    ID = cmark.cmark_node_type.CMARK_NODE_CODE
 
     def matchFn(self, ext, parser, parent, character, inline_parser):
         """Attempt to match"""
