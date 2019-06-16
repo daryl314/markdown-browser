@@ -35,7 +35,8 @@ for nb, nbn in nb_notes.items():
 nb_index = []
 for nb in sorted(nb_meta.keys()):
     nb_index.append('## {} ##\n'.format(nb))
-    nb_index += ['* [{title}](../{notebook}/{etitle}.html)'.format(**n) for n in nb_meta[nb]]
+    nb_index += ['* [{title}](../{notebook}/{etitle}.html) [[PDF]](../{notebook}/{etitle}.pdf)'.format(**n)
+                 for n in nb_meta[nb]]
     nb_index.append('')
 nb_index = toStyledHTML('\n'.join(nb_index))
 
