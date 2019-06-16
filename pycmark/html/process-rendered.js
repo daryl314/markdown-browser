@@ -22,12 +22,25 @@ jQuery(function(){ // wait for document to be ready
 
     ///// PROCESSING FOR MAP MODE /////
 
+    // running on iphone?
+    let is_iPhone = navigator.platform.indexOf("iPhone") != -1;
+
     // set page title
     $('a#navbar-title > span').text(
         $('h1').length > 0
             ? $('h1').first().text() 
             : unescape(window.location.href.replace(/.*\//, '').replace(/\.html.*/,''))
     );
+
+    // toggle TOC on hamburger menu click
+    $('a#navbar-title').on('click', function() {
+        $('#markdown-toc').toggle();
+    })
+
+    // increase menu font size
+    if (is_iPhone) {
+        $('#markdown-toc > ul').css('font-size','2.0em');
+    }
 
     // cross-reference headers in table of contents
     let $h = $('#markdown-container').children('h2,h3,h4,h5,h6');
@@ -43,6 +56,9 @@ jQuery(function(){ // wait for document to be ready
             }
         }
     }
+
+    // hide bullets initially
+    $('#markdown-toc .tree-toggle').hide();
 
     // hide side bar and bail out if there are no headings
     if ($a.length == 0) {
@@ -61,38 +77,6 @@ jQuery(function(){ // wait for document to be ready
             $(this).parent().prepend(`<div class="tree-toggle tree-toggle-bullet">${ICON_BULL}</div>`)
         }
     });
-
-    // hide bullets initially
-    $('#markdown-toc .tree-toggle').hide();
-
-    // running on iphone
-    let is_iPhone = navigator.platform.indexOf("iPhone") != -1;
-    if (is_iPhone) {
-
-        // configure slideout (https://github.com/mango/slideout)
-        // disable dragging on elements with data-slideout-ignore attribute:
-        //    <div id="carousel" data-slideout-ignore> ... </div>
-        let slideout = new Slideout({
-            panel       : $('#markdown-container')[0],  // content container
-            menu        : $('#markdown-toc')[0],        // menu container
-            padding     : 700,                          // menu width (px)
-            tolerance   : 70,                           // px needed to open menu completely
-            touch       : true,                         // enable touch events
-            side        : 'left'                        // open on the left side
-        });
-
-        // toggle slideout on hamburger menu click
-        $('a#navbar-title').on('click', function(){ slideout.toggle() });
-
-        // increase menu font size
-        $('#markdown-toc > ul').css('font-size','2.0em');
-
-    // not running on iphone
-    } else {
-        $('a#navbar-title').on('click', function() {
-            $('#markdown-toc').toggle();
-        })
-    }
 
     ///// SCROLL SYNC /////
 

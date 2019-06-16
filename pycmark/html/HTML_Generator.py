@@ -166,7 +166,7 @@ TOC = '''
 ################################################################################
 
 CSS = loadAsset('style.css') + loadAsset('bootswatch-cosmo-4.3.1.min.css')
-JSCORE = loadAsset('jquery-3.3.1.slim.min.js') + loadAsset('slideout-1.0.1.min.js')+ loadAsset('bootstrap-4.3.1.min.js')
+JSCORE = loadAsset('jquery-3.3.1.slim.min.js') + loadAsset('bootstrap-4.3.1.min.js')
 POSTPROCESS = loadAsset('process-rendered.js')
 
 HTML = '''<!DOCTYPE html>
