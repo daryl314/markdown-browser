@@ -68,7 +68,7 @@ jQuery(function(){ // wait for document to be ready
 
     // add bullets to TOC entries
     const ICON_BULL      = '&#9679;';
-    const ICON_COLLAPSED = '&#9654;';
+    const ICON_COLLAPSED = '&#x25B6;&#xFE0E;';  // prevent iPhone from turning into an emoji
     const ICON_EXPANDED  = '&#9660;';
     $('#markdown-toc a').each(function(){
         if ($(this).parent().has('ul').length > 0) {
