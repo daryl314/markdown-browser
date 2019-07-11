@@ -7,12 +7,17 @@ from pycmark.html.Katex import processLatex, escapeUnicode
 ################################################################################
 
 ROOT = os.path.dirname(__file__)
+
 def loadAsset(asset, indent=8, escape=True):
     with open(os.path.join(ROOT, asset), 'rt') as F:
         if escape:
             return F.read().replace('{', '{{').replace('}', '}}').replace('\n', '\n' + ' ' * indent)
         else:
             return F.read().replace('\n', '\n' + ' ' * indent)
+
+def loadBinaryAsset(asset):
+    with open(os.path.join(ROOT, asset), 'rb') as F:
+        return base64.b64encode(F.read())
 
 ################################################################################
 
@@ -140,9 +145,7 @@ def toStyledHTML(txt, withIndex=False):
                 line = line.split(',')[0].strip()
                 a = line.find('(') + 1
                 b = line.find(')', a)
-                with open(os.path.join(ROOT, 'node_modules', 'katex', 'dist', line[a:b]), 'rb') as F:
-                    font = F.read()
-                encoded = base64.b64encode(font)
+                encoded = loadBinaryAsset(os.path.join(ROOT, 'node_modules', 'katex', 'dist', line[a:b]))
                 jslib.append(' '*6 + "src: url(data:font/woff2;base64,%s) format('woff2');" % encoded)
             else:
                 jslib.append(line)
@@ -170,6 +173,7 @@ TOC = '''
 CSS = loadAsset('style.css') + loadAsset('bootswatch-cosmo-4.3.1.min.css')
 JSCORE = loadAsset('jquery-3.3.1.slim.min.js') + loadAsset('bootstrap-4.3.1.min.js')
 POSTPROCESS = loadAsset('process-rendered.js')
+FAVICON = loadBinaryAsset('favicon.ico')
 
 HTML = '''<!DOCTYPE html>
 <html lang="en">
@@ -177,6 +181,7 @@ HTML = '''<!DOCTYPE html>
     <style type='text/css'>
         {css}
     </style>
+    <link rel="shortcut icon"type="image/x-icon" href="data:image/x-icon;base64,{favicon}"/>
 </head>
 <body> 
   
@@ -248,6 +253,6 @@ HTML = '''<!DOCTYPE html>
     </script>
 </body>
 </html>
-'''.format(css=CSS, jscore=JSCORE, postprocess=POSTPROCESS)
+'''.format(css=CSS, favicon=FAVICON, jscore=JSCORE, postprocess=POSTPROCESS)
 
 ################################################################################
