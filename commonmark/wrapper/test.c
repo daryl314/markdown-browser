@@ -2,14 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <parser.h>
-#include <render.h>
+#include "parser.h"
+#include "render.h"
+#include "registry.h"
 #include "cmark-gfm.h"
 #include "cmark-gfm-core-extensions.h"
 
-// in registry.h ...
-CMARK_GFM_EXPORT
-void cmark_release_plugins(void);
+
+/*
+ * Configuration
+ */
 
 // include line numbers in output
 int options = CMARK_OPT_DEFAULT | CMARK_OPT_SOURCEPOS;
@@ -304,15 +306,54 @@ void print_and_free(const char *fmt, char *result) {
     cmark_get_default_mem_allocator()->free(result);
 }
 
-int main(void) {
+void print_usage(const char* bin_name) {
+    printf("Usage:   %s [MARKDOWN_FILE]\n", bin_name);
+    printf("Options:\n");
+    printf("  -                 Read input from stdin\n");
+    printf("  --help            Display help message\n");
+    printf("  --xml             Render as XML instead of HTML\n");
+    printf("  --cmark           Render as commonmark instead of HTML\n");
+}
+
+int main(int argc, char *argv[]) {
     startup();
 
-    const char* md = "# Test #\n\n* This ~is~ `code` ... $$\n* test $$block$$ or \\\\(inline\\\\) text\n\n$$a*2$$\n\n\\\\(b*2\\\\)";
-    cmark_node *document = string_to_document(md);
+    int i;
+    bool is_xml = false, is_cmark = false;
+    cmark_node *document = NULL;
 
-    print_and_free("=== HTML ===\n\n%s\n\n", document_to_html(document));
-    print_and_free("=== XML ===\n\n%s\n\n", document_to_xml(document));
-    print_and_free("=== Commonmark ===\n\n%s\n\n", document_to_cmark(document));
+    if (argc == 1) {
+        print_usage(argv[0]);
+        printf("\n==========\n\n");
+    }
+
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--help") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else if (strcmp(argv[i], "--xml") == 0) {
+            is_xml   = true;
+        } else if (strcmp(argv[i], "--cmark") == 0) {
+            is_cmark = true;
+        } else if (strcmp(argv[i], "-") == 0) {
+            document = stdin_to_document();
+        } else {
+            document = filename_to_document(argv[i]);
+        }
+    }
+
+    if (!document) {
+        const char* md = "# Test #\n\n* This ~is~ `code` ... $$\n* test $$block$$ or \\\\(inline\\\\) text\n\n$$a*2$$\n\n\\\\(b*2\\\\)";
+        document = string_to_document(md);
+    }
+    
+    if (is_xml) {
+        print_and_free("%s\n", document_to_xml(document));
+    } else if (is_cmark) {
+        print_and_free("%s\n", document_to_cmark(document));
+    } else {
+        print_and_free("%s\n", document_to_html(document));
+    }
 
     cmark_node_free(document);
     shutdown();
