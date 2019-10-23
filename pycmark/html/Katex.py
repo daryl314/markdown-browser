@@ -3,7 +3,7 @@ import os, subprocess, json
 def processLatex(data):
     p = subprocess.Popen(['node', '-e', KATEX_RENDER],
                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=os.path.dirname(__file__))
-    stdout, _ = p.communicate(json.dumps(data))
+    stdout, _ = p.communicate(json.dumps(data).encode())
     return [escapeUnicode(src) for src in json.loads(stdout)]
 
 def escapeUnicode(txt):

@@ -1,10 +1,17 @@
 from collections import namedtuple
-import sys, json, keyword
+import sys
+import json
+import base64
+import keyword
 
-if sys.version_info[0] == 2:
+# running python 3?
+PY3 = sys.version_info[0] == 3
+
+# allowed primitives
+if not PY3:
     PRIMITIVES = {str, unicode, int, long, float, bool}
 else:
-    PRIMITIVES = {str, int, float, bool}
+    PRIMITIVES = {bytes, str, int, float, bool}
 
 class TypedTree(object):
     _constructors = {}
@@ -15,14 +22,24 @@ class TypedTree(object):
             return self._repr(self)
 
         def __eq__(self, other):
-            return isinstance(other,TypedTree.TT) and self._fields == other._fields and all([a == b for a,b in zip(self,other)])
+            return isinstance(other, TypedTree.TT) \
+                   and self._fields == other._fields \
+                   and all([a == b for a, b in zip(self, other)])
 
         def _toobject(self):
+            """Convert to an object representation that can be serialized/deserialized"""
             def convert(x):
                 if isinstance(x, TypedTree.TT):
-                    return {'t':x._tag, 'k':convert(tuple(x._fields)), 'v':convert(tuple(x))}
+                    return {
+                        't': x._tag,
+                        'k': convert(tuple(x._fields)),
+                        'v': convert(tuple(x)),
+                        'b': [k for k, v in zip(x._fields, x) if isinstance(v, bytes)]
+                    }
                 elif isinstance(x, tuple):
                     return [convert(el) for el in x]
+                elif isinstance(x, bytes):
+                    return base64.b64encode(x)
                 else:
                     return x
             return convert(self)
@@ -49,7 +66,13 @@ class TypedTree(object):
     @classmethod
     def _fromjson(cls, x):
         def fromObject(o):
-            return cls.Build(str(o['t']), **dict(zip(map(str,o['k']), o['v'])))
+            type_name = str(o['t'])  # TypedTree type name as a string
+            entries = {}
+            for k, v in zip(o['k'], o['v']):
+                if k in o['b']:
+                    v = base64.b64decode(v)
+                entries[str(k)] = v
+            return cls.Build(type_name, **entries)
         return json.loads(x, object_hook=fromObject)
 
     @classmethod
@@ -66,9 +89,9 @@ class TypedTree(object):
         return x is None or any([isinstance(x,t) for t in PRIMITIVES])
 
     @staticmethod
-    def _sanitize(x):
+    def _sanitize(x, encoding='utf-8'):
         if isinstance(x, bytes) and not isinstance(x, str):
-            x = x.decode()
+            x = x.decode(encoding)
         if keyword.iskeyword(x) or x == 'None':
             return x + '_'
         else:
@@ -80,6 +103,8 @@ class TypedTree(object):
         if key not in T._constructors:
             class Inner(namedtuple(tag, keys)):
                 def __new__(self, **kwargs):  # modifying behavior of an immutable class so need a __new__ method
+                    if not isinstance(tag, str):
+                        raise ValueError("TypedTree type name not a string: {}".format(tag))
                     self._tag = tag
                     return super(Inner,self).__new__(self, **dict([(k,T._convertArg(v)) for k,v in kwargs.items()]))
             T._constructors[key] = type(tag, (T.TT,Inner), {})  # type name, super-types, namespace dictionary

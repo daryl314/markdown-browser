@@ -3,7 +3,7 @@ import os, subprocess, json
 def highlight(data):
     p = subprocess.Popen(['node', '-e', NODE_HIGHLIGHT],
                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=os.path.dirname(__file__))
-    stdout, _ = p.communicate(json.dumps(data))
+    stdout, _ = p.communicate(json.dumps(data).encode())
     return json.loads(stdout)
 
 HIGHLIGHT_LANGUAGES = {

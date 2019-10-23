@@ -1,10 +1,10 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import sys, os, subprocess, re, datetime, json
 from pyevernote.EvernoteMetadata import EvernoteMetadata
 from pycmark.html.HTML_Generator import toStyledHTML
+import pycmark.cmarkgfm as cmark
 from pycmark.ast.DocumentTree import DocumentTree
-import pycmark.cmarkgfm.CmarkLatex as CmarkLatex
 from pycmark.taggedtext.render.RtfRenderer import RtfRenderer
 
 # determine output directory and create if it doesn't exist
@@ -72,7 +72,7 @@ for note in active_notes:
         F.write(toStyledHTML(note_md, withIndex=True))
 
     # generate a LatexDocument without TOC tags and the corresponding AST
-    doc = CmarkLatex.LatexDocument(note_md.replace('[TOC]', ''))
+    doc = cmark.parse(note_md.replace('[TOC]', ''))
     ast = doc.toAST()
 
     # AST representations
@@ -82,12 +82,12 @@ for note in active_notes:
         F.write(ast._tojson())
 
     # rendered latex
-    with open(basefile + '.latex', 'wt') as F:
-        F.write(doc.toLatex())
+    with open(basefile + '.latex', 'wb') as F:
+        F.write(cmark.mdToLatex(note_md.replace('[TOC]', '')))
 
     # RTF
     dt = DocumentTree.fromAst(ast)  # hierarchical document tree
-    with open(basefile + '.rtf', 'wt') as F:
+    with open(basefile + '.rtf', 'wb') as F:
         F.write(RtfRenderer.renderFromDoc(dt, width=100, title=note.title))
 
     ##### PDF FROM LATEX #####

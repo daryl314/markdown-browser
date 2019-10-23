@@ -5,6 +5,7 @@
 #include "parser.h"
 #include "render.h"
 #include "registry.h"
+#include "houdini.h"
 #include "cmark-gfm.h"
 #include "cmark-gfm-core-extensions.h"
 
@@ -92,6 +93,10 @@ static const char *get_type_string_i_latex(cmark_syntax_extension *extension, cm
  * Rendering functions
  */
 
+static void escape_html(cmark_strbuf *dest, const char *source) {
+    houdini_escape_html0(dest, (const unsigned char*)source, strlen(source), 0);
+}
+
 static inline void render_inside(cmark_renderer *renderer, cmark_node *node, const char *before, const char *after) {
     renderer->out(renderer, node, before, false, LITERAL);
     renderer->out(renderer, node, cmark_node_get_literal(node), false, LITERAL);
@@ -100,7 +105,8 @@ static inline void render_inside(cmark_renderer *renderer, cmark_node *node, con
 
 static inline void render_inside_h(cmark_html_renderer *renderer, cmark_node *node, const char *before, const char *after) {
     cmark_strbuf_puts(renderer->html, before);
-    cmark_strbuf_puts(renderer->html, cmark_node_get_literal(node));
+    // cmark_strbuf_puts(renderer->html, cmark_node_get_literal(node));
+    escape_html(renderer->html, cmark_node_get_literal(node));
     cmark_strbuf_puts(renderer->html, after);
 }
 
@@ -301,6 +307,11 @@ char* document_to_cmark(cmark_node *document) {
     return cmark_render_commonmark_with_mem(document, options, 80, mem);
 }
 
+char* document_to_latex(cmark_node *document) {
+    cmark_mem *mem = cmark_get_default_mem_allocator();
+    return cmark_render_latex_with_mem(document, options, 80, mem);
+}
+
 void print_and_free(const char *fmt, char *result) {
     printf(fmt, result);
     cmark_get_default_mem_allocator()->free(result);
@@ -313,13 +324,14 @@ void print_usage(const char* bin_name) {
     printf("  --help            Display help message\n");
     printf("  --xml             Render as XML instead of HTML\n");
     printf("  --cmark           Render as commonmark instead of HTML\n");
+    printf("  --latex           Render as latex instead of HTML\n");
 }
 
 int main(int argc, char *argv[]) {
     startup();
 
     int i;
-    bool is_xml = false, is_cmark = false;
+    bool is_xml = false, is_cmark = false, is_latex = false;
     cmark_node *document = NULL;
 
     if (argc == 1) {
@@ -333,6 +345,8 @@ int main(int argc, char *argv[]) {
             return 0;
         } else if (strcmp(argv[i], "--xml") == 0) {
             is_xml   = true;
+        } else if (strcmp(argv[i], "--latex") == 0) {
+            is_latex = true;
         } else if (strcmp(argv[i], "--cmark") == 0) {
             is_cmark = true;
         } else if (strcmp(argv[i], "-") == 0) {
@@ -349,6 +363,8 @@ int main(int argc, char *argv[]) {
     
     if (is_xml) {
         print_and_free("%s\n", document_to_xml(document));
+    } else if (is_latex) {
+        print_and_free("%s\n", document_to_latex(document));
     } else if (is_cmark) {
         print_and_free("%s\n", document_to_cmark(document));
     } else {

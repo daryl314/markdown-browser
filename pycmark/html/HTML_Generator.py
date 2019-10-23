@@ -1,5 +1,8 @@
-import os, cStringIO, base64, xml.dom.minidom
-from ..cmarkgfm import CmarkLatex
+import os
+import base64
+import xml.dom.minidom
+import pycmark.cmarkgfm as cmark
+import io
 from ..ast.DocumentTree import DocumentTree
 from pycmark.html.CodeHighlighter import highlight, HIGHLIGHT_LANGUAGES
 from pycmark.html.Katex import processLatex, escapeUnicode
@@ -24,7 +27,7 @@ def loadBinaryAsset(asset):
 def toStyledHTML(txt, withIndex=False):
 
     # generate a LatexDocument with [toc] entries converted to something that won't get wrapped
-    doc = CmarkLatex.LatexDocument(txt.replace('[TOC]', '<toc/>').replace('[toc]', '<toc/>'))
+    doc = cmark.parse(txt.replace('[TOC]', '<toc/>').replace('[toc]', '<toc/>'))
 
     # hierarchical document tree
     dt = DocumentTree.fromAst(doc.toAST())
@@ -117,7 +120,7 @@ def toStyledHTML(txt, withIndex=False):
 
     # replace any latex placeholders with rendered latex
     if '<latex' in body:
-        buf = cStringIO.StringIO()             # output buffer
+        buf = io.StringIO()                    # output buffer
         a = 0                                  # initialize processed data pointer
         b = body.find('<latex')                # find next latex tag
         while b >= 0:                          # while there is a latex tag to process...

@@ -1,0 +1,5 @@
+cmark-gfm
+gfm-*
+gfm.*
+*.dSYM
+.gdb_history
