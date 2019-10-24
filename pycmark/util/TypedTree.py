@@ -14,6 +14,14 @@ else:
     PRIMITIVES = {bytes, str, int, float, bool}
 
 class TypedTree(object):
+    """
+    TypedTree is an extension of collections.namedtuple that enforces immutability
+
+    Members must be one of:
+        - another TypedTree
+        - a primitive (string, bytes, boolean, number)
+        - a tuple of acceptable members
+    """
     _constructors = {}
 
     class TT(object):
