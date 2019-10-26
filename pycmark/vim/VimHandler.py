@@ -42,7 +42,7 @@ class VimHandler(object):
         contentWindow = [w for w in self.vim.windows if w.buffer.number == self.contentBuffer][0]
         nCols = int(contentWindow.width) - int(contentWindow.options['numberwidth'])
         buf = StringIO()
-        doc = TaggedTextDocument.fromAST(self.tt, width=nCols)
+        doc = TaggedTextDocument.fromAST(self.tt, width=min(nCols, 100))
         doc.render(self.renderer.render, writer=buf)
         renderedLines = buf.getvalue().split('\n')
         self.vim.buffers[self.contentBuffer].options['modifiable'] = True
