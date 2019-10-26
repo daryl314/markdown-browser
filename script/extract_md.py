@@ -7,10 +7,12 @@ import pycmark.cmarkgfm as cmark
 from pycmark.ast.DocumentTree import DocumentTree
 from pycmark.taggedtext.render.RtfRenderer import RtfRenderer
 
-# determine output directory and create if it doesn't exist
+# determine output directories and create if necessary
 syncdata = sys.argv[1] if len(sys.argv) > 1 else '../syncData'
 if not os.path.isdir(os.path.join(syncdata, 'markdown')):
     os.mkdir(os.path.join(syncdata, 'markdown'))
+if not os.path.isdir(os.path.join(syncdata, 'json')):
+    os.mkdir(os.path.join(syncdata, 'json'))
 
 # load and process sync metadata
 meta = EvernoteMetadata(syncdata)
@@ -40,6 +42,13 @@ for nb in sorted(nb_meta.keys()):
     nb_index.append('')
 nb_index = toStyledHTML('\n'.join(nb_index))
 
+# generate directories for notebooks
+for nb in nb_notes.keys():
+    if not os.path.isdir(os.path.join(syncdata, 'markdown', nb)):
+        os.mkdir(os.path.join(syncdata, 'markdown', nb))
+    if not os.path.isdir(os.path.join(syncdata, 'json', nb)):
+        os.mkdir(os.path.join(syncdata, 'json', nb))
+
 # generate index json
 with open(os.path.join(syncdata, 'markdown', 'index.json'), 'wt') as F:
     json.dump(nb_meta, F)
@@ -47,8 +56,6 @@ with open(os.path.join(syncdata, 'markdown', 'index.json'), 'wt') as F:
 # generate table of contents index pages
 for nb in nb_notes.keys():
     nbdir = os.path.join(syncdata, 'markdown', nb)
-    if not os.path.isdir(nbdir):
-        os.mkdir(nbdir)
     with open(os.path.join(nbdir, 'index.html'), 'wt') as F:
         F.write(nb_index)
 
@@ -79,6 +86,8 @@ for note in active_notes:
     with open(basefile + '.ast', 'wt') as F:
         F.write(ast.__repr__())
     with open(basefile + '.json', 'wt') as F:
+        F.write(ast._tojson())
+    with open(os.path.join(syncdata, 'json', note.notebook, note.escapedtitle) + '.json', 'wt') as F:
         F.write(ast._tojson())
 
     # rendered latex
