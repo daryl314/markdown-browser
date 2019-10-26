@@ -70,6 +70,11 @@ for note in active_notes:
     # output filename without extension
     basefile = os.path.join(syncdata, 'markdown', note.notebook, note.escapedtitle)
 
+    # skip processing if file hasn't been updated
+    if os.path.isfile(basefile + '.md'):
+        if datetime.datetime.fromtimestamp(os.path.getmtime(basefile + '.md')) > note.updatedTime:
+            continue
+
     # original markdown
     with open(basefile + '.md', 'wt') as F:
         F.write(note_md)
