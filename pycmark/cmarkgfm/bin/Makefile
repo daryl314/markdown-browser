@@ -39,7 +39,10 @@ docker_build:
 	cd emscripten && docker build . -t emcc
 
 emscripten/cmark.js: docker_build
-	docker run -it --rm -v $$(pwd):/root/em emcc /bin/bash --login -c "make -C /root/em/emscripten"
+	docker run -it --rm -v $$(pwd):/root/em emcc /bin/bash --login -c "make -C /root/em/emscripten cmark.js"
+
+emscripten/cmark_debug.js: docker_build
+	docker run -it --rm -v $$(pwd):/root/em emcc /bin/bash --login -c "make -C /root/em/emscripten cmark_debug.js"
 
 clean:
 	rm -rf gfm-Darwin.dSYM gfm-* gfm.* cmark-gfm
