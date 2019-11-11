@@ -7,10 +7,11 @@ ifeq ($(UNAME), Darwin)
 else
 	LIBEXT=so
 endif
+DOCKERTAG=emcc
 
 all: gfm-$(UNAME) gfm.$(LIBEXT)
 
-.PHONY: clean
+.PHONY: clean docker docker_build
 
 gfm.$(LIBEXT): main.c | $(LIBS)
 	$(CC) -g -fPIC -shared $< $(INCLUDES) $(LIBS) -o $@
@@ -31,7 +32,14 @@ cmark-gfm/build_$(UNAME): | cmark-gfm
 cmarkgfm.py:
 	PYTHONPATH=~/Personal/utilities/python python -m pytools.bin.DwarfToCtypes gfm.so --outfile=cmarkgfm.py
 
+docker:
+	docker run -it --rm -v $$(pwd):/root/em $(DOCKERTAG) /bin/bash
+
+docker_build:
+	cd emscripten && docker build . -t emcc
+
+emscripten/cmark.js: docker_build
+	docker run -it --rm -v $$(pwd):/root/em emcc /bin/bash --login -c "make -C /root/em/emscripten"
+
 clean:
-	rm -rf gfm-Darwin.dSYM
-	rm -f gfm-* gfm.*
-	rm -rf cmark-gfm
+	rm -rf gfm-Darwin.dSYM gfm-* gfm.* cmark-gfm

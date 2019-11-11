@@ -1,0 +1,8 @@
+<script src="cmark.js"></script>
+<script>
+  Module.onRuntimeInitialized = _ => {
+    const md_to_html_str = Module.cwrap('md_to_html', 'string', ['string']);
+    console.log(md_to_html_str('this is a *test*'));
+    console.log(md_to_html_str('this is a **test**'));
+  };
+</script>

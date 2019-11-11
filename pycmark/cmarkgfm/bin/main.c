@@ -9,6 +9,12 @@
 #include "cmark-gfm.h"
 #include "cmark-gfm-core-extensions.h"
 
+#ifdef __EMSCRIPTEN__
+#include "emscripten/emscripten.h"
+#else
+#define EMSCRIPTEN_KEEPALIVE 
+#endif
+
 
 /*
  * Configuration
@@ -327,6 +333,21 @@ void print_usage(const char* bin_name) {
     printf("  --latex           Render as latex instead of HTML\n");
 }
 
+#ifdef __EMSCRIPTEN__
+int startup_done = 0;
+char *last_result = 0;
+char * EMSCRIPTEN_KEEPALIVE md_to_html(const char *md) {
+  if (!startup_done) {
+    startup();
+    startup_done = 1;
+  }
+  if (last_result) {
+    cmark_get_default_mem_allocator()->free(last_result);
+  }
+  last_result = document_to_html(string_to_document(md));
+  return last_result;
+}
+#else
 int main(int argc, char *argv[]) {
     startup();
 
@@ -375,3 +396,4 @@ int main(int argc, char *argv[]) {
     shutdown();
     return 0;
 }
+#endif
