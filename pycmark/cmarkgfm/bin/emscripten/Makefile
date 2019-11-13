@@ -7,7 +7,7 @@ EFLAGS=-O3 -s WASM=1
 all: cmark.js
 
 clean:
-	rm -rf build_emcc main.c.bc cmark.js cmark.wasm cmark.wasm.map
+	rm -rf build_emcc cmark.* cmark_debug.*
 
 build_emcc/main.c.bc: ../cmark-gfm/src ../cmark-gfm/extensions Makefile
 	mkdir -p build_emcc
@@ -32,3 +32,4 @@ cmark.js: build_emcc/main.c.bc Makefile
 		-s "EXTRA_EXPORTED_RUNTIME_METHODS=['cwrap']" \
 		-s EXPORTED_FUNCTIONS='["_md_to_html"]' \
 		$(INCLUDES) build_emcc/*.bc -o $@
+	gzip cmark.wasm
