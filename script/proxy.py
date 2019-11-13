@@ -1,15 +1,9 @@
-#!/bin/sh
-''''which python2 >/dev/null 2>&1 && exec python2 "$0" "$@" # '''
-''''which python  >/dev/null 2>&1 && exec python  "$0" "$@" # '''
-''''exec echo "Error: python2 executable not found!"        # '''
-# ^^^ ensure that python2 is running
+#! /usr/bin/env python3
 
-# imports
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
-import SocketServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from os import curdir, sep, path
 import subprocess
-import httplib
+import http.client as httplib
 import os
 import json
 
@@ -24,7 +18,8 @@ mimeMap = {
     ".md"       : 'text/plain',
     ".ico"      : 'image/x-icon',
     ".woff"     : 'application/font-woff',
-    ".woff2"    : 'application/font-woff'
+    ".woff2"    : 'application/font-woff',
+    ".wasm"     : 'application/wasm',
 }
 
 # forbidden file write extensions
@@ -57,10 +52,12 @@ class S(BaseHTTPRequestHandler):
         """Return HTTP or HTTPS connection object as appropriate"""
         return httplib.HTTPSConnection(self._getServer()) if self.path.startswith("/@proxy-https/") else httplib.HTTPConnection(self._getServer())
 
-    def _sendData(self, data, mimeType):
+    def _sendData(self, data, mimeType, gzip=False):
         """Send specified data as a response"""
         self.send_response(200)
         self.send_header('Content-Type', mimeType)
+        if gzip:
+            self.send_header('Content-Encoding', 'gzip')
         self.end_headers()
         self.wfile.write(data)        
 
@@ -106,19 +103,24 @@ class S(BaseHTTPRequestHandler):
         # otherwise return a local file
         else:
             try:
-                ext = path.splitext(self.path)[1]
+                gzip = self.path.endswith('.gz')
                 fileName = curdir + sep + self.path.replace('%20', ' ')
+                ext = path.splitext(self.path[:-3] if gzip else self.path)[1]
                 if os.path.isfile(fileName):
                     if ext in mimeMap:
                         mime = mimeMap[ext]
                     else:
-                        mime = subprocess.check_output(["file",'--mime-type',fileName]).rstrip().split(' ')[-1]
-                        print('  - Detected mime type for '+self.path+': '+mime)
-                    f = open(fileName)
-                    self._sendData(f.read(), mime)
+                        mime = subprocess.check_output(["file", '--mime-type', fileName]).rstrip().split(b' ')[-1]
+                        print('  - Detected mime type for {}: {}'.format(self.path, mime))
+                    f = open(fileName, 'rb')
+                    self._sendData(f.read(), mime, gzip=gzip)
+                    f.close()
+                elif os.path.isfile(fileName + '.gz') and ext in mimeMap:
+                    f = open(fileName + '.gz', 'rb')
+                    self._sendData(f.read(), mimeMap[ext], gzip=True)
                     f.close()
                 else:
-                    self.send_error(404,'File Not Found: %s' % self.path)
+                    self.send_error(404,'File Not Found: %s' % fileName)
             except IOError:
                 self.send_error(404,'File Not Found: %s' % self.path)
 
