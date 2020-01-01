@@ -1445,7 +1445,7 @@ class Application {
         if (this.queryOptions.mode == 'evernote' || this.queryOptions.mode == 'syncReport') {
           if (localStorage.getItem('token') === null)
             this.updateToken();
-          return Application.loadJavascriptFile('evernote_browserify.js')
+          return Application.loadJavascriptFile('lib/evernote_browserify.js')
         } else {
           return null
         }
@@ -1684,4 +1684,7 @@ class Application {
 }
 
 // set everything in motion once document is ready
-window.app = new Application().run();
+Module.onRuntimeInitialized = _ => {
+  window.md_to_html_str = Module.cwrap('md_to_html', 'string', ['string']);
+  window.app = new Application().run();
+};

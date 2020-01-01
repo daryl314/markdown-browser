@@ -20,8 +20,10 @@
  * Configuration
  */
 
-// include line numbers in output
-int options = CMARK_OPT_DEFAULT | CMARK_OPT_SOURCEPOS;
+// rendering options
+int options = CMARK_OPT_DEFAULT \
+    | CMARK_OPT_SOURCEPOS  // include line numbers in output
+    | CMARK_OPT_UNSAFE;    // allow raw html
 
 
 /*

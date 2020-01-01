@@ -15,7 +15,7 @@ global.path = require('path');
 
 // load dependencies
 global.Evernote = require('evernote');
-vm.runInThisContext(fs.readFileSync(`${__dirname}/../evernote.js`));
+vm.runInThisContext(fs.readFileSync(`${__dirname}/../js/evernote.js`));
 vm.runInThisContext(fs.readFileSync(`${__dirname}/../lib/lodash.min.js`));
 
 // instantiate synchronizer
