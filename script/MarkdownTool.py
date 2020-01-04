@@ -4,6 +4,7 @@
 import argparse
 import sys
 import signal
+import subprocess
 
 import pycmark.cmarkgfm as cmark
 from pycmark.taggedtext.TaggedCmarkDocument import TaggedTextDocument
@@ -70,7 +71,12 @@ if __name__ == '__main__':
     parser.add_argument('infile', help="markdown file to process", nargs='?')
     parser.add_argument('--action', help="Processing action", default="RenderTerminal")
     parser.add_argument('--width', help="Output width", type=int, default=80)
+    parser.add_argument('--auto-width', action="store_true", help="Adjust to terminal width")
     args = parser.parse_args()
+
+    # adjust to terminal width?
+    if args.auto_width:
+        args.width = int(subprocess.check_output(['tput', 'cols']))
 
     # read input data
     if args.infile is not None:
