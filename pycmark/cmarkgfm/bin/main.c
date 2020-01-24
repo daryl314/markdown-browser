@@ -270,7 +270,6 @@ cmark_node* file_to_document(FILE *fp) {
         }
     }
     cmark_node *document = cmark_parser_finish(parser);
-    cmark_parser_free(parser);
     return document;
 }
 
@@ -346,7 +345,10 @@ char * EMSCRIPTEN_KEEPALIVE md_to_html(const char *md) {
   if (last_result) {
     cmark_get_default_mem_allocator()->free(last_result);
   }
-  last_result = document_to_html(string_to_document(md));
+  cmark_node *document = string_to_document(md);
+  last_result = document_to_html(document);
+  cmark_arena_reset();
+  cmark_node_free(document);
   return last_result;
 }
 #else
@@ -394,6 +396,7 @@ int main(int argc, char *argv[]) {
         print_and_free("%s\n", document_to_html(document));
     }
 
+    cmark_arena_reset();
     cmark_node_free(document);
     shutdown();
     return 0;

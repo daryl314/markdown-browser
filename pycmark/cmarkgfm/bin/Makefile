@@ -9,9 +9,11 @@ else
 endif
 DOCKERTAG=emcc
 
-all: gfm-$(UNAME) gfm.$(LIBEXT)
+JSLIB=../../../js
 
-.PHONY: clean docker docker_build
+all: gfm-$(UNAME) gfm.$(LIBEXT) emscripten/cmark.js $(JSLIB)/cmark.wasm.gz $(JSLIB)/cmark.js
+
+.PHONY: clean docker docker_build emscripten_debug
 
 gfm.$(LIBEXT): main.c | $(LIBS)
 	$(CC) -g -fPIC -shared $< $(INCLUDES) $(LIBS) -o $@
@@ -43,6 +45,12 @@ emscripten/cmark.js: docker_build
 
 emscripten/cmark_debug.js: docker_build
 	docker run -it --rm -v $$(pwd):/root/em emcc /bin/bash --login -c "make -C /root/em/emscripten cmark_debug.js"
+
+$(JSLIB)/cmark.wasm.gz: emscripten/cmark.wasm.gz
+	cp $^ $@
+
+$(JSLIB)/cmark.js: emscripten/cmark.js
+	cp $^ $@
 
 clean:
 	rm -rf gfm-Darwin.dSYM gfm-* gfm.* cmark-gfm
