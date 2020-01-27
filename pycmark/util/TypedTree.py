@@ -13,6 +13,9 @@ if not PY3:
 else:
     PRIMITIVES = {bytes, str, int, float, bool}
 
+# prefix for JSON serialization
+JSON_PREFIX = '{"TypedTree": '
+
 class TypedTree(object):
     """
     TypedTree is an extension of collections.namedtuple that enforces immutability
@@ -53,7 +56,7 @@ class TypedTree(object):
             return convert(self)
 
         def _tojson(self, **kwargs):
-            return json.dumps(self._toobject(), **kwargs)
+            return JSON_PREFIX + json.dumps(self._toobject(), **kwargs) + '}'
 
         @classmethod
         def _repr(T, x, i=1, ts=4):
@@ -81,7 +84,10 @@ class TypedTree(object):
                     v = base64.b64decode(v)
                 entries[str(k)] = v
             return cls.Build(type_name, **entries)
-        return json.loads(x, object_hook=fromObject)
+        if cls._isSeralizedData(x):
+            return json.loads(x[len(JSON_PREFIX):-1], object_hook=fromObject)
+        else:
+            raise ValueError("Not a serialized TypedTree!")
 
     @classmethod
     def _convertArg(T, a):
@@ -91,6 +97,10 @@ class TypedTree(object):
             return tuple([T._convertArg(x) for x in a])
         else:
             raise RuntimeError("Invalid value type: {}".format(a))
+
+    @staticmethod
+    def _isSeralizedData(x):
+        return x.startswith(JSON_PREFIX) and x.endswith('}')
 
     @staticmethod
     def _isPrimitive(x):
