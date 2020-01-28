@@ -111,4 +111,6 @@ if __name__ == '__main__':
         print(cdoc.toAST()._tojson())
     elif args.action == 'JSONPP':
         print(cdoc.toAST()._tojson(sort_keys=True, indent=4, separators=(',', ': ')))
+    else:
+        print("Valid actions: RenderTerminal, SimpleHTML, Latex, AST, JSON, JSONPP")
 
