@@ -10,16 +10,16 @@ if [[ $# -ge 1 ]]; then
   if [[ $1 == *#* ]]; then
     FILE=`echo $1 | sed 's/#.*//' | sed 's/ /\\\\ /g'`
     LINK=`echo $1 | sed 's/.*#//'`
-    PYTHONPATH=$SCRIPT/pyvim vim -c "so $SCRIPT/renderer.vim" -c "view $FILE" -c "call ScrollToHeadingText('$LINK')"
+    PYTHONPATH=$SCRIPT/pyvim vim -c "so $SCRIPT/renderer.vim" -c "view $FILE" -c "call ScrollToHeadingText('$LINK')" -c "cmap q qa"
 
   # otherwise just open the file
   else
     FILE=`echo $1 | sed 's/ /\\\\ /g'`
-    PYTHONPATH=$SCRIPT/pyvim vim -c "so $SCRIPT/renderer.vim" -c "view $FILE"
+    PYTHONPATH=$SCRIPT/pyvim vim -c "so $SCRIPT/renderer.vim" -c "view $FILE" -c "cmap q qa"
   fi
 
 # otherwise open root directory
 else
-  PYTHONPATH=$SCRIPT/pyvim vim -c "so $SCRIPT/renderer.vim" -c "view $SCRIPT/../"
+  PYTHONPATH=$SCRIPT/pyvim vim -c "so $SCRIPT/renderer.vim" -c "view $SCRIPT/../" -c "cmap q qa"
 fi
 
