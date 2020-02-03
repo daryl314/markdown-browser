@@ -1,6 +1,27 @@
 UNAME=$(shell uname)
 INCLUDES= -I../cmark-gfm/src -I../cmark-gfm/build_$(UNAME)/src -I../cmark-gfm/extensions -I../cmark-gfm/build_$(UNAME)/extensions
 EFLAGS=-O3 -s WASM=1
+EXPORTS='[\
+		"_md_to_html", \
+		"_string_to_document", \
+		"_cmark_node_get_type_string", \
+		"_cmark_node_first_child", \
+		"_cmark_node_next", \
+		"_cmark_node_get_start_line", \
+		"_cmark_node_get_start_column", \
+		"_cmark_node_get_end_line", \
+		"_cmark_node_get_end_column", \
+		"_cmark_node_get_literal", \
+		"_cmark_node_get_heading_level", \
+		"_cmark_node_get_fence_info", \
+		"_cmark_node_get_url", \
+		"_cmark_node_get_title", \
+		"_cmark_node_get_list_type", \
+		"_cmark_node_get_list_tight", \
+		"_cmark_node_get_list_start", \
+		"_cmark_node_get_list_delim", \
+		"_cmark_gfm_extensions_get_table_alignments"]'
+EXTRA_FLAGS=-s "EXTRA_EXPORTED_RUNTIME_METHODS=['cwrap', 'getValue']" -s EXPORTED_FUNCTIONS=$(EXPORTS)
 
 .PHONY: clean
 
@@ -20,16 +41,9 @@ build_emcc/main.c.bc: ../cmark-gfm/src ../cmark-gfm/extensions Makefile
 	emcc $(EFLAGS) -g -c $(INCLUDES) ../main.c -o build_emcc/main.c.bc
 
 cmark_debug.js: build_emcc/main.c.bc Makefile
-	emcc $(EFLAGS) -g4 \
-		--source-map-base / \
-		-s ASSERTIONS=1 \
-		-s "EXTRA_EXPORTED_RUNTIME_METHODS=['cwrap']" \
-		-s EXPORTED_FUNCTIONS='["_md_to_html"]' \
-		$(INCLUDES) build_emcc/*.bc -o $@
+	emcc $(EFLAGS) $(EXTRA_FLAGS) -g4 --source-map-base / -s ASSERTIONS=1 $(INCLUDES) build_emcc/*.bc -o $@
 
 cmark.js: build_emcc/main.c.bc Makefile
-	emcc $(EFLAGS) \
-		-s "EXTRA_EXPORTED_RUNTIME_METHODS=['cwrap']" \
-		-s EXPORTED_FUNCTIONS='["_md_to_html"]' \
-		$(INCLUDES) build_emcc/*.bc -o $@
+	emcc $(EFLAGS) $(EXTRA_FLAGS) $(INCLUDES) build_emcc/*.bc -o $@
+	rm -f cmark.wasm.gz
 	gzip cmark.wasm

@@ -1684,7 +1684,6 @@ class Application {
 }
 
 // set everything in motion once document is ready
-Module.onRuntimeInitialized = _ => {
-  window.md_to_html_str = Module.cwrap('md_to_html', 'string', ['string']);
+waitForCmark().then(function(){
   window.app = new Application().run();
-};
+});
