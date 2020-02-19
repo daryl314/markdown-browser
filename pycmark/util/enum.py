@@ -52,8 +52,7 @@ def enum(labels, name='Enum'):
                 raise ValueError("Invalid enumeration value: {}".format(val))
 
     # define enumeration class
-    class Cls(object):
-        __metaclass__ = MetaA
+    class Cls(metaclass=MetaA):
 
         # lookup table from values to labels
         _lookup = dict(enumerate(labels))

@@ -104,18 +104,18 @@ class EvernoteMetadata(object):
             if tagFilter is None or tagFilter in note.tags:
                 versions = sorted(note.versions(), key=lambda v: v.updatedTime)
                 if ignore_empty:
-                    while len(versions) > 0 and versions[0].textContent() == '':
-                        versions = versions[1:]
+                    versions = [v for v in versions if v.textContent() != '']
                     if len(versions) == 0:
                         continue
                 history.append(Action(note.createdTime, ActionEnum.Created, versions[0], None))
                 previous = versions[0]
                 for i, v in enumerate(versions[1:]):
-                    if v.mdFile != previous.mdFile:
-                        history.append(Action(v.updatedTime, ActionEnum.Renamed, v, previous.mdFile))
-                    else:
-                        history.append(Action(v.updatedTime, ActionEnum.Updated, v, None))
-                    previous = v
+                    if v.updatedTime > note.createdTime:
+                        if v.mdFile != previous.mdFile:
+                            history.append(Action(v.updatedTime, ActionEnum.Renamed, v, previous.mdFile))
+                        else:
+                            history.append(Action(v.updatedTime, ActionEnum.Updated, v, None))
+                        previous = v
                 if note.deleted:
                     history.append(Action(note.deletedTime, ActionEnum.Deleted, versions[-1], None))
         return history
@@ -145,6 +145,9 @@ class EvernoteNote(object):
 
     def __repr__(self):
         return 'title: {},  notebook: {},  tags: {}'.format(self.title, self.notebook, self.tags)
+
+    def __lt__(self, other):
+        return self.updated < other.updated
 
     @property
     def tags(self):

@@ -39,18 +39,18 @@ class GitGenerator(ActionEnum.Visitor):
         with open(noteFile, 'wt') as F:
             F.write(content)
         self.git('add', action.note.mdFile)
-        self.git('commit', '--date', action.note.updatedTime.isoformat(), '-m', 'Adding {}'.format(action.note.title))
+        self.git('commit', '--date', action.note.updatedTime.isoformat(), '-m', 'Adding {} [{}]'.format(action.note.title, action.note.sequence))
 
     def visitDeleted(self, action, noteFile, content):
         self.git('rm', action.note.mdFile)
-        self.git('commit', '--date', action.note.deletedTime.isoformat(), '-m', 'Deleting {}'.format(action.note.title))
+        self.git('commit', '--date', action.note.deletedTime.isoformat(), '-m', 'Deleting {} [{}]'.format(action.note.title, action.note.sequence))
 
     def visitRenamed(self, action, noteFile, content):
         self.git('mv', action.extra, action.note.mdFile)
         with open(noteFile, 'wt') as F:
             F.write(content)
         self.git('add', action.note.mdFile)
-        self.git('commit', '--date', action.note.updatedTime.isoformat(), '-m', 'Renaming {} --> {}'.format(action.extra, action.note.title))
+        self.git('commit', '--date', action.note.updatedTime.isoformat(), '-m', 'Renaming {} --> {} [{}]'.format(action.extra, action.note.title, action.note.sequence))
 
     def visitUpdated(self, action, noteFile, content):
         with open(noteFile, 'rt') as F:
@@ -59,12 +59,14 @@ class GitGenerator(ActionEnum.Visitor):
             with open(noteFile, 'wt') as F:
                 F.write(action.note.textContent())
             self.git('add', action.note.mdFile)
-            self.git('commit', '--date', action.note.updatedTime.isoformat(), '-m', 'Updating {}'.format(action.note.title))
+            self.git('commit', '--date', action.note.updatedTime.isoformat(), '-m', 'Updating {} [{}]'.format(action.note.title, action.note.sequence))
 
 def toGit(syncdata, outdir):
     """Convert Evernote metadata in specified location to git repository in specified location"""
     meta = EvernoteMetadata(syncdata)
-    GitGenerator(outdir).visitAll(meta.cleanHistory())
+    gg = GitGenerator(outdir)
+    gg.visitAll(meta.cleanHistory())
+    gg.git('gc')  # garbage collect to compact repository
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
