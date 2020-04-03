@@ -64,14 +64,31 @@ y = [2*x for x in arr]
 def sigpipe_handler(e):
     sys.exit(0)
 
+HELP_TEXT = '''Markdown processing tool
+
+Valid actions (default is RenderTerminal):
+    - RenderTerminal  Render output to terminal (and ignore outfile)
+    - SimpleHTML      Generate HTML without styling
+    - HTML            Generate single-page styled HTML
+    - Latex           Generate a Latex document
+    - AST             Generate human-readable AST representation of document
+    - JSON            Generate compact JSON export of document AST
+    - JSONPP          Generate expanded JSON export of document AST
+    
+If an input file isn't given the internal test document is used as a source
+'''
+
 if __name__ == '__main__':
 
     # parse input arguments
-    parser = argparse.ArgumentParser(description="Markdown processing tool")
+    parser = argparse.ArgumentParser(
+        description=HELP_TEXT,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('infile', help="markdown file to process", nargs='?')
     parser.add_argument('--action', help="Processing action", default="RenderTerminal")
     parser.add_argument('--width', help="Output width", type=int, default=80)
     parser.add_argument('--auto-width', action="store_true", help="Adjust to terminal width")
+    parser.add_argument('--outfile', help="Output file (default stdout)")
     args = parser.parse_args()
 
     # adjust to terminal width?
@@ -84,13 +101,19 @@ if __name__ == '__main__':
     else:
         txt = TEST_TEXT
 
-    # special case: process tagged text json
+    # special case: process tagged text json and render to stdout
     if args.infile is not None and args.infile.endswith('.json') and txt[0] == '{':
         tt = TypedTree._fromjson(txt)
         signal.signal(signal.SIGPIPE, sigpipe_handler)
         doc = TaggedTextDocument.fromAST(tt, width=args.width)
         doc.render(TerminalRenderer().render)
         sys.exit(0)
+
+    # output writer
+    if args.outfile is not None:
+        writer = open(args.outfile, 'wt')
+    else:
+        writer = sys.stdout
 
     # perform action
     cdoc = cmark.parse(txt)
@@ -100,17 +123,18 @@ if __name__ == '__main__':
         doc = TaggedTextDocument.fromAST(tt, width=args.width)
         doc.render(TerminalRenderer().render)
     elif args.action == 'SimpleHTML':
-        print(cdoc.toHTML())
+        writer.write(cdoc.toHTML() + '\n')
     elif args.action == 'HTML':
-        print(toStyledHTML(txt))
+        writer.write(toStyledHTML(txt) + '\n')
     elif args.action == 'Latex':
-        print(cmark.mdToLatex(txt))
+        writer.write(cmark.mdToLatex(txt) + '\n')
     elif args.action == 'AST':
-        print(cdoc.toAST())
+        writer.write(cdoc.toAST().__repr__() + '\n')
     elif args.action == 'JSON':
-        print(cdoc.toAST()._tojson())
+        writer.write(cdoc.toAST()._tojson() + '\n')
     elif args.action == 'JSONPP':
-        print(cdoc.toAST()._tojson(sort_keys=True, indent=4, separators=(',', ': ')))
+        writer.write(cdoc.toAST()._tojson(sort_keys=True, indent=4, separators=(',', ': ')) + '\n')
     else:
-        print("Valid actions: RenderTerminal, SimpleHTML, Latex, AST, JSON, JSONPP")
+        sys.stderr.write("Valid actions: RenderTerminal, SimpleHTML, HTML, Latex, AST, JSON, JSONPP\n")
+        sys.exit(1)
 
