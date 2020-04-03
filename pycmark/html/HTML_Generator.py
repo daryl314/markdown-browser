@@ -1,26 +1,12 @@
 import os
-import base64
 import xml.dom.minidom
 import pycmark.cmarkgfm as cmark
 import io
 from ..ast.DocumentTree import DocumentTree
-from pycmark.html.CodeHighlighter import highlight, HIGHLIGHT_LANGUAGES
-from pycmark.html.Katex import processLatex, escapeUnicode
+from .CodeHighlighter import highlight, HIGHLIGHT_LANGUAGES, highlight_css
+from .Katex import processLatex, escapeUnicode
+from .AssetLoader import loadAsset, loadBinaryAsset, ROOT
 
-################################################################################
-
-ROOT = os.path.dirname(__file__)
-
-def loadAsset(asset, indent=8, escape=True):
-    with open(os.path.join(ROOT, asset), 'rt') as F:
-        if escape:
-            return F.read().replace('{', '{{').replace('}', '}}').replace('\n', '\n' + ' ' * indent)
-        else:
-            return F.read().replace('\n', '\n' + ' ' * indent)
-
-def loadBinaryAsset(asset):
-    with open(os.path.join(ROOT, asset), 'rb') as F:
-        return base64.b64encode(F.read())
 
 ################################################################################
 
@@ -52,7 +38,7 @@ def toStyledHTML(txt, withIndex=False):
     # perform syntax highlighting on <pre><code> elements
     syn = highlight([(lang, src) for _, lang, src in pre_code])
     for (pre, lang, _), src in zip(pre_code, syn):
-        code = xml.dom.minidom.parseString('<code class="hljs language-{}">{}</code>'.format(lang, escapeUnicode(src)))
+        code = xml.dom.minidom.parseString(src)
         pre.replaceChild(code.firstChild, pre.firstChild)
 
     # escape special characters in html
@@ -139,8 +125,7 @@ def toStyledHTML(txt, withIndex=False):
     # add any content-specific assets
     jslib = []
     if len(pre_code) > 0:  # highlighted code needs stylesheet
-        jslib.append("<style type='text/css'>%s</style>" %
-                     loadAsset('node_modules/highlight.js/styles/atelier-forest-light.css', escape=False))
+        jslib.append(highlight_css)
     if len(latex) > 0:  # rendered latex needs stylesheet and fonts
         jslib.append("<style type='text/css'>")
         for line in loadAsset('node_modules/katex/dist/katex.css', escape=False, indent=4).rstrip().split('\n'):
