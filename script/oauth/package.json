@@ -10,6 +10,6 @@
   "license": "ISC",
   "dependencies": {
     "evernote": "^2.0.1-beta",
-    "express": "^4.16.2"
+    "express": "^4.18.2"
   }
 }
